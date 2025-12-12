@@ -85,3 +85,4 @@ For production use, the application should be deployed using Docker Compose.
     ```
     docker-compose up -d --build
     ```
+    Default Port for Web interface: 80
