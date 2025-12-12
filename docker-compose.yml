@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  # Frontend Service (React + Nginx)
+  printle-frontend:
+    build: 
+      context: ./printle-web-app
+      dockerfile: Dockerfile
+    ports:
+      - "80:80" # Maps port 80 on host to port 80 in container
+    depends_on:
+      - printle-backend
+    restart: always
+
+  # Backend Service (Node.js)
+  printle-backend:
+    build:
+      context: ./printle-server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001" # Expose 3001 so the IPP logic works and for direct access if needed
+    volumes:
+      - ./printle-server/uploads:/app/uploads # Persist uploads or map for debugging
+    restart: always
