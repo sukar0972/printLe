@@ -1,0 +1,48 @@
+--- General Ignore Rules ---
+
+.DS_Store
+.env
+.env.local
+.vscode/
+
+--- Node.js & npm ---
+
+Ignore all dependencies folders
+
+node_modules
+
+Ignore npm debug logs
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pnpm-lock.yaml
+
+--- Frontend Specific (.gitignore in printle-web-app) ---
+
+/printle-web-app/dist        # Vite output directory (Build artifacts)
+/printle-web-app/coverage    # Test reports
+
+--- Backend Specific (.gitignore in printle-server) ---
+
+Temporary file storage for uploads
+
+/printle-server/uploads
+
+--- Docker & Containerization ---
+
+Ignore generated images and network data
+
+*.tar
+*.iso
+*.swp
+.dockerignore
+!/Dockerfile
+!/docker-compose.yml
+
+Ignore build artifacts created by Docker Compose
+
+The containers create these files on startup.
+
+.docker-build/
