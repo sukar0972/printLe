@@ -79,9 +79,15 @@ For production use, the application should be deployed using Docker Compose.
 ### Prerequisites
 - Docker and Docker Compose installed on the server that is connected to the network (and can reach the IPP printer).
 ### Deployment Steps
-1. Ensure all necessary Dockerfiles (`printle-web-app/Dockerfile`, `printle-server/Dockerfile`, `printle-web-app/nginx.conf`) and the main `docker-compose.yml` file are in the correct locations.
-2. In the root directory (`/Print Project`), execute the deployment command:
+1. Ensure all necessary Dockerfiles (`printle-web-app/Dockerfile`, `printle-server/Dockerfile`, `printle-web-app/nginx.conf`) and the main `docker-compose.yml` file are in the correct locations by cloning the git repo.
+2. In the root directory (`cd printLe`), execute the deployment command:
     
+    ```
+    docker compose up -d --build
+    ```
+
+    or
+
     ```
     docker-compose up -d --build
     ```
