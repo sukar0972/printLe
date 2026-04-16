@@ -42,6 +42,15 @@ interface AppSettings {
   theme: 'light' | 'dark';
 }
 
+interface PrinterStatus {
+  reachable: boolean;
+  statusCode: string | null;
+  printerName: string | null;
+  printerState: string | null;
+  acceptingJobs: boolean | null;
+  error?: string | null;
+}
+
 // --- Mock Data Helpers ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const formatBytes = (bytes: number, decimals = 2) => {
@@ -63,6 +72,8 @@ export default function App() {
   const [uploadStage, setUploadStage] = useState<'odd' | 'even' | null>(null);
   const [showFlipPrompt, setShowFlipPrompt] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
+  const [isCheckingPrinter, setIsCheckingPrinter] = useState(false);
   
   // New Feature State
   const [duplexMode, setDuplexMode] = useState<DuplexMode>('none');
@@ -97,6 +108,61 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [settings]);
+
+  useEffect(() => {
+    const trimmedPrinterUrl = settings.printerAddress.trim();
+    const trimmedServerUrl = settings.serverUrl.trim();
+
+    if (!trimmedPrinterUrl || !trimmedServerUrl) {
+      setPrinterStatus(null);
+      setIsCheckingPrinter(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkPrinterStatus = async () => {
+      setIsCheckingPrinter(true);
+
+      try {
+        const response = await fetch(`${trimmedServerUrl}/api/printer-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ printerUrl: trimmedPrinterUrl }),
+        });
+
+        const result = await response.json();
+        if (!cancelled) {
+          setPrinterStatus(result);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setPrinterStatus({
+            reachable: false,
+            statusCode: null,
+            printerName: null,
+            printerState: null,
+            acceptingJobs: null,
+            error: error.message || 'Status check failed.',
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingPrinter(false);
+        }
+      }
+    };
+
+    checkPrinterStatus();
+    const intervalId = window.setInterval(checkPrinterStatus, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [settings.printerAddress, settings.serverUrl]);
 
   // --- Handlers ---
   const handleDrag = (e: React.DragEvent) => {
@@ -282,9 +348,20 @@ export default function App() {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">PrintLe</h1>
         </div>
         <div className="flex items-center space-x-3">
-            <div className={`w-3 h-3 rounded-full ${settings.printerAddress ? 'bg-green-500' : 'bg-red-500'}`} title="Server Status" />
+            <div
+              className={`w-3 h-3 rounded-full ${
+                isCheckingPrinter ? 'bg-amber-400' :
+                printerStatus?.reachable ? 'bg-green-500' :
+                settings.printerAddress ? 'bg-red-500' :
+                'bg-slate-400'
+              }`}
+              title="Printer Status"
+            />
             <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-              {settings.printerAddress ? 'Online' : 'Offline'}
+              {!settings.printerAddress ? 'Not configured' :
+               isCheckingPrinter ? 'Checking...' :
+               printerStatus?.reachable ? 'Online' :
+               'Offline'}
             </span>
         </div>
       </header>
@@ -380,7 +457,7 @@ export default function App() {
                          className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer select-none shadow-sm
                            ${duplexMode !== 'none' 
                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' 
-                             : 'border-transparent bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750'}`}
+                             : 'border-transparent bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
                        >
                           <Layers size={24} className={duplexMode !== 'none' ? 'text-blue-600' : 'text-slate-400'} />
                           <div className="text-left">
@@ -399,7 +476,7 @@ export default function App() {
                          className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer select-none shadow-sm
                            ${grayscale 
                              ? 'border-slate-600 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100' 
-                             : 'border-transparent bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750'}`}
+                             : 'border-transparent bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
                        >
                           <Palette size={24} className={grayscale ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'} />
                           <div className="text-left">
@@ -461,7 +538,11 @@ export default function App() {
                   </div>
                   <div>
                     <p className="font-medium">{settings.printerName}</p>
-                    <p className="text-xs text-slate-500 truncate max-w-[150px] sm:max-w-xs">{settings.printerAddress}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-[150px] sm:max-w-xs">
+                      {printerStatus?.reachable && printerStatus.printerName
+                        ? `${printerStatus.printerName} • ${settings.printerAddress}`
+                        : settings.printerAddress}
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -611,7 +692,7 @@ export default function App() {
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 w-full bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-around items-center z-20 pb-safe">
+      <nav className="fixed bottom-0 w-full bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-around items-center z-20 pb-[env(safe-area-inset-bottom)]">
         <TabButton id="print" label="Print" icon={Printer} />
         <TabButton id="history" label="History" icon={History} />
         <TabButton id="settings" label="Settings" icon={Settings} />

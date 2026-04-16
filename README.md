@@ -18,6 +18,8 @@ The project is structured into two main directories: the user-facing frontend ap
   │   │   ├── App.tsx          <- Main React application with UI logic
   │   │   ├── main.tsx
   │   │   └── index.css
+  │   ├── public/
+  │   │   └── favicon.svg      <- PrintLe favicon using the Lucide printer mark
   │   ├── index.html
   │   ├── package.json
   │   ├── Dockerfile           <- Multi-stage build
@@ -35,6 +37,7 @@ The project is structured into two main directories: the user-facing frontend ap
 ### Frontend (User Interface)
 - **Mobile & Desktop Friendly:** Fully responsive design using Tailwind CSS.
 - **Real-time Status:** Shows upload and print status.
+- **App Branding:** Includes a printer favicon derived from the same Lucide printer icon used in the header.
 - **Print Configuration:**
     - **Custom Page Range:** Supports standard range formats (e.g., `1-3, 5`).
     - **Grayscale Conversion:** Sends the IPP `monochrome` command to the printer for reliable grayscale printing.
