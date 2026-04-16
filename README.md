@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="printle-web-app/public/favicon.svg" alt="PrintLe favicon" width="96" height="96" />
+  <img src="printle-web-app/public/favicon.svg" alt="PrintLe favicon" width="16" height="16" />
 </p>
 
-# 🖨️ PrintLe: Remote IPP Printing Application
+# PrintLe: Remote IPP Printing Application
 
 PrintLe is a web application designed to remotely manage and send print jobs to a network IPP (Internet Printing Protocol) printer via an intermediary Node.js server. This allows for advanced print options like custom page ranges and manual double-sided printing, even if the user is on a mobile device or the printer lacks software support.
 
