@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="printle-web-app/public/favicon.svg" alt="PrintLe favicon" width="96" height="96" />
+</p>
 
 # 🖨️ PrintLe: Remote IPP Printing Application
 
