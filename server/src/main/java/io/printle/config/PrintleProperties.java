@@ -7,4 +7,5 @@ import java.time.Duration;
 public record PrintleProperties(String storagePath, String bootstrapAdminEmail,
                                 String bootstrapAdminPassword, int defaultMonthlyPageQuota,
                                 String printNodeUrl, String defaultCupsQueue, String quotaTimezone,
-                                Duration heldJobTtl, Duration completedJobRetention, Duration failedJobRetention) {}
+                                Duration heldJobTtl, Duration completedJobRetention, Duration failedJobRetention,
+                                String printNodeToken) {}

@@ -28,5 +28,9 @@ public class UserGroup {
     public boolean isBuiltIn() { return builtIn; }
     public Set<AppUser> getMembers() { return members; }
     public void addMember(AppUser user) { members.add(user); }
+    public void removeMember(AppUser user) { members.remove(user); }
+    public void update(String name, Integer monthlyPageQuota) {
+        if (builtIn && !this.name.equals(name)) throw new IllegalStateException("Built-in groups cannot be renamed");
+        this.name = name.trim(); this.monthlyPageQuota = monthlyPageQuota;
+    }
 }
-

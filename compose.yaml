@@ -26,9 +26,13 @@ services:
       PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA: ${PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA:-100}
       PRINTLE_STORAGE_PATH: /var/lib/printle/jobs
       PRINTLE_SECURE_COOKIES: ${PRINTLE_SECURE_COOKIES:-false}
+      PRINTLE_PRINT_NODE_URL: http://print-node:8080
+      PRINTLE_DEFAULT_CUPS_QUEUE: ${PRINTLE_DEFAULT_CUPS_QUEUE:-}
+      PRINTLE_PRINT_NODE_TOKEN: ${PRINTLE_PRINT_NODE_TOKEN:-development-only-token}
     volumes: [job_data:/var/lib/printle/jobs]
     depends_on:
       postgres: { condition: service_healthy }
+      print-node: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health"]
       interval: 10s
@@ -48,9 +52,42 @@ services:
       timeout: 5s
       retries: 5
     networks: [edge, backend]
+  cups:
+    build: ./cups/mock
+    restart: unless-stopped
+    environment:
+      PRINTLE_MOCK_PRINTERS: "false"
+    volumes:
+      - cups_config:/etc/cups
+      - cups_spool:/var/spool/cups
+    healthcheck:
+      test: ["CMD-SHELL", "lpstat -r | grep -q 'scheduler is running'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+  print-node:
+    build: ./print-node
+    restart: unless-stopped
+    environment:
+      CUPS_SERVER: cups:631
+      PRINT_NODE_TOKEN: ${PRINTLE_PRINT_NODE_TOKEN:-development-only-token}
+      PRINT_NODE_MOCK_PROFILES: "false"
+    volumes: [print_node_data:/var/lib/print-node]
+    depends_on:
+      cups: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
 volumes:
   postgres_data:
   job_data:
+  cups_config:
+  cups_spool:
+  print_node_data:
 networks:
   edge:
   backend:

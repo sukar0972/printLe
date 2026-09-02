@@ -11,4 +11,5 @@ public interface PrintJobRepository extends JpaRepository<PrintJob, UUID> {
     List<PrintJob> findAllByCupsJobIdIsNotNullAndStatusIn(Collection<JobStatus> statuses);
     List<PrintJob> findAllByStatusAndExpiresAtLessThanEqual(JobStatus status, Instant cutoff);
     List<PrintJob> findAllByStatusInAndCompletedAtLessThan(Collection<JobStatus> statuses, Instant cutoff);
+    List<PrintJob> findAllByStatusOrderByCompletedAtDesc(JobStatus status);
 }

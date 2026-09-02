@@ -32,10 +32,16 @@ create_queue() {
   cupsenable "$queue"
 }
 
-create_queue mock-success mockprint://success
-create_queue mock-delay mockprint://delay
-create_queue mock-cancel mockprint://cancel
-create_queue mock-hold mockprint://hold
-create_queue mock-stop mockprint://stop
+if [ "${PRINTLE_MOCK_PRINTERS:-true}" = "true" ]; then
+  create_queue mock-success mockprint://success
+  create_queue mock-delay mockprint://delay
+  create_queue mock-cancel mockprint://cancel
+  create_queue mock-hold mockprint://hold
+  create_queue mock-stop mockprint://stop
+  create_queue mock-mono mockprint://success
+  create_queue mock-simple mockprint://success
+  create_queue mock-jam mockprint://hold
+  create_queue mock-offline mockprint://stop
+fi
 
 wait "$cups_pid"

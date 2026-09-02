@@ -18,3 +18,4 @@ printle:
   completed-job-retention: 720h
   failed-job-retention: 168h
   cleanup-interval-ms: 3600000
+  print-node-token: test-token

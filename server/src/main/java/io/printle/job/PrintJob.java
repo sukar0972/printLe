@@ -5,6 +5,7 @@ import io.printle.user.AppUser;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "print_job")
@@ -30,6 +31,13 @@ public class PrintJob {
     @Column(name = "submitted_at") private Instant submittedAt;
     @Column(name = "completed_at") private Instant completedAt;
     @Column(name = "expires_at") private Instant expiresAt;
+    @Column(name = "estimated_cost", precision = 12, scale = 4) private BigDecimal estimatedCost;
+    @Column(name = "cost_rate_version") private Integer costRateVersion;
+    @Column(name = "priced_at") private Instant pricedAt;
+    @Column(name = "attempt", nullable = false) private int attempt;
+    @Column(name = "manual_phase", length = 20) private String manualPhase;
+    @Column(name = "odd_cups_job_id") private Integer oddCupsJobId;
+    @Column(name = "even_cups_job_id") private Integer evenCupsJobId;
 
     protected PrintJob() {}
     public PrintJob(AppUser owner, String originalFilename, String storageKey, long sizeBytes, int pages,
@@ -58,6 +66,14 @@ public class PrintJob {
     public Instant getSubmittedAt() { return submittedAt; }
     public Instant getCompletedAt() { return completedAt; }
     public Instant getExpiresAt() { return expiresAt; }
+    public BigDecimal getEstimatedCost() { return estimatedCost; }
+    public Integer getCostRateVersion() { return costRateVersion; }
+    public Instant getPricedAt() { return pricedAt; }
+    public int getAttempt() { return attempt; }
+    public String getManualPhase() { return manualPhase; }
+    public Integer getOddCupsJobId() { return oddCupsJobId; }
+    public Integer getEvenCupsJobId() { return evenCupsJobId; }
+    public Printer getPrinter() { return printer; }
     public UUID ensureSubmissionKey() { if (submissionKey == null) submissionKey = UUID.randomUUID(); return submissionKey; }
     public void submitted(int jobId, String queue, JobStatus initialState, String reasons) {
         this.cupsJobId = jobId; this.cupsQueue = queue; this.submittedAt = Instant.now();
@@ -69,4 +85,23 @@ public class PrintJob {
     }
     public void cancelHeld() { this.status = JobStatus.CANCELED; this.updatedAt = Instant.now(); this.completedAt = updatedAt; }
     public void expire() { this.status = JobStatus.EXPIRED; this.updatedAt = Instant.now(); this.completedAt = updatedAt; }
+    public void assignPrinter(Printer printer) { this.printer = printer; }
+    public void price(BigDecimal cost, int rateVersion) {
+        if (estimatedCost == null) { this.estimatedCost = cost; this.costRateVersion = rateVersion; this.pricedAt = Instant.now(); }
+    }
+    public void prepareRetry(Instant newExpiry) {
+        if (status != JobStatus.ABORTED) throw new IllegalStateException("Only aborted jobs can be retried");
+        this.attempt++; this.submissionKey = UUID.randomUUID(); this.cupsJobId = null; this.cupsQueue = null;
+        this.ippStateReasons = null; this.submittedAt = null; this.completedAt = null; this.printer = null;
+        this.manualPhase = null; this.oddCupsJobId = null; this.evenCupsJobId = null;
+        this.status = JobStatus.HELD; this.expiresAt = newExpiry; this.updatedAt = Instant.now();
+    }
+    public void submittedManualOdd(int jobId, String queue, JobStatus initialState, String reasons) {
+        this.manualPhase = "ODD"; this.oddCupsJobId = jobId; submitted(jobId, queue, initialState, reasons);
+        if (initialState == JobStatus.COMPLETED) awaitingFlip(reasons);
+    }
+    public void awaitingFlip(String reasons) { this.status = JobStatus.AWAITING_FLIP; this.ippStateReasons = reasons; this.completedAt = null; this.updatedAt = Instant.now(); }
+    public void submittedManualEven(int jobId, JobStatus initialState, String reasons) {
+        this.manualPhase = "EVEN"; this.evenCupsJobId = jobId; this.cupsJobId = jobId; this.submittedAt = Instant.now(); updateIppState(initialState, reasons);
+    }
 }

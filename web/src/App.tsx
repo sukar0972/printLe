@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { api, CurrentUser, Job, ManagedUser, Quota } from './api'
+import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report } from './api'
 
 type Page = 'queue' | 'printers' | 'users' | 'groups' | 'reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
@@ -15,13 +15,21 @@ type TypeId = typeof TYPES[number]['id']
 const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' }
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
 const previewJobs: Job[] = [
-  { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z' },
-  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'HELD', createdAt: '2026-09-01T13:04:00Z' },
-  { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z' },
-  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'HELD', createdAt: '2026-09-01T10:15:00Z' },
-  { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z' },
-  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z' },
-  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z' },
+  { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z', attempt: 1 },
+  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD_COMPLETE' },
+  { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z', attempt: 1 },
+  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', attempt: 1, ippStateReasons: 'media-jam' },
+  { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z', attempt: 1 },
+  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8 },
+  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z', attempt: 1 },
+]
+
+const previewPrinters: Printer[] = [
+  { id: 'p1', name: 'Studio Color', description: 'Full-capability mock printer', status: 'ONLINE', cupsQueue: 'mock-success', location: 'Studio', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4,LETTER', stateReasons: 'none', errorPolicy: 'WARN', transport: 'usb', vendorId: '1209', productId: '0001', deviceSerial: 'MOCK-001', lastSeenAt: new Date().toISOString(), monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p2', name: 'Reception Mono', status: 'ONLINE', cupsQueue: 'mock-mono', location: 'Reception', enabled: true, maintenance: false, colorCapable: false, duplexCapable: true, mediaSupported: 'A4,LETTER', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p3', name: 'Warehouse Simplex', status: 'ONLINE', cupsQueue: 'mock-simple', location: 'Warehouse', enabled: true, maintenance: false, colorCapable: false, duplexCapable: false, mediaSupported: 'A4', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p4', name: 'Jammed Printer', status: 'ERROR', cupsQueue: 'mock-jam', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'media-jam', errorPolicy: 'BLOCK', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p5', name: 'Offline Printer', status: 'OFFLINE', cupsQueue: 'mock-offline', enabled: false, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'offline', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
 ]
 
 export default function App() {
@@ -46,6 +54,8 @@ export default function App() {
             <span className="nav-label">Workspace</span>
             <nav>
               <button className={page === 'queue' ? 'active' : ''} onClick={() => setPage('queue')}><NavIcon name="queue" />Print queue</button>
+              {(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on) && <button className={page === 'reports' ? 'active' : ''} onClick={() => setPage('reports')}><NavIcon name="reports" />Reports</button>}
+              <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><NavIcon name="settings" />Settings</button>
             </nav>
           </div>
           {(user.role === 'ADMIN' || preview.on) && <div className="sidebar-section">
@@ -54,8 +64,6 @@ export default function App() {
               <button className={page === 'printers' ? 'active' : ''} onClick={() => setPage('printers')}><NavIcon name="printer" />Printers</button>
               <button className={page === 'users' ? 'active' : ''} onClick={() => setPage('users')}><NavIcon name="users" />Users</button>
               <button className={page === 'groups' ? 'active' : ''} onClick={() => setPage('groups')}><NavIcon name="groups" />Groups</button>
-              <button className={page === 'reports' ? 'active' : ''} onClick={() => setPage('reports')}><NavIcon name="reports" />Reports</button>
-              <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><NavIcon name="settings" />Settings</button>
             </nav>
           </div>}
           <div className="sidebar-footer">
@@ -70,7 +78,8 @@ export default function App() {
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
             <span className="role-badge">{user.role.toLowerCase()}</span>
           </header>
-          {page === 'queue' ? <Queue preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'settings' ? <Settings typeface={typeface} /> : <ComingSoon page={page} />}
+          {user.passwordChangeRequired && <div className="security-notice">Your password is temporary. Change it in Settings.</div>}
+          {page === 'queue' ? <Queue preview={preview.on} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'groups' ? <Groups preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
         </div>
       </div>
     </>
@@ -127,47 +136,53 @@ type QueueModel = {
   usedPct: number
   busy: boolean
   error: string
+  printers: Printer[]
   upload: (event: FormEvent<HTMLFormElement>) => void
   cancel: (id: string) => void
   release: (id: string) => void
+  retry: (id: string) => void
+  flip: (id: string) => void
 }
 
 function Queue({ preview }: { preview: boolean }) {
   const [jobs, setJobs] = useState<Job[]>(preview ? previewJobs : [])
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
+  const [printers, setPrinters] = useState<Printer[]>(preview ? previewPrinters : [])
+  const [releaseJob, setReleaseJob] = useState<Job>()
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     if (preview) { setJobs(previewJobs); setQuota(previewQuota); return }
-    try { const [j, q] = await Promise.all([api.jobs(), api.quota()]); setJobs(j); setQuota(q) }
+    try { const [j, q, p] = await Promise.all([api.jobs(), api.quota(), api.printers()]); setJobs(j); setQuota(q); setPrinters(p) }
     catch (e) { setError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
-    setBusy(true); setError(''); const form = new FormData(event.currentTarget)
-    try { await api.upload(form); event.currentTarget.reset(); await load() }
+    setBusy(true); setError(''); const element = event.currentTarget; const form = new FormData(element)
+    try { await api.upload(form); element.reset(); await load() }
     catch (e) { setError(message(e)) } finally { setBusy(false) }
   }
   async function cancel(id: string) {
     if (preview) { setJobs(current => current.filter(job => job.id !== id)); return }
     try { await api.cancel(id); await load() } catch (e) { setError(message(e)) }
   }
-  async function release(id: string) {
-    if (preview) {
-      setJobs(current => current.map(job => job.id === id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: 'mock-success' } : job))
-      window.setTimeout(() => setJobs(current => current.map(job => job.id === id ? { ...job, status: 'COMPLETED' } : job)), 1200)
-      return
-    }
-    try { await api.release(id); await load() } catch (e) { setError(message(e)) }
+  function release(id: string) { setReleaseJob(jobs.find(job => job.id === id)) }
+  async function confirmRelease(printer: Printer) {
+    if (!releaseJob) return
+    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name } : job)); setReleaseJob(undefined); return }
+    try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); await load() } catch (e) { setError(message(e)) }
   }
+  async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
+  async function flip(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN_SUBMITTED' } : j)); return } try { await api.flip(id); await load() } catch (e) { setError(message(e)) } }
+  useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, upload, cancel, release }
-  return <LayoutLedger model={model} />
+  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, printers, upload, cancel, release, retry, flip }
+  return <><LayoutLedger model={model} />{releaseJob && <ReleaseDialog job={releaseJob} printers={printers} onChoose={confirmRelease} onClose={() => setReleaseJob(undefined)} />}</>
 }
 
 function Heading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
@@ -198,7 +213,11 @@ function DropBox({ model }: { model: QueueModel }) {
       <span className="drop-hint">Click or drop · 25 MB max</span>
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
-    <input type="hidden" name="copies" value="1" />
+    <div className="drop-options">
+      <label>Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
+      <label>Color<select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></select></label>
+      <label>Sides<select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></select></label>
+    </div>
     <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
     {model.error && <p className="error" role="alert">{model.error}</p>}
   </form>
@@ -220,7 +239,7 @@ function Compose({ model, variant = 'row' }: { model: QueueModel; variant?: 'row
           <option value="ONE_SIDED">One-sided</option>
           <option value="TWO_SIDED_LONG_EDGE">Hardware · long edge</option>
           <option value="TWO_SIDED_SHORT_EDGE">Hardware · short edge</option>
-          <option value="MANUAL" disabled={!model.preview}>Manual flip{model.preview ? '' : ' (soon)'}</option>
+          <option value="MANUAL">Manual flip</option>
         </select></label>
       </>}
       <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
@@ -239,7 +258,7 @@ function Printers() {
   </section>
 }
 
-function JobLine({ job, onCancel, onRelease, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; wide?: boolean }) {
+function JobLine({ job, onCancel, onRelease, onRetry, onFlip, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void; wide?: boolean }) {
   const color = job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
   if (wide) {
     return <article className="job job-wide">
@@ -250,7 +269,7 @@ function JobLine({ job, onCancel, onRelease, wide = false }: { job: Job; onCance
       <span>{color}</span>
       <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
       <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-      <JobState job={job} onCancel={onCancel} onRelease={onRelease} />
+      <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
     </article>
   }
   return <article className="job">
@@ -261,18 +280,22 @@ function JobLine({ job, onCancel, onRelease, wide = false }: { job: Job; onCance
     </div>
     <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
     <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-    <JobState job={job} onCancel={onCancel} onRelease={onRelease} />
+    <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
   </article>
 }
 
-function JobState({ job, onCancel, onRelease }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void }) {
+function JobState({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
   const held = job.status === 'HELD'
+  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'HELD_FOR_AUTHENTICATION', 'STOPPED', 'AWAITING_FLIP'].includes(job.status)
   return <>
     <span className={`status status-plain ${job.status.toLowerCase()}`} title={job.ippStateReasons || undefined}>
       <i className="status-dot" aria-hidden="true" />
       {statusLabel(job.status)}
     </span>
-    {held ? <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel">×</button></span> : <span />}
+    {held ? <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel">×</button></span>
+      : job.status === 'AWAITING_FLIP' && onFlip ? <span className="job-actions"><button type="button" className="release-text" onClick={() => onFlip(job.id)}>Stack flipped</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel">×</button></span>
+      : job.status === 'ABORTED' && onRetry ? <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
+      : active ? <span className="job-actions"><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel">×</button></span> : <span />}
   </>
 }
 
@@ -536,10 +559,30 @@ function LayoutLedger({ model }: { model: QueueModel }) {
           })}
           <span />
         </div>
-        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} wide />)}
+        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} onRetry={model.retry} onFlip={model.flip} wide />)}
       </>}
     </div>
   </main>
+}
+
+function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
+  const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
+    && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
+    && (job.colorMode !== 'COLOR' || printer.colorCapable)
+    && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
+  return <div className="modal-backdrop" onMouseDown={onClose}>
+    <section className="modal release-modal" onMouseDown={event => event.stopPropagation()}>
+      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+      <div className="release-printers">
+        {printers.map(printer => {
+          const ready = compatible(printer)
+          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.cupsQueue || 'CUPS'} · ready`
+          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
+        })}
+        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to sync CUPS.</p>}
+      </div>
+    </section>
+  </div>
 }
 
 function LayoutFocus({ model }: { model: QueueModel }) {
@@ -572,9 +615,74 @@ const previewUsers: ManagedUser[] = [
   { id: '3', email: 'jordan@printle.local', displayName: 'Jordan Lee', role: 'OPERATOR', status: 'ACTIVE', monthlyPageQuota: null, quotaExempt: false, createdAt: '2026-04-18T00:00:00Z' },
 ]
 
+const previewGroups: Group[] = [
+  { id: 'g1', name: 'Everyone', monthlyPageQuota: null, builtIn: true, members: previewUsers.map(({ id, email, displayName }) => ({ id, email, displayName })) },
+  { id: 'g2', name: 'Studio', monthlyPageQuota: 250, builtIn: false, members: [{ id: '2', email: 'sam@printle.local', displayName: 'Sam Chen' }] },
+]
+
+function PrinterAdmin({ preview }: { preview: boolean }) {
+  const [printers, setPrinters] = useState<Printer[]>(preview ? previewPrinters : [])
+  const [selected, setSelected] = useState<Printer>()
+  const [rules, setRules] = useState<AclRule[]>([])
+  const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
+  const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    if (preview) { setPrinters(previewPrinters); return }
+    try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g) } catch (e) { setError(message(e)) }
+  }, [preview])
+  useEffect(() => { void load() }, [load])
+  async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
+  async function edit(printer: Printer) { setSelected(printer); try { setRules(preview ? [] : await api.printerAcl(printer.id)) } catch (e) { setError(message(e)) } }
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!selected) return
+    const form = new FormData(event.currentTarget)
+    const body = { name: form.get('name'), description: form.get('description'), location: form.get('location'), enabled: form.get('enabled') === 'on', maintenance: form.get('maintenance') === 'on', errorPolicy: form.get('errorPolicy'), monoPageRate: Number(form.get('monoPageRate')), colorPageRate: Number(form.get('colorPageRate')) }
+    try {
+      if (preview) setPrinters(current => current.map(p => p.id === selected.id ? { ...p, ...body } as Printer : p))
+      else { await Promise.all([api.updatePrinter(selected.id, body), api.replacePrinterAcl(selected.id, rules.map(({ principalType, principalId, permission }) => ({ principalType, principalId, permission })))]); await load() }
+      setSelected(undefined)
+    } catch (e) { setError(message(e)) }
+  }
+  function addRule() {
+    const first = users[0]
+    if (first) setRules(current => [...current, { principalType: 'USER', principalId: first.id, permission: 'RELEASE_OWN' }])
+  }
+  return <main className="page">
+    <div className="page-heading"><div><p className="eyebrow">CUPS fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><button className="primary compact" disabled={busy} onClick={sync}>{busy ? 'Syncing…' : 'Sync CUPS'}</button></div>
+    {error && <p className="error" role="alert">{error}</p>}
+    <div className="admin-card-grid">
+      {printers.map(printer => <article className="panel admin-card" key={printer.id}>
+        <div className="card-row"><div><h2>{printer.name}</h2><p>{printer.location || printer.cupsQueue || 'Unassigned'}</p></div><span className={`status ${printer.status === 'ONLINE' && printer.enabled && !printer.maintenance ? 'active' : 'suspended'}`}>{printer.maintenance ? 'Maintenance' : printer.status.toLowerCase()}</span></div>
+        <dl className="capability-grid"><div><dt>Color</dt><dd>{yesNo(printer.colorCapable)}</dd></div><div><dt>Duplex</dt><dd>{yesNo(printer.duplexCapable)}</dd></div><div><dt>Media</dt><dd>{printer.mediaSupported || 'Unknown'}</dd></div><div><dt>Policy</dt><dd>{printer.errorPolicy.toLowerCase()}</dd></div><div><dt>Mono</dt><dd>{money(printer.monoPageRate)}/page</dd></div><div><dt>Color</dt><dd>{money(printer.colorPageRate)}/page</dd></div></dl>
+        {printer.stateReasons && printer.stateReasons !== 'none' && <p className="device-reason">CUPS: {printer.stateReasons}</p>}
+        <div className="card-actions"><small>{printer.transport || 'CUPS'}{printer.deviceSerial ? ` · ${printer.deviceSerial}` : ''}</small><button className="quiet" onClick={() => edit(printer)}>Configure</button></div>
+      </article>)}
+    </div>
+    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(undefined)}><section className="modal modal-wide" onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
+      <form onSubmit={save}>
+        <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
+        <label>Description<input name="description" defaultValue={selected.description} /></label>
+        <label>Error handling<select name="errorPolicy" defaultValue={selected.errorPolicy}><option value="ALLOW">Allow</option><option value="WARN">Warn</option><option value="BLOCK">Block</option></select></label>
+        <div className="check-row"><label><input name="enabled" type="checkbox" defaultChecked={selected.enabled} />Enabled</label><label><input name="maintenance" type="checkbox" defaultChecked={selected.maintenance} />Maintenance mode</label></div>
+        <div className="rule-heading"><strong>Access rules</strong><button type="button" className="quiet" onClick={addRule}>Add rule</button></div>
+        <p className="muted">No rules means all authenticated users can view and release to this printer.</p>
+        {rules.map((rule, index) => <div className="acl-row" key={`${index}-${rule.principalId}`}>
+          <select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: e.target.value as AclRule['principalType'], principalId: e.target.value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))}><option value="USER">User</option><option value="GROUP">Group</option></select>
+          <select aria-label={`Principal ${index + 1}`} value={rule.principalId} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: e.target.value } : r))}>{(rule.principalType === 'USER' ? users : groups).map(item => <option key={item.id} value={item.id}>{'displayName' in item ? item.displayName : item.name}</option>)}</select>
+          <select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}>{['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => <option key={p}>{p}</option>)}</select>
+          <button type="button" className="danger-text" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</button>
+        </div>)}
+        <button className="primary">Save printer</button>
+      </form>
+    </section></div>}
+  </main>
+}
+
 function Users({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
-  const [open, setOpen] = useState(false); const [error, setError] = useState('')
+  const [open, setOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
   const load = useCallback(() => {
     if (preview) { setUsers(previewUsers); return Promise.resolve() }
     return api.users().then(setUsers).catch(e => setError(message(e)))
@@ -585,6 +693,12 @@ function Users({ preview }: { preview: boolean }) {
     const data = Object.fromEntries(new FormData(event.currentTarget))
     try { await api.createUser(data); setOpen(false); await load() } catch (e) { setError(message(e)) }
   }
+  async function updateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!selected) return; const data = new FormData(event.currentTarget); const body = { email: data.get('email'), displayName: data.get('displayName'), role: data.get('role'), status: data.get('status'), monthlyPageQuota: optionalNumber(data.get('monthlyPageQuota')), quotaExempt: data.get('quotaExempt') === 'on' }
+    try { if (preview) setUsers(current => current.map(u => u.id === selected.id ? { ...u, ...body } as ManagedUser : u)); else { await api.updateUser(selected.id, body); await load() } setSelected(undefined) } catch (e) { setError(message(e)) }
+  }
+  async function adjust(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); try { if (!preview) await api.adjustQuota(selected.id, { pages: Number(data.get('pages')), reason: data.get('reason') }); form.reset(); setError('') } catch (e) { setError(message(e)) } }
+  async function resetPassword(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); try { if (!preview) await api.resetUserPassword(selected.id, String(data.get('temporaryPassword'))); form.reset(); setError(''); await load() } catch (e) { setError(message(e)) } }
   return <main className="page">
     <div className="page-heading">
       <div><p className="eyebrow">Administration</p><h1>Users</h1><p>Manage access, roles, and individual page allowances.</p></div>
@@ -593,13 +707,14 @@ function Users({ preview }: { preview: boolean }) {
     {error && <p className="error" role="alert">{error}</p>}
     <section className="panel">
       <div className="user-table">
-        <div className="table-row table-head"><span>User</span><span>Role</span><span>Status</span><span>Monthly quota</span></div>
+        <div className="table-row table-head"><span>User</span><span>Role</span><span>Status</span><span>Monthly quota</span><span /></div>
         {users.map(user => (
           <div className="table-row" key={user.id}>
             <span><strong>{user.displayName}</strong><small>{user.email}</small></span>
             <span className="role">{user.role.toLowerCase()}</span>
             <span className={`status ${user.status.toLowerCase()}`}>{user.status.toLowerCase()}</span>
             <span>{user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota ?? 'Default'}</span>
+            <button className="quiet" onClick={() => setSelected(user)}>Manage</button>
           </div>
         ))}
       </div>
@@ -616,11 +731,85 @@ function Users({ preview }: { preview: boolean }) {
         </form>
       </section>
     </div>}
+    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(undefined)}><section className="modal modal-wide" onMouseDown={e => e.stopPropagation()}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
+      <form onSubmit={updateUser}><div className="form-grid"><label>Name<input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<select name="role" defaultValue={selected.role}><option>USER</option><option>MANAGER</option><option>OPERATOR</option><option>ADMIN</option></select></label><label>Status<select name="status" defaultValue={selected.status}><option>ACTIVE</option><option>SUSPENDED</option></select></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div><button className="primary compact">Save account</button></form>
+      <div className="modal-divider" />
+      <form onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<input name="reason" required maxLength={255} /></label></div><button className="quiet">Record adjustment</button></form>
+      <div className="modal-divider" />
+      <form onSubmit={resetPassword}><label>Temporary password<input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><button className="quiet">Reset password</button></form>
+    </section></div>}
   </main>
 }
 
-function Settings({ typeface }: { typeface: ReturnType<typeof useTypeface> }) {
-  return <main className="page"><div className="page-heading"><div><p className="eyebrow">Management</p><h1>Settings</h1><p>Configure how printLe looks on this browser.</p></div></div>
+function Groups({ preview }: { preview: boolean }) {
+  const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
+  const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
+  const [open, setOpen] = useState(false); const [error, setError] = useState('')
+  const load = useCallback(async () => {
+    if (preview) { setGroups(previewGroups); setUsers(previewUsers); return }
+    try { const [g, u] = await Promise.all([api.groups(), api.users()]); setGroups(g); setUsers(u) } catch (e) { setError(message(e)) }
+  }, [preview])
+  useEffect(() => { void load() }, [load])
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { name: data.get('name'), monthlyPageQuota: optionalNumber(data.get('monthlyPageQuota')) }
+    try { if (preview) setGroups(current => [...current, { id: `g${current.length + 1}`, name: String(body.name), monthlyPageQuota: body.monthlyPageQuota, builtIn: false, members: [] }]); else { await api.createGroup(body); await load() } setOpen(false) } catch (e) { setError(message(e)) }
+  }
+  async function addMember(group: Group, userId: string) { if (!userId) return; try { if (preview) setGroups(current => current.map(g => g.id === group.id ? { ...g, members: [...g.members, previewUsers.find(u => u.id === userId)!] } : g)); else { await api.addGroupMember(group.id, userId); await load() } } catch (e) { setError(message(e)) } }
+  async function removeMember(group: Group, userId: string) { try { if (preview) setGroups(current => current.map(g => g.id === group.id ? { ...g, members: g.members.filter(m => m.id !== userId) } : g)); else { await api.removeGroupMember(group.id, userId); await load() } } catch (e) { setError(message(e)) } }
+  async function removeGroup(group: Group) { try { if (preview) setGroups(current => current.filter(g => g.id !== group.id)); else { await api.deleteGroup(group.id); await load() } } catch (e) { setError(message(e)) } }
+  return <main className="page">
+    <div className="page-heading"><div><p className="eyebrow">Access control</p><h1>Groups</h1><p>Group users for printer ACLs and shared quota policy.</p></div><button className="primary compact" onClick={() => setOpen(true)}>Add group</button></div>
+    {error && <p className="error" role="alert">{error}</p>}
+    <div className="admin-card-grid">
+      {groups.map(group => {
+        const available = users.filter(user => !group.members.some(member => member.id === user.id))
+        return <article className="panel admin-card" key={group.id}>
+          <div className="card-row"><div><h2>{group.name}</h2><p>{group.builtIn ? 'Built in' : 'Custom'} · {group.monthlyPageQuota == null ? 'default quota' : `${group.monthlyPageQuota} pages/month`}</p></div><span className="chip">{group.members.length} members</span></div>
+          <div className="member-list">{group.members.map(member => <div key={member.id}><span><strong>{member.displayName}</strong><small>{member.email}</small></span>{!group.builtIn && <button className="danger-text" onClick={() => removeMember(group, member.id)}>Remove</button>}</div>)}</div>
+          {!group.builtIn && <div className="inline-add"><select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={e => { void addMember(group, e.target.value); e.currentTarget.value = '' }}><option value="" disabled>Add a member…</option>{available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select><button className="danger-text" onClick={() => removeGroup(group)}>Delete group</button></div>}
+        </article>
+      })}
+    </div>
+    {open && <div className="modal-backdrop" onMouseDown={() => setOpen(false)}><section className="modal" onMouseDown={e => e.stopPropagation()}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><button className="quiet" onClick={() => setOpen(false)}>Close</button></div><form onSubmit={create}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><button className="primary">Create group</button></form></section></div>}
+  </main>
+}
+
+const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCost: 3.18, jobs: [
+  { id: 'r1', completedAt: '2026-09-01T15:00:00Z', user: 'sam@printle.local', printer: 'Studio Color', printedPages: 28, colorMode: 'COLOR', estimatedCost: 2.8, rateVersion: 1 },
+  { id: 'r2', completedAt: '2026-09-01T12:00:00Z', user: 'alex@printle.local', printer: 'Reception Mono', printedPages: 12, colorMode: 'MONOCHROME', estimatedCost: .24, rateVersion: 1 },
+  { id: 'r3', completedAt: '2026-08-31T16:00:00Z', user: 'sam@printle.local', printer: 'Warehouse Simplex', printedPages: 6, colorMode: 'MONOCHROME', estimatedCost: .14, rateVersion: 2 },
+] }
+
+function Reports({ preview }: { preview: boolean }) {
+  const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
+  const [error, setError] = useState('')
+  useEffect(() => { if (!preview) api.report().then(setReport).catch(e => setError(message(e))) }, [preview])
+  return <main className="page">
+    <div className="page-heading"><div><p className="eyebrow">Accounting</p><h1>Reports</h1><p>Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p></div>{!preview && <a className="button-link" href="/api/admin/reports/jobs.csv">Export CSV</a>}</div>
+    {error && <p className="error" role="alert">{error}</p>}
+    <section className="metrics"><article className="metric"><span>Completed jobs</span><strong>{report.completedJobs}</strong><small>all retained history</small></article><article className="metric"><span>Printed pages</span><strong>{report.printedPages}</strong><small>copies included</small></article><article className="metric"><span>Estimated cost</span><strong>{money(report.estimatedCost)}</strong><small>at the recorded rate</small></article></section>
+    <section className="panel report-table"><div className="table-row report-head"><span>Completed</span><span>User</span><span>Printer</span><span>Pages</span><span>Mode</span><span>Cost</span></div>{report.jobs.map(job => <div className="table-row" key={job.id}><time>{new Date(job.completedAt).toLocaleString()}</time><span>{job.user}</span><span>{job.printer || 'Unknown'}</span><span>{job.printedPages}</span><span>{job.colorMode === 'COLOR' ? 'Color' : 'Mono'}</span><strong>{money(job.estimatedCost)}</strong></div>)}</section>
+  </main>
+}
+
+const previewSettings: InstanceSettings = { defaultMonthlyPageQuota: 200, quotaTimezone: 'UTC', heldJobTtlHours: 24, completedRetentionHours: 720, failedRetentionHours: 168, maxCopies: 100, maxPagesPerJob: 1000, colorPrintingAllowed: true, updatedAt: new Date().toISOString() }
+
+function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean }) {
+  const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
+  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printNode: 'ok', discoveredPrinters: 5 } : { database: 'checking', storage: 'checking', printNode: 'checking', discoveredPrinters: 0 })
+  const [notice, setNotice] = useState(''); const [error, setError] = useState('')
+  useEffect(() => { if (!preview && user.role === 'ADMIN') Promise.all([api.settings(), api.diagnostics()]).then(([s, d]) => { setSettings(s); setDiagnostics(d) }).catch(e => setError(message(e))) }, [preview, user.role])
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: data.get('colorPrintingAllowed') === 'on' }
+    try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }
+  }
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form)
+    if (data.get('newPassword') !== data.get('confirmPassword')) { setError('New passwords do not match'); return }
+    try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
+  }
+  return <main className="page"><div className="page-heading"><div><p className="eyebrow">Management</p><h1>Settings</h1><p>Personal appearance, account security, and instance print policy.</p></div></div>
+    {error && <p className="error" role="alert">{error}</p>}{notice && <p className="success" role="status">{notice}</p>}
     <section className="panel settings-panel">
       <div className="panel-title"><div><strong>Typeface</strong><span>DM Sans is the default. Your selection is saved locally.</span></div></div>
       <div className="typeface-options" role="radiogroup" aria-label="Typeface">
@@ -630,24 +819,17 @@ function Settings({ typeface }: { typeface: ReturnType<typeof useTypeface> }) {
         </label>)}
       </div>
     </section>
+    <section className="panel settings-panel settings-section"><div className="panel-title"><div><strong>Password</strong><span>Use at least 12 characters.</span></div></div><form className="settings-form" onSubmit={changePassword}><div className="form-grid"><label>Current password<input name="currentPassword" type="password" autoComplete="current-password" required /></label><label>New password<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label><label>Confirm new password<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label></div><button className="primary compact">Change password</button></form></section>
+    {user.role === 'ADMIN' && <>
+      <div className="settings-refresh" key={settings.updatedAt}>
+      <section className="panel settings-panel settings-section"><div className="panel-title"><div><strong>Print and retention policy</strong><span>Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</span></div></div><form className="settings-form" onSubmit={savePolicy}><div className="form-grid"><label>Default monthly pages<input name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required /></label><label>Quota timezone<input name="quotaTimezone" defaultValue={settings.quotaTimezone} required /></label><label>Held job lifetime (hours)<input name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required /></label><label>Completed retention (hours)<input name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required /></label><label>Failed retention (hours)<input name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required /></label><label>Maximum copies<input name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required /></label><label>Maximum pages per job<input name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required /></label></div><div className="check-row"><label><input name="colorPrintingAllowed" type="checkbox" defaultChecked={settings.colorPrintingAllowed} />Allow color printing</label></div><button className="primary compact">Save instance policy</button></form></section>
+      </div>
+      <section className="panel settings-panel settings-section"><div className="panel-title"><div><strong>Diagnostics</strong><span>Live dependency checks; no document contents are inspected.</span></div></div><div className="diagnostic-grid"><Diagnostic label="Database" value={diagnostics.database} /><Diagnostic label="Job storage" value={diagnostics.storage} /><Diagnostic label="Print node" value={diagnostics.printNode} /><Diagnostic label="Printers discovered" value={String(diagnostics.discoveredPrinters)} /></div></section>
+    </>}
   </main>
 }
 
-function ComingSoon({ page }: { page: Exclude<Page, 'queue' | 'users' | 'settings'> }) {
-  const copy = {
-    printers: ['Printers', 'Discover, configure, and monitor CUPS printers from one place.', 'Printer management will become available when the print-node and CUPS integration are added.'],
-    groups: ['Groups', 'Organize people and apply printer access and quota policies.', 'Group membership and group-level ACL controls are planned for a later build.'],
-    reports: ['Reports', 'Review print volume, quota usage, and activity over time.', 'Reporting will be enabled once completed print events are available.'],
-  }[page]
-  return <main className="page"><div className="page-heading"><div><p className="eyebrow">Management</p><h1>{copy[0]}</h1><p>{copy[1]}</p></div></div>
-    <section className="panel placeholder">
-      <div className="placeholder-icon"><NavIcon name={page === 'printers' ? 'printer' : page} /></div>
-      <span className="status planned">Planned</span>
-      <h2>{copy[0]} is coming next</h2>
-      <p>{copy[2]}</p>
-    </section>
-  </main>
-}
+function Diagnostic({ label, value }: { label: string; value: string }) { const ok = value === 'ok' || /^\d+$/.test(value); return <div><span className={`status ${ok ? 'active' : 'suspended'}`}>{value}</span><strong>{label}</strong></div> }
 
 function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
   const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
@@ -718,6 +900,9 @@ function NavIcon({ name }: { name: 'queue' | 'printer' | 'users' | 'groups' | 'r
 function pageTitle(page: Page) { return ({ queue: 'Print queue', printers: 'Printers', users: 'Users', groups: 'Groups', reports: 'Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
+function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }
+function yesNo(value: boolean) { return value ? 'Yes' : 'No' }
+function optionalNumber(value: FormDataEntryValue | null) { return value === null || value === '' ? null : Number(value) }
 function duplexLabel(mode: string) {
   return ({ ONE_SIDED: 'One-sided', TWO_SIDED_LONG_EDGE: 'Hardware · long', TWO_SIDED_SHORT_EDGE: 'Hardware · short', MANUAL: 'Manual flip' } as Record<string, string>)[mode] ?? mode
 }

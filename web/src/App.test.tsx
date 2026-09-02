@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
@@ -54,6 +54,43 @@ test('sorts the queue when a column header is clicked', async () => {
   expect(screen.getByRole('columnheader', { name: 'File' })).toHaveAttribute('aria-sort', 'descending')
   await userEvent.click(screen.getByRole('columnheader', { name: 'Pages' }))
   expect(names()[0]).toBe('onboarding-handbook.pdf')
+})
+
+test('selects only a compatible printer when releasing a job', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  const colorRow = screen.getByText('lab-safety-poster.pdf').closest('article')!
+  await userEvent.click(within(colorRow).getByRole('button', { name: 'Print' }))
+  expect(screen.getByRole('heading', { name: 'Choose a printer' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Reception Mono/ })).toBeDisabled()
+  expect(screen.getByRole('button', { name: /Studio Color/ })).toBeEnabled()
+  await userEvent.click(screen.getByRole('button', { name: /Studio Color/ }))
+  await waitFor(() => expect(within(colorRow).getByText('Processing')).toBeInTheDocument())
+})
+
+test('shows manual duplex and retry controls', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  expect(screen.getByRole('button', { name: 'Stack flipped' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Stack flipped' }))
+  expect(screen.queryByRole('button', { name: 'Stack flipped' })).not.toBeInTheDocument()
+})
+
+test('renders printer, group, report, and diagnostic administration views', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
+  expect(await screen.findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+  expect(screen.getByText('Studio Color')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Groups' }))
+  expect(await screen.findByRole('heading', { name: 'Groups' })).toBeInTheDocument()
+  expect(screen.getByText('Everyone')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Reports' }))
+  expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
+  expect(screen.getByText('$3.18')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  expect(await screen.findByText('Print node')).toBeInTheDocument()
 })
 
 test('renders an authenticated empty queue', async () => {

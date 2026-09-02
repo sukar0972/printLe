@@ -3,6 +3,7 @@ package io.printle.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.printle.user.AppUserRepository;
 import io.printle.user.UserStatus;
+import io.printle.audit.AuditService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -31,13 +32,17 @@ public class SecurityConfig {
             .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Invalid credentials"));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
         var handler = new CsrfTokenRequestAttributeHandler();
         handler.setCsrfRequestAttributeName(null);
         return http
             .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(handler))
+            .headers(headers -> headers
+                .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"))
+                .frameOptions(frame -> frame.deny())
+                .contentTypeOptions(options -> {}))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**", "/api/auth/csrf", "/api/auth/login").permitAll()
                 .anyRequest().authenticated())
@@ -46,15 +51,23 @@ public class SecurityConfig {
                 .usernameParameter("email")
                 .passwordParameter("password")
                 .successHandler((request, response, authentication) -> {
+                    users.findByEmailIgnoreCase(authentication.getName()).ifPresent(user -> {
+                        user.signedIn(); users.save(user); audit.record(user, "LOGIN_SUCCESS", "SESSION", null, request.getRemoteAddr());
+                    });
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                     objectMapper.writeValue(response.getWriter(), java.util.Map.of("authenticated", true));
                 })
                 .failureHandler((request, response, exception) -> {
+                    var email = request.getParameter("email");
+                    users.findByEmailIgnoreCase(email == null ? "" : email).ifPresent(user -> audit.record(user, "LOGIN_FAILURE", "SESSION", null, request.getRemoteAddr()));
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                     objectMapper.writeValue(response.getWriter(), java.util.Map.of("error", "Invalid email or password"));
                 }))
-            .logout(logout -> logout.logoutUrl("/api/auth/logout").logoutSuccessHandler((request, response, auth) -> response.setStatus(204)))
+            .logout(logout -> logout.logoutUrl("/api/auth/logout").logoutSuccessHandler((request, response, auth) -> {
+                if (auth != null) users.findByEmailIgnoreCase(auth.getName()).ifPresent(user -> audit.record(user, "LOGOUT", "SESSION", null, request.getRemoteAddr()));
+                response.setStatus(204);
+            }))
             .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);

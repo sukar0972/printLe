@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quota_ledger", uniqueConstraints = @UniqueConstraint(name = "uq_quota_ledger_job_type", columnNames = {"job_id", "entry_type"}))
+@Table(name = "quota_ledger", uniqueConstraints = @UniqueConstraint(name = "uq_quota_ledger_job_type_attempt", columnNames = {"job_id", "entry_type", "attempt"}))
 public class QuotaLedgerEntry {
     @Id private UUID id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "user_id") private AppUser user;
@@ -16,10 +16,16 @@ public class QuotaLedgerEntry {
     @Enumerated(EnumType.STRING) @Column(name = "entry_type", nullable = false) private QuotaEntryType entryType;
     @Column(length = 255) private String note;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
+    @Column(nullable = false) private int attempt;
 
     protected QuotaLedgerEntry() {}
     public QuotaLedgerEntry(AppUser user, PrintJob job, int pages, QuotaEntryType entryType, String note) {
         this.id = UUID.randomUUID(); this.user = user; this.job = job; this.pages = pages;
         this.entryType = entryType; this.note = note; this.createdAt = Instant.now();
+        this.attempt = job.getAttempt();
+    }
+    public QuotaLedgerEntry(AppUser user, int pages, String note) {
+        this.id = UUID.randomUUID(); this.user = user; this.pages = pages; this.entryType = QuotaEntryType.ADJUSTMENT;
+        this.note = note; this.createdAt = Instant.now(); this.attempt = 0;
     }
 }

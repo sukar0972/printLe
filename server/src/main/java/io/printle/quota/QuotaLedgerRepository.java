@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public interface QuotaLedgerRepository extends JpaRepository<QuotaLedgerEntry, UUID> {
-    boolean existsByJobIdAndEntryType(UUID jobId, QuotaEntryType entryType);
+    boolean existsByJobIdAndEntryTypeAndAttempt(UUID jobId, QuotaEntryType entryType, int attempt);
 
     @Query("select coalesce(sum(e.pages), 0) from QuotaLedgerEntry e where e.user.id = :userId and e.entryType = :type and e.createdAt >= :since")
     long sumSince(@Param("userId") UUID userId, @Param("type") QuotaEntryType type, @Param("since") Instant since);

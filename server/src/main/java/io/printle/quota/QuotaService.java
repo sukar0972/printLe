@@ -14,7 +14,7 @@ public class QuotaService {
 
     public void requireCapacity(AppUser user, int pages, int limit, Instant monthStart) {
         if (user.isQuotaExempt()) return;
-        var used = ledger.sumSince(user.getId(), QuotaEntryType.DEBIT, monthStart);
+        var used = ledger.sumSince(user.getId(), QuotaEntryType.DEBIT, monthStart) + ledger.sumSince(user.getId(), QuotaEntryType.ADJUSTMENT, monthStart);
         var pending = ledger.sumAll(user.getId(), QuotaEntryType.RESERVE) - ledger.sumAll(user.getId(), QuotaEntryType.RELEASE);
         if (used + pending + pages > limit)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This job would exceed the monthly page allowance");
@@ -27,14 +27,15 @@ public class QuotaService {
     }
 
     private void addOnce(PrintJob job, QuotaEntryType type, String note) {
-        if (!ledger.existsByJobIdAndEntryType(job.getId(), type))
+        if (!ledger.existsByJobIdAndEntryTypeAndAttempt(job.getId(), type, job.getAttempt()))
             ledger.save(new QuotaLedgerEntry(job.getOwner(), job, job.getPages() * job.getCopies(), type, note));
     }
 
     public Usage usage(AppUser user, Instant monthStart) {
-        int used = Math.toIntExact(ledger.sumSince(user.getId(), QuotaEntryType.DEBIT, monthStart));
+        int used = Math.toIntExact(ledger.sumSince(user.getId(), QuotaEntryType.DEBIT, monthStart) + ledger.sumSince(user.getId(), QuotaEntryType.ADJUSTMENT, monthStart));
         int pending = Math.toIntExact(ledger.sumAll(user.getId(), QuotaEntryType.RESERVE) - ledger.sumAll(user.getId(), QuotaEntryType.RELEASE));
         return new Usage(used, Math.max(0, pending));
     }
     public record Usage(int used, int pending) {}
+    public void adjust(AppUser user, int pages, String reason) { ledger.save(new QuotaLedgerEntry(user, pages, reason)); }
 }

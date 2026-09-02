@@ -10,6 +10,7 @@ services:
     environment:
       PRINTLE_PRINT_NODE_URL: http://print-node:8080
       PRINTLE_DEFAULT_CUPS_QUEUE: ${PRINTLE_DEFAULT_CUPS_QUEUE:-mock-success}
+      PRINTLE_PRINT_NODE_TOKEN: ${PRINTLE_PRINT_NODE_TOKEN:-development-only-token}
     depends_on:
       print-node: { condition: service_healthy }
   web:
@@ -19,11 +20,16 @@ services:
     working_dir: /workspace
     volumes: [./web:/workspace, web_node_modules:/workspace/node_modules]
     ports: ["5173:5173"]
+    environment:
+      VITE_API_PROXY_TARGET: http://server:8080
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173/"]
   cups:
     build: ./cups/mock
     restart: unless-stopped
     environment:
       MOCK_PRINT_DELAY_SECONDS: ${MOCK_PRINT_DELAY_SECONDS:-5}
+      PRINTLE_MOCK_PRINTERS: "true"
     volumes: [cups_mock_output:/var/spool/printle-mock]
     ports: ["127.0.0.1:${PRINTLE_CUPS_PORT:-8631}:631"]
     healthcheck:
@@ -38,6 +44,8 @@ services:
     restart: unless-stopped
     environment:
       CUPS_SERVER: cups:631
+      PRINT_NODE_TOKEN: ${PRINTLE_PRINT_NODE_TOKEN:-development-only-token}
+      PRINT_NODE_MOCK_PROFILES: "true"
     volumes: [print_node_data:/var/lib/print-node]
     depends_on:
       cups: { condition: service_healthy }

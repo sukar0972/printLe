@@ -36,3 +36,4 @@ printle:
   completed-job-retention: ${PRINTLE_COMPLETED_JOB_RETENTION:720h}
   failed-job-retention: ${PRINTLE_FAILED_JOB_RETENTION:168h}
   cleanup-interval-ms: ${PRINTLE_CLEANUP_INTERVAL_MS:60000}
+  print-node-token: ${PRINTLE_PRINT_NODE_TOKEN:development-only-token}

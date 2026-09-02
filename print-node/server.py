@@ -16,6 +16,25 @@ STATE_FILE = DATA / "submissions.json"
 LOCK = threading.Lock()
 MAX_PDF = 30 * 1024 * 1024
 QUEUE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+TOKEN = os.getenv("PRINT_NODE_TOKEN", "development-only-token")
+MOCK_PROFILES = os.getenv("PRINT_NODE_MOCK_PROFILES", "true").lower() == "true"
+PROFILES = [
+    {"queue": "mock-success", "name": "Studio Color", "location": "Main office", "status": "ONLINE", "enabled": True,
+     "color": True, "duplex": True, "media": ["A4", "LETTER"], "reasons": [],
+     "device": {"transport": "MOCK_USB", "vendorId": "1209", "productId": "0001", "serial": "PRINTLE-COLOR-001", "deviceId": "MFG:printLe;MDL:Color Mock;"}},
+    {"queue": "mock-mono", "name": "Reception Mono", "location": "Reception", "status": "ONLINE", "enabled": True,
+     "color": False, "duplex": True, "media": ["A4", "LETTER"], "reasons": [],
+     "device": {"transport": "MOCK_USB", "vendorId": "1209", "productId": "0002", "serial": "PRINTLE-MONO-001", "deviceId": "MFG:printLe;MDL:Mono Mock;"}},
+    {"queue": "mock-simple", "name": "Warehouse Simplex", "location": "Warehouse", "status": "ONLINE", "enabled": True,
+     "color": False, "duplex": False, "media": ["A4"], "reasons": [],
+     "device": {"transport": "MOCK_USB", "vendorId": "1209", "productId": "0003", "serial": "PRINTLE-SIMPLEX-001", "deviceId": "MFG:printLe;MDL:Simplex Mock;"}},
+    {"queue": "mock-jam", "name": "Training Room Jam", "location": "Training room", "status": "ERROR", "enabled": True,
+     "color": True, "duplex": True, "media": ["A4", "LETTER"], "reasons": ["media-jam"],
+     "device": {"transport": "MOCK_USB", "vendorId": "1209", "productId": "0004", "serial": "PRINTLE-JAM-001", "deviceId": "MFG:printLe;MDL:Fault Mock;"}},
+    {"queue": "mock-offline", "name": "Disconnected USB", "location": "Lab", "status": "OFFLINE", "enabled": False,
+     "color": False, "duplex": False, "media": ["A4"], "reasons": ["offline"],
+     "device": {"transport": "MOCK_USB", "vendorId": "1209", "productId": "0003", "serial": None, "deviceId": "MFG:printLe;MDL:Simplex Mock;"}},
+]
 
 DATA.mkdir(parents=True, exist_ok=True)
 
@@ -47,6 +66,46 @@ def status(job_id):
     return {"jobId": int(job_id), "state": state_match.group(1),
             "reasons": reasons_match.group(1).strip() if reasons_match else ""}
 
+def cups_profiles():
+    result = run(["lpstat", "-h", CUPS, "-e"], 8)
+    if result.returncode:
+        raise RuntimeError((result.stderr or result.stdout).strip() or "CUPS printer discovery failed")
+    known = {profile["queue"]: profile for profile in PROFILES} if MOCK_PROFILES else {}
+    profiles = []
+    for queue in (line.strip() for line in result.stdout.splitlines()):
+        if not queue:
+            continue
+        if queue in known:
+            profiles.append(known[queue])
+            continue
+        state = run(["lpstat", "-h", CUPS, "-p", queue, "-l"], 5)
+        text = (state.stdout + "\n" + state.stderr).lower()
+        option_result = run(["lpoptions", "-h", CUPS, "-p", queue, "-l"], 5)
+        options = option_result.stdout.lower()
+        uri_result = run(["lpstat", "-h", CUPS, "-v", queue], 5)
+        uri_match = re.search(r"device for [^:]+:\s*(\S+)", uri_result.stdout, re.I)
+        uri = uri_match.group(1) if uri_match else ""
+        serial = None
+        serial_match = re.search(r"(?:serial|serialnumber)=([^&;]+)", uri, re.I)
+        if serial_match:
+            serial = serial_match.group(1)
+        profiles.append({
+            "queue": queue, "name": queue.replace("-", " ").title(), "location": "CUPS",
+            "status": "OFFLINE" if "disabled" in text else "ERROR" if "error" in text else "ONLINE",
+            "enabled": "disabled" not in text,
+            "color": "color" in options, "duplex": "duplex" in options or "two-sided" in options,
+            "media": sorted(set(re.findall(r"\b(?:a[345]|letter|legal|tabloid)\b", options, re.I))) or ["UNKNOWN"],
+            "reasons": ["cups-disabled"] if "disabled" in text else [],
+            "device": {"transport": uri.split(":", 1)[0].upper() if uri else "CUPS", "vendorId": None,
+                       "productId": None, "serial": serial, "deviceId": uri or None}
+        })
+    # Mock profiles deliberately include a disconnected device that CUPS cannot enumerate.
+    if MOCK_PROFILES:
+        for profile in PROFILES:
+            if profile["queue"] not in {item["queue"] for item in profiles}:
+                profiles.append(profile)
+    return profiles
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "PrintLePrintNode/1"
 
@@ -61,11 +120,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def authorized(self):
+        if self.headers.get("X-Print-Node-Token") == TOKEN:
+            return True
+        self.reply(401, {"error": "Print-node authentication required"})
+        return False
+
     def do_GET(self):
         if self.path == "/health":
             result = run(["lpstat", "-h", CUPS, "-r"], 3)
             return self.reply(200 if result.returncode == 0 else 503,
                               {"ok": result.returncode == 0})
+        if not self.authorized():
+            return
+        if self.path == "/printers":
+            try:
+                return self.reply(200, cups_profiles())
+            except Exception as exc:
+                return self.reply(502, {"error": str(exc)})
         match = re.fullmatch(r"/jobs/(\d+)", urlparse(self.path).path)
         if not match:
             return self.reply(404, {"error": "Not found"})
@@ -75,7 +147,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(502, {"error": str(exc)})
 
     def do_POST(self):
+        if not self.authorized():
+            return
         parsed = urlparse(self.path)
+        cancel_match = re.fullmatch(r"/jobs/(\d+)/cancel", parsed.path)
+        if cancel_match:
+            result = run(["cancel", "-h", CUPS, cancel_match.group(1)], 8)
+            return self.reply(204 if result.returncode == 0 else 502,
+                              {} if result.returncode == 0 else {"error": (result.stderr or result.stdout).strip()})
         match = re.fullmatch(r"/jobs/([0-9a-fA-F-]{36})", parsed.path)
         if not match:
             return self.reply(404, {"error": "Not found"})
@@ -101,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(415, {"error": "Only PDF is supported"})
             duplex = self.headers.get("X-Print-Duplex", "ONE_SIDED")
             sides = {"ONE_SIDED": "one-sided", "TWO_SIDED_LONG_EDGE": "two-sided-long-edge",
-                     "TWO_SIDED_SHORT_EDGE": "two-sided-short-edge"}.get(duplex)
+                     "TWO_SIDED_SHORT_EDGE": "two-sided-short-edge", "MANUAL": "one-sided"}.get(duplex)
             if not sides:
                 return self.reply(422, {"error": "Manual duplex is not supported by CUPS release yet"})
             color = "color" if self.headers.get("X-Print-Color") == "COLOR" else "monochrome"
@@ -112,9 +191,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with tempfile.NamedTemporaryFile(dir=DATA, suffix=".pdf", delete=False) as pdf:
                     pdf.write(content); path = pdf.name
-                result = run(["lp", "-h", CUPS, "-d", queue, "-t", title, "-U", user,
-                              "-n", str(copies), "-o", f"sides={sides}",
-                              "-o", f"print-color-mode={color}", path])
+                command = ["lp", "-h", CUPS, "-d", queue, "-t", title, "-U", user,
+                           "-n", str(copies), "-o", f"sides={sides}", "-o", f"print-color-mode={color}"]
+                page_set = self.headers.get("X-Print-Page-Set", "").lower()
+                if page_set in ("odd", "even"):
+                    command += ["-o", f"page-set={page_set}"]
+                    if page_set == "even": command += ["-o", "output-order=reverse"]
+                result = run(command + [path])
                 found = re.search(r"request id is .+-(\d+)", result.stdout + result.stderr)
                 if result.returncode or not found:
                     return self.reply(502, {"error": (result.stderr or result.stdout).strip()})
