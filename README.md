@@ -1,100 +1,83 @@
-<p align="center">
-  <img src="printle-web-app/public/favicon.svg" alt="PrintLe favicon" width="16" height="16" />
-</p>
+# printLe
 
-# PrintLe: Remote IPP Printing Application
+printLe is a self-hosted web print queue. Users upload PDFs, manage held jobs, and track their monthly page allowance. Administrators manage accounts, roles, quotas, and printer records from the same web interface.
 
-PrintLe is a web application designed to remotely manage and send print jobs to a network IPP (Internet Printing Protocol) printer via an intermediary Node.js server. This allows for advanced print options like custom page ranges and manual double-sided printing, even if the user is on a mobile device or the printer lacks software support.
+This repository is a fresh rewrite. The previous Node implementation is preserved in the `legacy-v1.0` tag. `docs/legacy-v1.0.md` records what that version actually did, which bugs later commits fixed, and which behaviors must not return.
 
-The project is split into two distinct services orchestrated by Docker Compose.
+## Current scope
 
-## 🚀 Project Structure
+The current build includes:
 
-The project is structured into two main directories: the user-facing frontend application and the backend service that interfaces with the printer.
+- Local email and password authentication with Argon2id password hashes
+- Secure server-side browser sessions and CSRF protection
+- `ADMIN`, `OPERATOR`, `MANAGER`, and `USER` roles
+- Admin user creation, a suspension-ready account model, and quota overrides
+- PDF validation, page counting, held-job storage, and cancellation
+- Monthly page allowances and pending-page accounting
+- Printer and ACL-ready database tables
+- Append-only audit records for important actions
+- PostgreSQL migrations with Flyway
+- A responsive React interface
+- Backend and frontend integration tests
+- Production Dockerfiles and Docker Compose
 
-```
-/Print Project
-  ├── docker-compose.yml       <- Orchestrates both services
-  │
-  ├── /printle-web-app         (Frontend: React, Vite, Nginx)
-  │   ├── src/
-  │   │   ├── App.tsx          <- Main React application with UI logic
-  │   │   ├── main.tsx
-  │   │   └── index.css
-  │   ├── public/
-  │   │   └── favicon.svg      <- PrintLe favicon using the Lucide printer mark
-  │   ├── index.html
-  │   ├── package.json
-  │   ├── Dockerfile           <- Multi-stage build
-  │   └── nginx.conf           <- Nginx config for serving static files & proxying API
-  │
-  └── /printle-server          (Backend: Node.js, Express, IPP)
-      ├── uploads/             <- Temporary storage for uploaded files
-      ├── server.js            <- Main server logic (IPP, PDF processing)
-      ├── package.json         <- Defines ipp, express, pdf-lib dependencies
-      └── Dockerfile           <- Defines Node environment
+CUPS, QR release, external OIDC, WorkOS, Authentik, email invitations, and actual printer delivery are intentionally not implemented yet.
+
+## Run with Docker Compose
+
+Install Docker Engine with Docker Compose, then create the local configuration:
+
+```bash
+cp .env.example .env
 ```
 
-## ✨ Features
+Edit `.env` and replace both placeholder passwords. Start the application:
 
-### Frontend (User Interface)
-- **Mobile & Desktop Friendly:** Fully responsive design using Tailwind CSS.
-- **Real-time Status:** Shows upload and print status.
-- **App Branding:** Includes a printer favicon derived from the same Lucide printer icon used in the header.
-- **Print Configuration:**
-    - **Custom Page Range:** Supports standard range formats (e.g., `1-3, 5`).
-    - **Grayscale Conversion:** Sends the IPP `monochrome` command to the printer for reliable grayscale printing.
-    - **Duplex Cycling:** Toggle between **Off**, **Manual Duplex** (software split with pause for flipping), and **Automatic** (printer hardware handles it via `sides: 'two-sided-long-edge'`).
+```bash
+docker compose up -d --build
+```
 
-### Backend (Server Logic)
-- **IPP Communication:** Uses the `ipp` library to send print requests to the configured printer address.
-- **File Handling:** Uses `multer` to securely receive and temporarily store uploaded files.
-- **PDF Processing (`pdf-lib`):**
-    - Filters pages based on the user's defined **Page Range**.
-    - Splits documents into **Odd** and **Even** pages for **Manual Duplex** mode.
+Open [http://localhost:8080](http://localhost:8080) and sign in with the bootstrap administrator configured in `.env`.
 
-## ⚙️ Local Development Setup (Pre-Docker)
-If you need to make changes, follow these steps to run the application outside of Docker.
+The bootstrap administrator is created only when the user table is empty. Changing its environment variables later does not change the existing account.
 
-### Prerequisites
-- Node.js (v20+)
-- npm
-- A printer with a known **IPP Address** (e.g., `ipp://192.168.1.50:631/printers/main`)
+## Development
 
-### Step 1: Frontend Setup (`printle-web-app`)
-1. Navigate to the directory: `cd printle-web-app`
-2. Install dependencies: `npm install`
-3. Start the development server: `npm run dev`
-    - _Output will show the local IP address (e.g., `http://192.168.1.X:5173`)._
-    
-### Step 2: Backend Setup (`printle-server`)
-1. Navigate to the directory in a **new terminal window**: `cd printle-server`
-2. Install dependencies: `npm install`
-3. Start the server: `npm run dev` (or `node server.js`)
-    - _Server will run on port 3001._
-    
-### Step 3: Application Configuration
-1. Access the frontend URL on your device (e.g., `http://192.168.1.X:5173`).
-2. Go to **Settings** and update:
-    - **PrintLe Server URL:** `http://[Your Local IP Address]:3001` (e.g., `http://10.0.0.179:3001`)
-    - **IPP Address:** The specific network address of your printer.
-        
+Run the frontend locally:
 
-## 🐳 Docker Deployment Setup
-For production use, the application should be deployed using Docker Compose.
-### Prerequisites
-- Docker and Docker Compose installed on the server that is connected to the network (and can reach the IPP printer).
-### Deployment Steps
-1. Ensure all necessary Dockerfiles (`printle-web-app/Dockerfile`, `printle-server/Dockerfile`, `printle-web-app/nginx.conf`) and the main `docker-compose.yml` file are in the correct locations by cloning the git repo.
-2. In the root directory (`cd printLe`), execute the deployment command:
-    
-    ```
-    docker compose up -d --build
-    ```
+```bash
+cd web
+npm install
+npm run dev
+```
 
-    or
+Run backend tests with the included Maven wrapper:
 
-    ```
-    docker-compose up -d --build
-    ```
-    Default Port for Web interface: 80
+```bash
+cd server
+./mvnw test
+```
+
+Run the frontend checks:
+
+```bash
+cd web
+npm test
+npm run build
+```
+
+## Data
+
+Compose stores PostgreSQL data and uploaded PDFs in named volumes. Uploaded files are accepted only when they have a PDF header and can be parsed by PDFBox. The default upload limit is 25 MB.
+
+Back up `postgres_data` and `job_data` together. Database records and stored PDFs must remain consistent.
+
+## Security notes
+
+- Do not expose the development configuration to the internet.
+- Put production deployments behind HTTPS and set `PRINTLE_SECURE_COOKIES=true`.
+- Replace every placeholder secret in `.env`.
+- The web service is the only published container. PostgreSQL and the API stay on an internal Compose network.
+- There is no public registration endpoint.
+
+The project license is still undecided. Do not accept outside contributions until the community and commercial licensing model is settled.

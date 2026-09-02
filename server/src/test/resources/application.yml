@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:printle;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+  flyway.enabled: false
+  jpa.open-in-view: false
+  jpa.hibernate.ddl-auto: create-drop
+printle:
+  storage-path: ${java.io.tmpdir}/printle-tests
+  bootstrap-admin-email: admin@test.local
+  bootstrap-admin-password: test-password-123
+  default-monthly-page-quota: 100

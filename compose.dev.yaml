@@ -1,0 +1,20 @@
+services:
+  postgres:
+    ports: ["5432:5432"]
+  server:
+    build: { target: build }
+    command: mvn spring-boot:run
+    working_dir: /workspace
+    volumes: [./server:/workspace, maven_cache:/root/.m2]
+    ports: ["8081:8080"]
+  web:
+    image: node:24-alpine
+    build: !reset null
+    command: npm run dev -- --host 0.0.0.0
+    working_dir: /workspace
+    volumes: [./web:/workspace, web_node_modules:/workspace/node_modules]
+    ports: ["5173:5173"]
+volumes:
+  maven_cache:
+  web_node_modules:
+
