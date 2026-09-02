@@ -13,17 +13,24 @@ The current build includes:
 - Local email and password authentication with Argon2id password hashes
 - Secure server-side browser sessions and CSRF protection
 - `ADMIN`, `OPERATOR`, `MANAGER`, and `USER` roles
-- Admin user creation, a suspension-ready account model, and quota overrides
-- PDF validation, page counting, held-job storage, and cancellation
-- Monthly page allowances and pending-page accounting
-- Printer and ACL-ready database tables
-- Append-only audit records for important actions
+- User and group administration, suspension, password resets, quota overrides, and adjustments
+- PDF validation, page counting, held-job storage, cancellation, retry, and expiry
+- CUPS-native job states, idempotent delivery, hardware duplex, and two-stage manual duplex
+- CUPS printer discovery, capability-aware release, maintenance/error policy, and printer ACLs
+- Monthly page allowances with individual/group/default precedence and transactional accounting
+- Immutable per-job price estimates with versioned monochrome and color printer rates
+- Usage reports and CSV export
+- Append-only audit records for authentication, administration, and print operations
 - PostgreSQL migrations with Flyway
-- A responsive React interface
+- A responsive React interface with light/dark/system themes and selectable local fonts
+- Configurable print/retention policy and dependency diagnostics
+- Development CUPS queues for success, delay, cancellation, failure, hold, stop, capability, jam, and offline scenarios
+- An internal token-protected print-node service and optional USB device mapping
+- Application-consistent backup tooling for PostgreSQL, job files, and CUPS state
 - Backend and frontend integration tests
-- Production Dockerfiles and Docker Compose
+- Production and development Docker Compose definitions with health checks and persistent service volumes
 
-CUPS, QR release, external OIDC, WorkOS, Authentik, email invitations, and actual printer delivery are intentionally not implemented yet.
+Hardware validation, stable udev/libusb enrollment, QR release, external OIDC, email invitations, and production hardening remain on the roadmap.
 
 ## Run with Docker Compose
 
@@ -70,7 +77,7 @@ npm run build
 
 ### Mock printing with CUPS
 
-The development Compose overlay includes a real CUPS scheduler with controllable virtual printers for successful, delayed, canceled, held, and stopped jobs. It captures documents and submitted options without sending anything to physical hardware.
+The development Compose overlay includes a real CUPS scheduler with controllable virtual printers for successful, delayed, canceled, aborted, held, stopped, jammed, offline, color, monochrome, duplex, and simplex behavior. It captures documents and submitted options without sending anything to physical hardware.
 
 See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and inspection commands.
 
@@ -78,7 +85,7 @@ See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and in
 
 Compose stores PostgreSQL data and uploaded PDFs in named volumes. Uploaded files are accepted only when they have a PDF header and can be parsed by PDFBox. The default upload limit is 25 MB.
 
-Back up `postgres_data` and `job_data` together. Database records and stored PDFs must remain consistent.
+Back up the database, job files, and CUPS state together. See [`docs/backup-and-restore.md`](docs/backup-and-restore.md).
 
 ## Security notes
 

@@ -52,6 +52,10 @@ case "$scenario" in
     echo canceled-by-backend > "$job_dir/result"
     exit 5
     ;;
+  fail)
+    echo failed-by-backend > "$job_dir/result"
+    exit 1
+    ;;
   hold)
     echo held-by-backend > "$job_dir/result"
     exit 3

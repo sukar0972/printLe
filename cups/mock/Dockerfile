@@ -8,6 +8,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY cupsd.conf /etc/cups/cupsd.conf
+COPY cupsd.conf /usr/share/printle/cupsd.conf
 COPY mockprint /usr/lib/cups/backend/mockprint
 COPY entrypoint.sh /usr/local/bin/printle-cups-entrypoint
 

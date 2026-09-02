@@ -149,31 +149,31 @@ function Queue({ preview }: { preview: boolean }) {
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
   const [printers, setPrinters] = useState<Printer[]>(preview ? previewPrinters : [])
   const [releaseJob, setReleaseJob] = useState<Job>()
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     if (preview) { setJobs(previewJobs); setQuota(previewQuota); return }
-    try { const [j, q, p] = await Promise.all([api.jobs(), api.quota(), api.printers()]); setJobs(j); setQuota(q); setPrinters(p) }
-    catch (e) { setError(message(e)) }
+    try { const [j, q, p] = await Promise.all([api.jobs(), api.quota(), api.printers()]); setJobs(j); setQuota(q); setPrinters(p); setLoadError('') }
+    catch (e) { setLoadError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
-    setBusy(true); setError(''); const element = event.currentTarget; const form = new FormData(element)
+    setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
     try { await api.upload(form); element.reset(); await load() }
     catch (e) { setError(message(e)) } finally { setBusy(false) }
   }
   async function cancel(id: string) {
     if (preview) { setJobs(current => current.filter(job => job.id !== id)); return }
-    try { await api.cancel(id); await load() } catch (e) { setError(message(e)) }
+    setError(''); setLoadError(''); try { await api.cancel(id); await load() } catch (e) { setError(message(e)) }
   }
   function release(id: string) { setReleaseJob(jobs.find(job => job.id === id)) }
   async function confirmRelease(printer: Printer) {
     if (!releaseJob) return
     if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name } : job)); setReleaseJob(undefined); return }
-    try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); await load() } catch (e) { setError(message(e)) }
+    setError(''); setLoadError(''); try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); await load() } catch (e) { setError(message(e)) }
   }
-  async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
-  async function flip(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN_SUBMITTED' } : j)); return } try { await api.flip(id); await load() } catch (e) { setError(message(e)) } }
+  async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
+  async function flip(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN_SUBMITTED' } : j)); return } setError(''); setLoadError(''); try { await api.flip(id); await load() } catch (e) { setError(message(e)) } }
   useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
@@ -181,7 +181,7 @@ function Queue({ preview }: { preview: boolean }) {
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, printers, upload, cancel, release, retry, flip }
+  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error: error || loadError, printers, upload, cancel, release, retry, flip }
   return <><LayoutLedger model={model} />{releaseJob && <ReleaseDialog job={releaseJob} printers={printers} onChoose={confirmRelease} onClose={() => setReleaseJob(undefined)} />}</>
 }
 
@@ -629,7 +629,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     if (preview) { setPrinters(previewPrinters); return }
-    try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g) } catch (e) { setError(message(e)) }
+    try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
@@ -685,7 +685,7 @@ function Users({ preview }: { preview: boolean }) {
   const [open, setOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
   const load = useCallback(() => {
     if (preview) { setUsers(previewUsers); return Promise.resolve() }
-    return api.users().then(setUsers).catch(e => setError(message(e)))
+    return api.users().then(value => { setUsers(value); setError('') }).catch(e => setError(message(e)))
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -747,7 +747,7 @@ function Groups({ preview }: { preview: boolean }) {
   const [open, setOpen] = useState(false); const [error, setError] = useState('')
   const load = useCallback(async () => {
     if (preview) { setGroups(previewGroups); setUsers(previewUsers); return }
-    try { const [g, u] = await Promise.all([api.groups(), api.users()]); setGroups(g); setUsers(u) } catch (e) { setError(message(e)) }
+    try { const [g, u] = await Promise.all([api.groups(), api.users()]); setGroups(g); setUsers(u); setError('') } catch (e) { setError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -783,7 +783,7 @@ const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCos
 function Reports({ preview }: { preview: boolean }) {
   const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
   const [error, setError] = useState('')
-  useEffect(() => { if (!preview) api.report().then(setReport).catch(e => setError(message(e))) }, [preview])
+  useEffect(() => { if (!preview) api.report().then(value => { setReport(value); setError('') }).catch(e => setError(message(e))) }, [preview])
   return <main className="page">
     <div className="page-heading"><div><p className="eyebrow">Accounting</p><h1>Reports</h1><p>Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p></div>{!preview && <a className="button-link" href="/api/admin/reports/jobs.csv">Export CSV</a>}</div>
     {error && <p className="error" role="alert">{error}</p>}
@@ -798,7 +798,7 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
   const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
   const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printNode: 'ok', discoveredPrinters: 5 } : { database: 'checking', storage: 'checking', printNode: 'checking', discoveredPrinters: 0 })
   const [notice, setNotice] = useState(''); const [error, setError] = useState('')
-  useEffect(() => { if (!preview && user.role === 'ADMIN') Promise.all([api.settings(), api.diagnostics()]).then(([s, d]) => { setSettings(s); setDiagnostics(d) }).catch(e => setError(message(e))) }, [preview, user.role])
+  useEffect(() => { if (!preview && user.role === 'ADMIN') Promise.all([api.settings(), api.diagnostics()]).then(([s, d]) => { setSettings(s); setDiagnostics(d); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
   async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: data.get('colorPrintingAllowed') === 'on' }
     try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }

@@ -73,7 +73,16 @@ class JobIntegrationTest {
     void rejectsJobThatWouldExceedQuota() throws Exception {
         mvc.perform(multipart("/api/jobs").file(new MockMultipartFile("file", "too-many.pdf", "application/pdf", pdf(2)))
                 .param("copies", "51").with(csrf()))
-            .andExpect(status().isConflict());
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("This job would exceed the monthly page allowance"));
+    }
+
+    @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
+    void returnsConfiguredCopyLimitAsAUsefulApiError() throws Exception {
+        mvc.perform(multipart("/api/jobs").file(new MockMultipartFile("file", "too-many-copies.pdf", "application/pdf", pdf(1)))
+                .param("copies", "101").with(csrf()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("Copies must be between 1 and 100"));
     }
 
     private byte[] pdf(int pages) throws Exception {

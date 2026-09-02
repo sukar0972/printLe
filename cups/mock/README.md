@@ -1,14 +1,19 @@
 # Development CUPS mock printers
 
-This image runs a real CUPS scheduler with controllable backend queues. It is included only by `compose.dev.yaml`; production Compose does not expose or start it.
+This image runs the stack's real CUPS scheduler. Production Compose starts it only on the internal network without mock queues; `compose.dev.yaml` enables the controllable queues below and exposes the administration interface on localhost.
 
 | Queue | Behavior |
 | --- | --- |
 | `mock-success` | Captures the job and completes immediately. |
 | `mock-delay` | Remains processing for `MOCK_PRINT_DELAY_SECONDS`, then completes. |
 | `mock-cancel` | Returns the CUPS backend cancel status. |
+| `mock-fail` | Aborts the job so printLe's retry flow can be tested. |
 | `mock-hold` | Returns the CUPS backend hold status. |
 | `mock-stop` | Stops the queue using the CUPS backend stop status. |
+| `mock-mono` | Successful monochrome printer with hardware duplex. |
+| `mock-simple` | Successful monochrome printer without hardware duplex. |
+| `mock-jam` | Reports a paper-jam fault for release-policy testing. |
+| `mock-offline` | Reports a disconnected printer for availability testing. |
 
 Start the development stack:
 

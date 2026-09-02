@@ -5,6 +5,13 @@ output_dir=/var/spool/printle-mock
 mkdir -p "$output_dir"
 chown lp:lp "$output_dir"
 
+# The development profile uses deterministic configuration even when an older
+# named volume already exists. Production keeps administrator-managed CUPS
+# configuration after the volume is initialized.
+if [ "${PRINTLE_MOCK_PRINTERS:-true}" = "true" ]; then
+  cp /usr/share/printle/cupsd.conf /etc/cups/cupsd.conf
+fi
+
 /usr/sbin/cupsd -f &
 cups_pid=$!
 
@@ -36,6 +43,8 @@ if [ "${PRINTLE_MOCK_PRINTERS:-true}" = "true" ]; then
   create_queue mock-success mockprint://success
   create_queue mock-delay mockprint://delay
   create_queue mock-cancel mockprint://cancel
+  create_queue mock-fail mockprint://fail
+  lpadmin -p mock-fail -o printer-error-policy=abort-job
   create_queue mock-hold mockprint://hold
   create_queue mock-stop mockprint://stop
   create_queue mock-mono mockprint://success

@@ -37,16 +37,16 @@ The current codebase already has:
 - User creation and last-admin protection
 - PDF-only upload with PDFBox validation and page counting
 - Held jobs, cancellation, file storage, and pending quota accounting
-- Stored color (`COLOR` / `MONOCHROME`) and hardware duplex (`ONE_SIDED` / long-edge / short-edge) on each job. Manual duplex is not modeled yet, and grayscale is not yet forced at a printer.
-- Initial tables for users, groups, printers, printer ACLs, jobs, quotas, and audit events
+- Stored and delivered color (`COLOR` / forced `MONOCHROME`) plus one-sided, hardware duplex, and restart-safe manual duplex jobs
+- Implemented services and screens for users, groups, printers, printer ACLs, jobs, quotas, pricing reports, settings, diagnostics, and audit events
 - A React and Vite frontend
-- Sidebar entries for the queue, printers, users, groups, reports, and settings
-- Placeholder pages for unfinished management sections
+- Working queue, printer, user, group, report, and settings screens
 - Dockerfiles, Docker Compose, health checks, persistent volumes, and CI checks
-- A development-only CUPS service with controllable mock success, delay, cancel, hold, and stopped-printer queues
-- An idempotent print-node submission API, CUPS job correlation, native IPP state polling, and web release control
+- Production/internal CUPS and print-node services plus a development fleet covering success, delay, cancel, abort, hold, stop, color, monochrome, simplex, duplex, jam, and offline behavior
+- An authenticated, idempotent print-node API with discovery, CUPS job correlation, native IPP state polling, cancellation, web release, retry, and manual odd/flip/even control
+- Immutable estimated cost accounting, CSV usage reports, configurable quotas/restrictions/retention, health diagnostics, and coordinated backup tooling
 
-Database tables are not proof that a feature is complete. Groups, printer ACLs, reporting, most account management, and printer delivery still need services, APIs, tests, and usable screens.
+The next release work is concentrated in frontend decomposition and browser automation, physical-device enrollment and driver validation, OIDC/email, observability, rate limiting, secrets, and hardware/upgrade testing.
 
 ## Lessons from v1.0
 
@@ -433,11 +433,11 @@ Leaving these out keeps the first useful product focused: submit a PDF in the br
 
 ## Recommended build order
 
-1. Add printer records, capability lookup, ACL enforcement, and queue selection at release.
-2. Harden print-node authentication and recovery, then add stable USB matching.
-3. Add CUPS cancellation/retry and exercise all mock failure queues in Compose tests.
-4. Add administrator quota adjustments and expose quota/retention settings in the UI.
+1. ~~Add printer records, capability lookup, ACL enforcement, and queue selection at release.~~ Implemented against the mock fleet.
+2. Harden print-node recovery and add stable udev/libusb matching for physical USB devices.
+3. ~~Add CUPS cancellation/retry and exercise mock failure queues.~~ Implemented; retain this as a Compose regression gate.
+4. ~~Add administrator quota adjustments and expose quota/retention settings in the UI.~~ Implemented.
 5. Harden local authentication, then add optional Authentik-compatible OIDC.
-6. Add reporting, backups, diagnostics, upgrade tooling, and security controls.
+6. ~~Add reporting, backups, diagnostics, and baseline browser security headers.~~ Implemented; upgrade tooling and deeper observability remain.
 7. Run hardware and upgrade testing before calling the project production-ready.
 8. Settle licensing and package enterprise features only after the core print path is dependable.
