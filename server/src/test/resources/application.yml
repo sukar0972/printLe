@@ -13,3 +13,8 @@ printle:
   default-monthly-page-quota: 100
   print-node-url: http://print-node.test
   default-cups-queue: mock-success
+  quota-timezone: UTC
+  held-job-ttl: 24h
+  completed-job-retention: 720h
+  failed-job-retention: 168h
+  cleanup-interval-ms: 3600000

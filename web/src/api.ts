@@ -1,5 +1,5 @@
 export type CurrentUser = { id: string; email: string; displayName: string; role: 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'USER' }
-export type Job = { id: string; filename: string; sizeBytes: number; pages: number; copies: number; colorMode: string; duplexMode: string; status: string; createdAt: string; cupsJobId?: number; cupsQueue?: string; ippStateReasons?: string; submittedAt?: string; completedAt?: string }
+export type Job = { id: string; filename: string; sizeBytes: number; pages: number; copies: number; colorMode: string; duplexMode: string; status: string; createdAt: string; cupsJobId?: number; cupsQueue?: string; ippStateReasons?: string; submittedAt?: string; completedAt?: string; expiresAt?: string }
 export type Quota = { limit: number; used: number; pending: number; remaining: number | null; exempt: boolean }
 export type ManagedUser = { id: string; email: string; displayName: string; role: CurrentUser['role']; status: 'ACTIVE' | 'SUSPENDED'; monthlyPageQuota: number | null; quotaExempt: boolean; createdAt: string }
 

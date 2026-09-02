@@ -29,14 +29,15 @@ public class PrintJob {
     @Column(name = "ipp_state_reasons", length = 1000) private String ippStateReasons;
     @Column(name = "submitted_at") private Instant submittedAt;
     @Column(name = "completed_at") private Instant completedAt;
+    @Column(name = "expires_at") private Instant expiresAt;
 
     protected PrintJob() {}
     public PrintJob(AppUser owner, String originalFilename, String storageKey, long sizeBytes, int pages,
-                    int copies, ColorMode colorMode, DuplexMode duplexMode) {
+                    int copies, ColorMode colorMode, DuplexMode duplexMode, Instant expiresAt) {
         this.id = UUID.randomUUID(); this.owner = owner; this.originalFilename = originalFilename;
         this.storageKey = storageKey; this.contentType = "application/pdf"; this.sizeBytes = sizeBytes;
         this.pages = pages; this.copies = copies; this.colorMode = colorMode; this.duplexMode = duplexMode;
-        this.status = JobStatus.HELD; this.createdAt = Instant.now(); this.updatedAt = createdAt;
+        this.status = JobStatus.HELD; this.createdAt = Instant.now(); this.updatedAt = createdAt; this.expiresAt = expiresAt;
     }
     public UUID getId() { return id; }
     public AppUser getOwner() { return owner; }
@@ -56,6 +57,7 @@ public class PrintJob {
     public String getIppStateReasons() { return ippStateReasons; }
     public Instant getSubmittedAt() { return submittedAt; }
     public Instant getCompletedAt() { return completedAt; }
+    public Instant getExpiresAt() { return expiresAt; }
     public UUID ensureSubmissionKey() { if (submissionKey == null) submissionKey = UUID.randomUUID(); return submissionKey; }
     public void submitted(int jobId, String queue, JobStatus initialState, String reasons) {
         this.cupsJobId = jobId; this.cupsQueue = queue; this.submittedAt = Instant.now();
@@ -66,4 +68,5 @@ public class PrintJob {
         if (state == JobStatus.COMPLETED || state == JobStatus.CANCELED || state == JobStatus.ABORTED) this.completedAt = updatedAt;
     }
     public void cancelHeld() { this.status = JobStatus.CANCELED; this.updatedAt = Instant.now(); this.completedAt = updatedAt; }
+    public void expire() { this.status = JobStatus.EXPIRED; this.updatedAt = Instant.now(); this.completedAt = updatedAt; }
 }

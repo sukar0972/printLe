@@ -32,7 +32,7 @@ public class JobController {
 
     public record JobView(UUID id, String filename, long sizeBytes, int pages, int copies, ColorMode colorMode,
                           DuplexMode duplexMode, JobStatus status, Instant createdAt, Integer cupsJobId,
-                          String cupsQueue, String ippStateReasons, Instant submittedAt, Instant completedAt) {
-        static JobView from(PrintJob job) { return new JobView(job.getId(), job.getOriginalFilename(), job.getSizeBytes(), job.getPages(), job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getStatus(), job.getCreatedAt(), job.getCupsJobId(), job.getCupsQueue(), job.getIppStateReasons(), job.getSubmittedAt(), job.getCompletedAt()); }
+                          String cupsQueue, String ippStateReasons, Instant submittedAt, Instant completedAt, Instant expiresAt) {
+        static JobView from(PrintJob job) { return new JobView(job.getId(), job.getOriginalFilename(), job.getSizeBytes(), job.getPages(), job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getStatus(), job.getCreatedAt(), job.getCupsJobId(), job.getCupsQueue(), job.getIppStateReasons(), job.getSubmittedAt(), job.getCompletedAt(), job.getExpiresAt()); }
     }
 }

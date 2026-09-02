@@ -433,10 +433,10 @@ Leaving these out keeps the first useful product focused: submit a PDF in the br
 
 ## Recommended build order
 
-1. Make quota reservations/debits transactional and add held-job expiry and retention.
-2. Add printer records, capability lookup, ACL enforcement, and queue selection at release.
-3. Harden print-node authentication and recovery, then add stable USB matching.
-4. Add CUPS cancellation/retry and exercise all mock failure queues in Compose tests.
+1. Add printer records, capability lookup, ACL enforcement, and queue selection at release.
+2. Harden print-node authentication and recovery, then add stable USB matching.
+3. Add CUPS cancellation/retry and exercise all mock failure queues in Compose tests.
+4. Add administrator quota adjustments and expose quota/retention settings in the UI.
 5. Harden local authentication, then add optional Authentik-compatible OIDC.
 6. Add reporting, backups, diagnostics, upgrade tooling, and security controls.
 7. Run hardware and upgrade testing before calling the project production-ready.

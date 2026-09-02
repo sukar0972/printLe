@@ -31,3 +31,8 @@ printle:
   default-monthly-page-quota: ${PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA:100}
   print-node-url: ${PRINTLE_PRINT_NODE_URL:}
   default-cups-queue: ${PRINTLE_DEFAULT_CUPS_QUEUE:mock-success}
+  quota-timezone: ${PRINTLE_QUOTA_TIMEZONE:UTC}
+  held-job-ttl: ${PRINTLE_HELD_JOB_TTL:24h}
+  completed-job-retention: ${PRINTLE_COMPLETED_JOB_RETENTION:720h}
+  failed-job-retention: ${PRINTLE_FAILED_JOB_RETENTION:168h}
+  cleanup-interval-ms: ${PRINTLE_CLEANUP_INTERVAL_MS:60000}

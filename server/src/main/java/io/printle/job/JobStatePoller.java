@@ -10,4 +10,7 @@ public class JobStatePoller {
 
     @Scheduled(fixedDelayString = "${printle.print-poll-interval-ms:1000}")
     public void poll() { jobs.syncActiveJobs(); }
+
+    @Scheduled(fixedDelayString = "${printle.cleanup-interval-ms:60000}")
+    public void cleanup() { jobs.expireHeldJobs(); jobs.purgeRetainedJobs(); }
 }

@@ -2,6 +2,8 @@ package io.printle.job;
 
 import io.printle.audit.AuditService;
 import io.printle.config.PrintleProperties;
+import io.printle.quota.QuotaLedgerRepository;
+import io.printle.quota.QuotaService;
 import io.printle.user.AppUser;
 import io.printle.user.AppUserRepository;
 import org.apache.pdfbox.Loader;
@@ -13,7 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.ZoneOffset;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Set;
@@ -22,10 +26,15 @@ import java.util.UUID;
 @Service
 public class JobService {
     private final PrintJobRepository jobs; private final AppUserRepository users;
-    private final AuditService audit; private final PrintNodeClient printNode; private final Path storage; private final String defaultQueue;
-    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit, PrintNodeClient printNode, PrintleProperties properties) throws IOException {
-        this.jobs = jobs; this.users = users; this.audit = audit; this.printNode = printNode;
+    private final AuditService audit; private final PrintNodeClient printNode; private final QuotaService quotas;
+    private final QuotaLedgerRepository quotaLedger; private final Path storage; private final String defaultQueue;
+    private final int defaultQuota; private final ZoneId quotaZone; private final Duration heldTtl, completedRetention, failedRetention;
+    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit, PrintNodeClient printNode,
+                      QuotaService quotas, QuotaLedgerRepository quotaLedger, PrintleProperties properties) throws IOException {
+        this.jobs = jobs; this.users = users; this.audit = audit; this.printNode = printNode; this.quotas = quotas; this.quotaLedger = quotaLedger;
         this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize(); this.defaultQueue = properties.defaultCupsQueue();
+        this.defaultQuota = properties.defaultMonthlyPageQuota(); this.quotaZone = ZoneId.of(properties.quotaTimezone());
+        this.heldTtl = properties.heldJobTtl(); this.completedRetention = properties.completedJobRetention(); this.failedRetention = properties.failedJobRetention();
         Files.createDirectories(storage);
     }
 
@@ -41,12 +50,16 @@ public class JobService {
         try (var document = Loader.loadPDF(bytes)) { pages = document.getNumberOfPages(); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF is invalid or encrypted", e); }
         if (pages < 1) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF has no pages");
-        var owner = users.findByEmailIgnoreCase(email).orElseThrow();
+        var owner = users.findByEmailForUpdate(email).orElseThrow();
+        int requestedPages = pages * copies;
+        int limit = owner.getMonthlyPageQuota() == null ? defaultQuota : owner.getMonthlyPageQuota();
+        quotas.requireCapacity(owner, requestedPages, limit, monthStart());
         var originalName = safeName(file.getOriginalFilename());
         var storageKey = UUID.randomUUID() + ".pdf";
         try { Files.write(storage.resolve(storageKey), bytes, StandardOpenOption.CREATE_NEW); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not store upload", e); }
-        var job = jobs.save(new PrintJob(owner, originalName, storageKey, bytes.length, pages, copies, color, duplex));
+        var job = jobs.save(new PrintJob(owner, originalName, storageKey, bytes.length, pages, copies, color, duplex, Instant.now().plus(heldTtl)));
+        quotas.reserve(job);
         audit.record(owner, "JOB_UPLOADED", "PRINT_JOB", job.getId().toString(), originalName);
         return job;
     }
@@ -62,6 +75,7 @@ public class JobService {
         var job = ownedJob(email, id);
         if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be canceled");
         job.cancelHeld();
+        quotas.settle(job, false);
         try { Files.deleteIfExists(storage.resolve(job.getStorageKey())); } catch (IOException ignored) {}
         audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
     }
@@ -78,6 +92,7 @@ public class JobService {
         job.submitted(submission.jobId(), submission.queue(), cupsState(submission.state()), submission.reasons());
         audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
         if (job.getStatus() == JobStatus.COMPLETED || job.getStatus() == JobStatus.CANCELED || job.getStatus() == JobStatus.ABORTED) {
+            quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
             try { Files.deleteIfExists(storage.resolve(job.getStorageKey())); } catch (IOException ignored) {}
             audit.record(job.getOwner(), "JOB_" + job.getStatus(), "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
         }
@@ -93,6 +108,7 @@ public class JobService {
                 var mapped = cupsState(state.state());
                 job.updateIppState(mapped, state.reasons());
                 if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
+                    quotas.settle(job, mapped == JobStatus.COMPLETED);
                     Files.deleteIfExists(storage.resolve(job.getStorageKey()));
                     audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), "CUPS " + job.getCupsJobId());
                 }
@@ -106,14 +122,37 @@ public class JobService {
     public QuotaView quota(String email, int defaultLimit) {
         AppUser owner = users.findByEmailIgnoreCase(email).orElseThrow();
         int limit = owner.getMonthlyPageQuota() == null ? defaultLimit : owner.getMonthlyPageQuota();
-        var all = jobs.findAllByOwnerIdOrderByCreatedAtDesc(owner.getId());
-        var monthStart = ZonedDateTime.now(ZoneOffset.UTC).withDayOfMonth(1).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();
-        int used = all.stream().filter(job -> job.getStatus() == JobStatus.COMPLETED && !job.getCreatedAt().isBefore(monthStart))
-            .mapToInt(job -> job.getPages() * job.getCopies()).sum();
-        int pending = all.stream()
-            .filter(job -> job.getStatus() == JobStatus.HELD || job.getStatus() == JobStatus.PENDING || job.getStatus() == JobStatus.PENDING_HELD || job.getStatus() == JobStatus.PROCESSING || job.getStatus() == JobStatus.PROCESSING_STOPPED)
-            .mapToInt(job -> job.getPages() * job.getCopies()).sum();
+        var usage = quotas.usage(owner, monthStart());
+        int used = usage.used(), pending = usage.pending();
         return new QuotaView(limit, used, pending, owner.isQuotaExempt() ? null : Math.max(0, limit - used - pending), owner.isQuotaExempt());
+    }
+
+    @Transactional
+    public void expireHeldJobs() {
+        for (var job : jobs.findAllByStatusAndExpiresAtLessThanEqual(JobStatus.HELD, Instant.now())) {
+            job.expire(); quotas.settle(job, false); deletePayload(job);
+            audit.record(job.getOwner(), "JOB_EXPIRED", "PRINT_JOB", job.getId().toString(), job.getOriginalFilename());
+        }
+    }
+
+    @Transactional
+    public void purgeRetainedJobs() {
+        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.COMPLETED), Instant.now().minus(completedRetention)));
+        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.CANCELED, JobStatus.ABORTED, JobStatus.EXPIRED), Instant.now().minus(failedRetention)));
+    }
+
+    private void purge(List<PrintJob> expired) {
+        for (var job : expired) {
+            deletePayload(job); quotaLedger.detachJob(job.getId()); jobs.delete(job);
+        }
+    }
+
+    private void deletePayload(PrintJob job) {
+        try { Files.deleteIfExists(storage.resolve(job.getStorageKey())); } catch (IOException ignored) {}
+    }
+
+    private Instant monthStart() {
+        return ZonedDateTime.now(quotaZone).withDayOfMonth(1).toLocalDate().atStartOfDay(quotaZone).toInstant();
     }
 
     private PrintJob ownedJob(String email, UUID id) {
