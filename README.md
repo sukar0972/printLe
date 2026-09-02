@@ -1,4 +1,6 @@
-# printLe
+<h1 align="center">
+  <img src="web/public/printle-logo.svg" alt="printLe" width="320">
+</h1>
 
 printLe is a self-hosted web print queue. Users upload PDFs, manage held jobs, and track their monthly page allowance. Administrators manage accounts, roles, quotas, and printer records from the same web interface.
 
@@ -65,6 +67,12 @@ cd web
 npm test
 npm run build
 ```
+
+### Mock printing with CUPS
+
+The development Compose overlay includes a real CUPS scheduler with controllable virtual printers for successful, delayed, canceled, held, and stopped jobs. It captures documents and submitted options without sending anything to physical hardware.
+
+See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and inspection commands.
 
 ## Data
 

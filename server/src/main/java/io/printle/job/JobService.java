@@ -13,15 +13,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class JobService {
     private final PrintJobRepository jobs; private final AppUserRepository users;
-    private final AuditService audit; private final Path storage;
-    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit, PrintleProperties properties) throws IOException {
-        this.jobs = jobs; this.users = users; this.audit = audit; this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize();
+    private final AuditService audit; private final PrintNodeClient printNode; private final Path storage; private final String defaultQueue;
+    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit, PrintNodeClient printNode, PrintleProperties properties) throws IOException {
+        this.jobs = jobs; this.users = users; this.audit = audit; this.printNode = printNode;
+        this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize(); this.defaultQueue = properties.defaultCupsQueue();
         Files.createDirectories(storage);
     }
 
@@ -56,20 +60,60 @@ public class JobService {
     @Transactional
     public void cancel(String email, UUID id) {
         var job = ownedJob(email, id);
-        if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be cancelled");
-        job.cancel();
+        if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be canceled");
+        job.cancelHeld();
         try { Files.deleteIfExists(storage.resolve(job.getStorageKey())); } catch (IOException ignored) {}
-        audit.record(job.getOwner(), "JOB_CANCELLED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
+        audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
+    }
+
+    @Transactional
+    public PrintJob release(String email, UUID id) {
+        var job = ownedJob(email, id);
+        if (job.getCupsJobId() != null) return job;
+        if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be released");
+        var key = job.ensureSubmissionKey();
+        jobs.flush();
+        var submission = printNode.submit(key, defaultQueue, storage.resolve(job.getStorageKey()), job.getOriginalFilename(),
+            job.getOwner().getEmail(), job.getCopies(), job.getColorMode(), job.getDuplexMode());
+        job.submitted(submission.jobId(), submission.queue(), cupsState(submission.state()), submission.reasons());
+        audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
+        if (job.getStatus() == JobStatus.COMPLETED || job.getStatus() == JobStatus.CANCELED || job.getStatus() == JobStatus.ABORTED) {
+            try { Files.deleteIfExists(storage.resolve(job.getStorageKey())); } catch (IOException ignored) {}
+            audit.record(job.getOwner(), "JOB_" + job.getStatus(), "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
+        }
+        return job;
+    }
+
+    @Transactional
+    public void syncActiveJobs() {
+        var active = Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED);
+        for (var job : jobs.findAllByCupsJobIdIsNotNullAndStatusIn(active)) {
+            try {
+                var state = printNode.status(job.getCupsJobId());
+                var mapped = cupsState(state.state());
+                job.updateIppState(mapped, state.reasons());
+                if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
+                    Files.deleteIfExists(storage.resolve(job.getStorageKey()));
+                    audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), "CUPS " + job.getCupsJobId());
+                }
+            } catch (Exception ignored) {
+                // A transient CUPS outage must not invent a job state. Try again on the next poll.
+            }
+        }
     }
 
     @Transactional(readOnly = true)
     public QuotaView quota(String email, int defaultLimit) {
         AppUser owner = users.findByEmailIgnoreCase(email).orElseThrow();
         int limit = owner.getMonthlyPageQuota() == null ? defaultLimit : owner.getMonthlyPageQuota();
-        int pending = jobs.findAllByOwnerIdOrderByCreatedAtDesc(owner.getId()).stream()
-            .filter(job -> job.getStatus() == JobStatus.HELD || job.getStatus() == JobStatus.RELEASE_QUEUED)
+        var all = jobs.findAllByOwnerIdOrderByCreatedAtDesc(owner.getId());
+        var monthStart = ZonedDateTime.now(ZoneOffset.UTC).withDayOfMonth(1).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();
+        int used = all.stream().filter(job -> job.getStatus() == JobStatus.COMPLETED && !job.getCreatedAt().isBefore(monthStart))
             .mapToInt(job -> job.getPages() * job.getCopies()).sum();
-        return new QuotaView(limit, 0, pending, owner.isQuotaExempt() ? null : Math.max(0, limit - pending), owner.isQuotaExempt());
+        int pending = all.stream()
+            .filter(job -> job.getStatus() == JobStatus.HELD || job.getStatus() == JobStatus.PENDING || job.getStatus() == JobStatus.PENDING_HELD || job.getStatus() == JobStatus.PROCESSING || job.getStatus() == JobStatus.PROCESSING_STOPPED)
+            .mapToInt(job -> job.getPages() * job.getCopies()).sum();
+        return new QuotaView(limit, used, pending, owner.isQuotaExempt() ? null : Math.max(0, limit - used - pending), owner.isQuotaExempt());
     }
 
     private PrintJob ownedJob(String email, UUID id) {
@@ -82,6 +126,9 @@ public class JobService {
         value = value.replaceAll("[\\p{Cntrl}]", "");
         return value.length() > 255 ? value.substring(value.length() - 255) : value;
     }
+    static JobStatus cupsState(String state) {
+        try { return JobStatus.valueOf(state.trim().toUpperCase().replace('-', '_')); }
+        catch (Exception e) { throw new IllegalArgumentException("Unknown CUPS job state: " + state, e); }
+    }
     public record QuotaView(int limit, int used, int pending, Integer remaining, boolean exempt) {}
 }
-

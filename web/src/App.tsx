@@ -4,19 +4,13 @@ import { api, CurrentUser, Job, ManagedUser, Quota } from './api'
 type Page = 'queue' | 'printers' | 'users' | 'groups' | 'reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
 
-const MARKS = [
-  { id: 'pills', short: '1 Pills', blurb: 'Filled capsules' },
-  { id: 'dots', short: '2 Dots', blurb: 'A disc and plain type' },
-  { id: 'bars', short: '3 Bars', blurb: 'A tick of color on the left' },
-  { id: 'ghost', short: '4 Ghost', blurb: 'Outlined, no fill' },
-  { id: 'ink', short: '5 Ink', blurb: 'Solid black Held, struck Cancelled' },
-  { id: 'tags', short: '6 Tags', blurb: 'Uppercase underlined labels' },
-  { id: 'pair', short: '7 Pair', blurb: 'Status and cancel as one control' },
-  { id: 'signal', short: '8 Signal', blurb: 'A traffic-light disc' },
-  { id: 'stamp', short: '9 Stamp', blurb: 'A boxed receipt mark' },
-  { id: 'quiet', short: '10 Quiet', blurb: 'Bare words, no color on status' },
+const TYPES = [
+  { id: 'geist', short: '1 Geist', blurb: 'printLe’s original geometric sans' },
+  { id: 'dmsans', short: '2 DM Sans', blurb: 'more Code’s default UI sans' },
+  { id: 'fira', short: '3 Fira Code', blurb: 'more Code’s mono setting' },
+  { id: 'jetbrains', short: '4 JetBrains Mono', blurb: 'more Code’s code stack' },
 ] as const
-type MarkId = typeof MARKS[number]['id']
+type TypeId = typeof TYPES[number]['id']
 
 const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' }
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
@@ -26,12 +20,13 @@ const previewJobs: Job[] = [
   { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z' },
   { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'HELD', createdAt: '2026-09-01T10:15:00Z' },
   { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z' },
-  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'CANCELLED', createdAt: '2026-08-31T09:12:00Z' },
-  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELLED', createdAt: '2026-08-30T15:44:00Z' },
+  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z' },
+  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z' },
 ]
 
 export default function App() {
   const preview = usePreview()
+  const typeface = useTypeface()
   const [user, setUser] = useState<CurrentUser | null>()
   const [page, setPage] = useState<Page>('queue')
   const theme = useTheme()
@@ -43,7 +38,7 @@ export default function App() {
   if (!user) return <Login onLogin={() => api.me().then(setUser)} theme={theme} />
   return (
     <>
-      {preview.on && <PreviewBanner mark={preview.mark} />}
+      {preview.on && <PreviewBanner />}
       <div className="shell">
         <aside className="sidebar">
           <button className="brand" onClick={() => setPage('queue')}><span className="brand-mark"><Mark /></span><span>printLe</span></button>
@@ -75,7 +70,7 @@ export default function App() {
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
             <span className="role-badge">{user.role.toLowerCase()}</span>
           </header>
-          {page === 'queue' ? <Queue preview={preview.on} mark={preview.on ? preview.mark : 'pills'} /> : page === 'users' ? <Users preview={preview.on} /> : <ComingSoon page={page} />}
+          {page === 'queue' ? <Queue preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'settings' ? <Settings typeface={typeface} /> : <ComingSoon page={page} />}
         </div>
       </div>
     </>
@@ -113,16 +108,9 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
   </main>
 }
 
-function PreviewBanner({ mark }: { mark: MarkId }) {
-  const meta = MARKS.find(item => item.id === mark) ?? MARKS[0]
-  function go(id: MarkId) { location.hash = id === 'pills' ? '#preview' : `#preview/${id}` }
+function PreviewBanner() {
   return <div className="preview-banner">
-    <span className="preview-blurb"><strong>{meta.short}</strong> {meta.blurb}</span>
-    <div className="layout-switch" role="tablist" aria-label="Status marks">
-      {MARKS.map(item => (
-        <button key={item.id} type="button" role="tab" aria-selected={item.id === mark} className={item.id === mark ? 'active' : ''} onClick={() => go(item.id)}>{item.short}</button>
-      ))}
-    </div>
+    <span className="preview-blurb"><strong>Dashboard preview</strong></span>
     <button type="button" onClick={() => { location.hash = '' }}>Leave preview</button>
   </div>
 }
@@ -141,9 +129,10 @@ type QueueModel = {
   error: string
   upload: (event: FormEvent<HTMLFormElement>) => void
   cancel: (id: string) => void
+  release: (id: string) => void
 }
 
-function Queue({ preview, mark }: { preview: boolean; mark: MarkId }) {
+function Queue({ preview }: { preview: boolean }) {
   const [jobs, setJobs] = useState<Job[]>(preview ? previewJobs : [])
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
@@ -163,14 +152,22 @@ function Queue({ preview, mark }: { preview: boolean; mark: MarkId }) {
     if (preview) { setJobs(current => current.filter(job => job.id !== id)); return }
     try { await api.cancel(id); await load() } catch (e) { setError(message(e)) }
   }
+  async function release(id: string) {
+    if (preview) {
+      setJobs(current => current.map(job => job.id === id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: 'mock-success' } : job))
+      window.setTimeout(() => setJobs(current => current.map(job => job.id === id ? { ...job, status: 'COMPLETED' } : job)), 1200)
+      return
+    }
+    try { await api.release(id); await load() } catch (e) { setError(message(e)) }
+  }
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, upload, cancel }
-  return <LayoutLedger model={model} mark={mark} />
+  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, upload, cancel, release }
+  return <LayoutLedger model={model} />
 }
 
 function Heading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
@@ -242,7 +239,7 @@ function Printers() {
   </section>
 }
 
-function JobLine({ job, onCancel, wide = false, mark = 'pills' }: { job: Job; onCancel: (id: string) => void; wide?: boolean; mark?: MarkId }) {
+function JobLine({ job, onCancel, onRelease, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; wide?: boolean }) {
   const color = job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
   if (wide) {
     return <article className="job job-wide">
@@ -253,7 +250,7 @@ function JobLine({ job, onCancel, wide = false, mark = 'pills' }: { job: Job; on
       <span>{color}</span>
       <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
       <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-      <JobState job={job} onCancel={onCancel} mark={mark} />
+      <JobState job={job} onCancel={onCancel} onRelease={onRelease} />
     </article>
   }
   return <article className="job">
@@ -264,21 +261,18 @@ function JobLine({ job, onCancel, wide = false, mark = 'pills' }: { job: Job; on
     </div>
     <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
     <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-    <JobState job={job} onCancel={onCancel} mark={mark} />
+    <JobState job={job} onCancel={onCancel} onRelease={onRelease} />
   </article>
 }
 
-function JobState({ job, onCancel, mark }: { job: Job; onCancel: (id: string) => void; mark: MarkId }) {
+function JobState({ job, onCancel, onRelease }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void }) {
   const held = job.status === 'HELD'
-  const cancelCopy = mark === 'tags' ? 'Remove' : mark === 'dots' || mark === 'ink' || mark === 'pair' || mark === 'signal' ? '×' : 'Cancel'
   return <>
-    <span className={`status mark-${mark} ${held ? 'held' : 'cancelled'}`}>
-      {(mark === 'dots' || mark === 'signal') && <i className="status-dot" aria-hidden="true" />}
-      {held ? 'Held' : 'Cancelled'}
+    <span className={`status status-plain ${job.status.toLowerCase()}`} title={job.ippStateReasons || undefined}>
+      <i className="status-dot" aria-hidden="true" />
+      {statusLabel(job.status)}
     </span>
-    {held
-      ? <button type="button" className={`danger-text mark-cancel mark-${mark}`} onClick={() => onCancel(job.id)} aria-label="Cancel">{cancelCopy}</button>
-      : <span />}
+    {held ? <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel">×</button></span> : <span />}
   </>
 }
 
@@ -292,7 +286,7 @@ function LayoutTable({ model }: { model: QueueModel }) {
         <div className="panel-title"><h2>Queue</h2><span>{model.held.length} waiting</span></div>
         {model.jobs.length === 0 ? <Empty /> : <>
           <div className="job-head" aria-hidden="true"><span /><span>File</span><span>Sides</span><span>Added</span><span>Status</span><span /></div>
-          <div className="job-list">{model.jobs.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} />)}</div>
+          <div className="job-list">{model.jobs.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} />)}</div>
         </>}
       </section>
       <Printers />
@@ -481,7 +475,11 @@ function jobSortValue(job: Job, key: SortKey): string | number {
   if (key === 'color') return job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
   if (key === 'sides') return duplexLabel(job.duplexMode)
   if (key === 'added') return new Date(job.createdAt).getTime()
-  return job.status === 'HELD' ? 'Held' : job.status === 'CANCELLED' ? 'Cancelled' : job.status
+  return statusLabel(job.status)
+}
+
+function statusLabel(status: string) {
+  return status.toLowerCase().split('_').map(word => word[0].toUpperCase() + word.slice(1)).join(' ')
 }
 
 function sortJobs(jobs: Job[], key: SortKey, dir: SortDir) {
@@ -496,8 +494,8 @@ function sortJobs(jobs: Job[], key: SortKey, dir: SortDir) {
   })
 }
 
-function LayoutLedger({ model, mark }: { model: QueueModel; mark: MarkId }) {
-  const [filter, setFilter] = useState<'all' | 'HELD' | 'CANCELLED'>('all')
+function LayoutLedger({ model }: { model: QueueModel }) {
+  const [filter, setFilter] = useState<'all' | 'HELD' | 'CANCELED'>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'added', dir: 'desc' })
   const rows = useMemo(() => {
     const filtered = filter === 'all' ? model.jobs : model.jobs.filter(job => job.status === filter)
@@ -514,7 +512,7 @@ function LayoutLedger({ model, mark }: { model: QueueModel; mark: MarkId }) {
       <div className="ledger-bar">
         <h1>Queue</h1>
         <div className="filter-pills">
-          {([['all', 'All'], ['HELD', 'Held'], ['CANCELLED', 'Cancelled']] as const).map(([id, label]) => (
+          {([['all', 'All'], ['HELD', 'Held'], ['CANCELED', 'Canceled']] as const).map(([id, label]) => (
             <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>
           ))}
         </div>
@@ -538,7 +536,7 @@ function LayoutLedger({ model, mark }: { model: QueueModel; mark: MarkId }) {
           })}
           <span />
         </div>
-        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} wide mark={mark} />)}
+        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} wide />)}
       </>}
     </div>
   </main>
@@ -621,12 +619,25 @@ function Users({ preview }: { preview: boolean }) {
   </main>
 }
 
-function ComingSoon({ page }: { page: Exclude<Page, 'queue' | 'users'> }) {
+function Settings({ typeface }: { typeface: ReturnType<typeof useTypeface> }) {
+  return <main className="page"><div className="page-heading"><div><p className="eyebrow">Management</p><h1>Settings</h1><p>Configure how printLe looks on this browser.</p></div></div>
+    <section className="panel settings-panel">
+      <div className="panel-title"><div><strong>Typeface</strong><span>DM Sans is the default. Your selection is saved locally.</span></div></div>
+      <div className="typeface-options" role="radiogroup" aria-label="Typeface">
+        {TYPES.map(item => <label key={item.id} className={typeface.value === item.id ? 'selected' : ''}>
+          <input type="radio" name="typeface" value={item.id} checked={typeface.value === item.id} onChange={() => typeface.set(item.id)} />
+          <span><strong>{item.short.replace(/^\d+ /, '')}</strong><small>{item.blurb}</small></span>
+        </label>)}
+      </div>
+    </section>
+  </main>
+}
+
+function ComingSoon({ page }: { page: Exclude<Page, 'queue' | 'users' | 'settings'> }) {
   const copy = {
     printers: ['Printers', 'Discover, configure, and monitor CUPS printers from one place.', 'Printer management will become available when the print-node and CUPS integration are added.'],
     groups: ['Groups', 'Organize people and apply printer access and quota policies.', 'Group membership and group-level ACL controls are planned for a later build.'],
     reports: ['Reports', 'Review print volume, quota usage, and activity over time.', 'Reporting will be enabled once completed print events are available.'],
-    settings: ['Settings', 'Configure your printLe instance, authentication, and defaults.', 'Organization, authentication, quota, storage, and system settings are planned.'],
   }[page]
   return <main className="page"><div className="page-heading"><div><p className="eyebrow">Management</p><h1>{copy[0]}</h1><p>{copy[1]}</p></div></div>
     <section className="panel placeholder">
@@ -652,10 +663,7 @@ function relativeTime(iso: string) {
 }
 
 function parsePreviewHash(hash = typeof location === 'undefined' ? '' : location.hash) {
-  if (!hash.startsWith('#preview')) return { on: false, mark: 'pills' as MarkId }
-  const rest = hash.slice('#preview'.length).replace(/^\//, '') as MarkId
-  const mark = MARKS.some(item => item.id === rest) ? rest : 'pills'
-  return { on: true, mark }
+  return { on: hash.startsWith('#preview') }
 }
 
 function usePreview() {
@@ -666,6 +674,18 @@ function usePreview() {
     return () => window.removeEventListener('hashchange', sync)
   }, [])
   return preview
+}
+
+function useTypeface() {
+  const [value, setValue] = useState<TypeId>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('printle-typeface') : null
+    return TYPES.some(item => item.id === saved) ? saved as TypeId : 'dmsans'
+  })
+  useEffect(() => {
+    document.documentElement.dataset.type = value
+    localStorage.setItem('printle-typeface', value)
+  }, [value])
+  return { value, set: setValue }
 }
 
 function useTheme() {

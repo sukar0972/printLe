@@ -1,4 +1,11 @@
-@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist/index.css';
+@import '@fontsource-variable/dm-sans/index.css';
+@import '@fontsource/fira-code/400.css';
+@import '@fontsource/fira-code/500.css';
+@import '@fontsource/fira-code/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
 
 :root {
   color-scheme: light;
@@ -21,10 +28,16 @@
   --shadow: none;
   --radius: 10px;
   --sidebar: 248px;
-  --font: "Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif;
+  --font: "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
+
+html[data-type="geist"] { --font: "Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif; }
+html[data-type="dmsans"] { --font: "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+html[data-type="fira"] { --font: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace; }
+html[data-type="jetbrains"] { --font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+html[data-type="fira"] body, html[data-type="jetbrains"] body { font-size: 13px; }
 
 html.dark {
   color-scheme: dark;
@@ -228,6 +241,18 @@ html.dark input:focus, html.dark select:focus { box-shadow: 0 0 0 3px rgba(250,2
 .icon-button:hover { color: var(--ink); background: var(--muted); }
 .icon-button:active { transform: scale(.96); }
 
+.settings-panel { background: var(--surface); border: 1px solid var(--line); }
+.typeface-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px; }
+.typeface-options label {
+  min-height: 76px; padding: 14px; display: flex; flex-direction: row; align-items: flex-start; gap: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
+}
+.typeface-options label.selected { border-color: var(--ink); background: var(--muted); }
+.typeface-options input { width: 16px; min-height: 16px; margin: 2px 0 0; accent-color: var(--ink); }
+.typeface-options span { display: flex; flex-direction: column; gap: 3px; }
+.typeface-options strong { font-size: 14px; }
+.typeface-options small { color: var(--subtle); font-size: 12px; font-weight: 400; }
+
 .workspace { grid-column: 2; min-width: 0; }
 .topbar {
   height: 52px; padding: 0 24px; position: sticky; top: 0; z-index: 5;
@@ -394,73 +419,23 @@ html.dark select {
   transition: opacity 150ms ease, transform 160ms var(--ease-out);
 }
 .danger-text:active { transform: scale(.97); }
+.job-actions { display: inline-flex; align-items: center; gap: 5px; }
+.release-text { border: 0; border-radius: 6px; background: var(--ink); color: var(--surface); padding: 5px 9px; font: inherit; font-size: 11px; font-weight: 650; }
+.release-text:active { transform: scale(.97); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
 .status.cancelled .status-dot { background: var(--danger); }
-
-.status.mark-dots, .status.mark-dots.held, .status.mark-dots.cancelled,
-.status.mark-bars, .status.mark-bars.held, .status.mark-bars.cancelled,
-.status.mark-quiet, .status.mark-quiet.held, .status.mark-quiet.cancelled,
-.status.mark-tags, .status.mark-tags.held, .status.mark-tags.cancelled,
-.status.mark-signal, .status.mark-signal.held, .status.mark-signal.cancelled {
+.status.status-plain, .status.status-plain.held, .status.status-plain.cancelled {
   background: transparent; padding: 0; border-radius: 0;
+  gap: 8px; color: var(--ink); font-size: 12px; font-weight: 500; text-transform: none;
 }
-.status.mark-dots, .status.mark-signal { gap: 8px; color: var(--ink); font-size: 12px; font-weight: 500; text-transform: none; }
-.status.mark-dots.cancelled, .status.mark-signal.cancelled { color: var(--subtle); }
-.status.mark-signal .status-dot { width: 10px; height: 10px; }
-.status.mark-signal { color: var(--subtle); font-size: 11px; }
-
-.status.mark-bars { padding-left: 8px; border-left: 3px solid var(--ok); color: var(--ink); font-size: 12px; font-weight: 500; text-transform: none; }
-.status.mark-bars.cancelled { border-left-color: var(--danger); color: var(--subtle); }
-
-.status.mark-ghost, .status.mark-ghost.held, .status.mark-ghost.cancelled {
-  background: transparent; border: 1px solid currentColor;
-}
-.status.mark-ghost.held { color: var(--ok); }
-.status.mark-ghost.cancelled { color: var(--danger); }
-.mark-cancel.mark-ghost {
-  border: 1px solid var(--danger); border-radius: 999px; padding: 3px 10px; font-size: 12px;
-}
-
-.status.mark-ink.held { background: var(--ink); color: var(--bg); }
-.status.mark-ink.cancelled { background: transparent; color: var(--subtle); text-decoration: line-through; padding: 0; border-radius: 0; font-weight: 500; }
-.mark-cancel.mark-ink, .mark-cancel.mark-dots, .mark-cancel.mark-signal {
+.status.status-plain.cancelled { color: var(--subtle); }
+.mark-cancel {
   width: 28px; height: 28px; padding: 0; display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: 999px; color: var(--danger); font-size: 16px; line-height: 1;
   background: var(--surface);
 }
-.mark-cancel.mark-ink { border-radius: 6px; }
-
-.status.mark-tags { font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--ok); border-bottom: 2px solid var(--ok); padding: 0 0 1px; }
-.status.mark-tags.cancelled { color: var(--danger); border-bottom-color: var(--danger); }
-.mark-cancel.mark-tags { font-size: 12px; }
-
-.status.mark-pair, .status.mark-pair.held, .status.mark-pair.cancelled {
-  height: 26px; padding: 0 10px; border-radius: 8px 0 0 8px;
-  border: 1px solid var(--line); background: var(--muted); color: var(--ink);
-  justify-self: end;
-}
-.status.mark-pair.cancelled { border-radius: 8px; color: var(--subtle); }
-.mark-cancel.mark-pair {
-  height: 26px; min-width: 26px; margin-left: -12px; padding: 0 8px;
-  border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0;
-  background: var(--surface); font-size: 14px; line-height: 1;
-}
-
-.status.mark-stamp, .status.mark-stamp.held, .status.mark-stamp.cancelled {
-  background: transparent; border: 1px solid currentColor; border-radius: 2px;
-  padding: 2px 6px; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
-}
-.status.mark-stamp.held { color: var(--ok); }
-.status.mark-stamp.cancelled { color: var(--danger); }
-.mark-cancel.mark-stamp {
-  border: 1px solid var(--danger); border-radius: 2px; padding: 2px 6px;
-  font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-}
-
-.status.mark-quiet { color: var(--subtle); font-size: 12px; font-weight: 500; text-transform: none; }
-.mark-cancel.mark-quiet { color: var(--subtle); text-decoration: underline; text-underline-offset: 3px; font-size: 12px; }
 @media (hover: hover) and (pointer: fine) {
-  .mark-cancel.mark-quiet:hover { color: var(--danger); }
+  .mark-cancel:hover { border-color: var(--danger); }
 }
 
 .user-table {

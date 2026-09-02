@@ -7,6 +7,11 @@ services:
     working_dir: /workspace
     volumes: [./server:/workspace, maven_cache:/root/.m2]
     ports: ["8081:8080"]
+    environment:
+      PRINTLE_PRINT_NODE_URL: http://print-node:8080
+      PRINTLE_DEFAULT_CUPS_QUEUE: ${PRINTLE_DEFAULT_CUPS_QUEUE:-mock-success}
+    depends_on:
+      print-node: { condition: service_healthy }
   web:
     image: node:24-alpine
     build: !reset null
@@ -14,7 +19,36 @@ services:
     working_dir: /workspace
     volumes: [./web:/workspace, web_node_modules:/workspace/node_modules]
     ports: ["5173:5173"]
+  cups:
+    build: ./cups/mock
+    restart: unless-stopped
+    environment:
+      MOCK_PRINT_DELAY_SECONDS: ${MOCK_PRINT_DELAY_SECONDS:-5}
+    volumes: [cups_mock_output:/var/spool/printle-mock]
+    ports: ["127.0.0.1:${PRINTLE_CUPS_PORT:-8631}:631"]
+    healthcheck:
+      test: ["CMD-SHELL", "lpstat -r | grep -q 'scheduler is running' && lpstat -p mock-success >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks: [edge, backend]
+  print-node:
+    build: ./print-node
+    restart: unless-stopped
+    environment:
+      CUPS_SERVER: cups:631
+    volumes: [print_node_data:/var/lib/print-node]
+    depends_on:
+      cups: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
 volumes:
   maven_cache:
   web_node_modules:
-
+  cups_mock_output:
+  print_node_data:

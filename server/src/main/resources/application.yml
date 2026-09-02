@@ -29,4 +29,5 @@ printle:
   bootstrap-admin-email: ${PRINTLE_BOOTSTRAP_ADMIN_EMAIL:admin@printle.local}
   bootstrap-admin-password: ${PRINTLE_BOOTSTRAP_ADMIN_PASSWORD:change-me-now}
   default-monthly-page-quota: ${PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA:100}
-
+  print-node-url: ${PRINTLE_PRINT_NODE_URL:}
+  default-cups-queue: ${PRINTLE_DEFAULT_CUPS_QUEUE:mock-success}

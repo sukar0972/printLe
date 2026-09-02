@@ -23,6 +23,12 @@ public class PrintJob {
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "printer_id") private Printer printer;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
+    @Column(name = "submission_key", unique = true) private UUID submissionKey;
+    @Column(name = "cups_job_id") private Integer cupsJobId;
+    @Column(name = "cups_queue", length = 127) private String cupsQueue;
+    @Column(name = "ipp_state_reasons", length = 1000) private String ippStateReasons;
+    @Column(name = "submitted_at") private Instant submittedAt;
+    @Column(name = "completed_at") private Instant completedAt;
 
     protected PrintJob() {}
     public PrintJob(AppUser owner, String originalFilename, String storageKey, long sizeBytes, int pages,
@@ -44,6 +50,20 @@ public class PrintJob {
     public DuplexMode getDuplexMode() { return duplexMode; }
     public JobStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
-    public void cancel() { this.status = JobStatus.CANCELLED; this.updatedAt = Instant.now(); }
+    public UUID getSubmissionKey() { return submissionKey; }
+    public Integer getCupsJobId() { return cupsJobId; }
+    public String getCupsQueue() { return cupsQueue; }
+    public String getIppStateReasons() { return ippStateReasons; }
+    public Instant getSubmittedAt() { return submittedAt; }
+    public Instant getCompletedAt() { return completedAt; }
+    public UUID ensureSubmissionKey() { if (submissionKey == null) submissionKey = UUID.randomUUID(); return submissionKey; }
+    public void submitted(int jobId, String queue, JobStatus initialState, String reasons) {
+        this.cupsJobId = jobId; this.cupsQueue = queue; this.submittedAt = Instant.now();
+        updateIppState(initialState, reasons);
+    }
+    public void updateIppState(JobStatus state, String reasons) {
+        this.status = state; this.ippStateReasons = reasons; this.updatedAt = Instant.now();
+        if (state == JobStatus.COMPLETED || state == JobStatus.CANCELED || state == JobStatus.ABORTED) this.completedAt = updatedAt;
+    }
+    public void cancelHeld() { this.status = JobStatus.CANCELED; this.updatedAt = Instant.now(); this.completedAt = updatedAt; }
 }
-

@@ -11,3 +11,5 @@ printle:
   bootstrap-admin-email: admin@test.local
   bootstrap-admin-password: test-password-123
   default-monthly-page-quota: 100
+  print-node-url: http://print-node.test
+  default-cups-queue: mock-success

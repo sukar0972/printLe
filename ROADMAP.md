@@ -8,7 +8,7 @@ This file tracks the work required to turn the current prototype into a dependab
 - The backend stays on Java and Spring Boot with PostgreSQL.
 - Docker Compose is the standard installation path.
 - CUPS will run in the printLe stack instead of using an existing host installation.
-- CUPS is not part of the current build and should be added only after its container boundary is designed properly.
+- CUPS and a narrow print-node sidecar are part of the development stack; production hardening and physical-printer enrollment remain.
 - USB printers must be identified by stable device attributes. Bus and device numbers are discovery hints, not printer identities.
 - AirPrint and ordinary operating-system `Ctrl+P` printing are out of scope for now.
 - Local accounts are supported. Enterprise SSO is optional and chosen by each installation.
@@ -43,6 +43,8 @@ The current codebase already has:
 - Sidebar entries for the queue, printers, users, groups, reports, and settings
 - Placeholder pages for unfinished management sections
 - Dockerfiles, Docker Compose, health checks, persistent volumes, and CI checks
+- A development-only CUPS service with controllable mock success, delay, cancel, hold, and stopped-printer queues
+- An idempotent print-node submission API, CUPS job correlation, native IPP state polling, and web release control
 
 Database tables are not proof that a feature is complete. Groups, printer ACLs, reporting, most account management, and printer delivery still need services, APIs, tests, and usable screens.
 
@@ -111,7 +113,8 @@ The deleted Node app was an immediate IPP print client, not a queue. Full notes 
 ### Print-job lifecycle
 
 - Replace ad hoc status changes with a documented state machine.
-- Expected states include `HELD`, `QUEUED`, `PROCESSING`, `PRINTED`, `CANCELLED`, `FAILED`, and `EXPIRED`.
+- Before CUPS submission, printLe owns `HELD` and `EXPIRED`. Manual duplex also needs the printLe-owned `AWAITING_FLIP` coordination state between its two physical submissions.
+- After submission, preserve the IPP states without aliases: `PENDING`, `PENDING_HELD`, `PROCESSING`, `PROCESSING_STOPPED`, `CANCELED`, `ABORTED`, and `COMPLETED`. Store `job-state-reasons` separately and do not collapse `CANCELED` into `ABORTED` or assume every `COMPLETED` job was warning-free.
 - Define which roles can view, release, retry, move, and cancel each job.
 - Add configurable retention for held jobs, completed records, failed jobs, and uploaded files.
 - Store an absolute `expires_at` on every held job when it is submitted. Later setting changes apply only to new jobs, and expiration must produce an idempotent `EXPIRED` transition that releases reserved quota and deletes the document payload.
@@ -430,10 +433,10 @@ Leaving these out keeps the first useful product focused: submit a PDF in the br
 
 ## Recommended build order
 
-1. Finish frontend routing and user, group, printer-record, ACL, quota, audit, and settings APIs.
-2. Formalize job states, retention, and idempotent quota accounting.
-3. Add the dedicated CUPS and print-node containers with stable USB matching.
-4. Complete end-to-end release, delivery, status tracking, and recovery.
+1. Make quota reservations/debits transactional and add held-job expiry and retention.
+2. Add printer records, capability lookup, ACL enforcement, and queue selection at release.
+3. Harden print-node authentication and recovery, then add stable USB matching.
+4. Add CUPS cancellation/retry and exercise all mock failure queues in Compose tests.
 5. Harden local authentication, then add optional Authentik-compatible OIDC.
 6. Add reporting, backups, diagnostics, upgrade tooling, and security controls.
 7. Run hardware and upgrade testing before calling the project production-ready.
