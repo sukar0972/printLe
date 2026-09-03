@@ -30,6 +30,27 @@ test('renders a dashboard preview with sample jobs', async () => {
   expect(document.documentElement).toHaveAttribute('data-type', 'dmsans')
 })
 
+test('renders the muted AdminLTE-inspired alternative independently', async () => {
+  window.location.hash = '#preview-adminlte'
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
+  expect(screen.getByText('Queue activity and print service health')).toBeInTheDocument()
+  expect(screen.getByText('Muted AdminLTE study')).toBeInTheDocument()
+  expect(document.documentElement).toHaveAttribute('data-layout', 'adminlte')
+  await userEvent.click(screen.getByRole('button', { name: 'Original' }))
+  await waitFor(() => expect(document.documentElement).toHaveAttribute('data-layout', 'default'))
+})
+
+test('renders the organized monochrome in-between variant', async () => {
+  window.location.hash = '#preview-structured'
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
+  expect(screen.getByText('Structured monochrome study')).toBeInTheDocument()
+  expect(screen.getByText('Pages left')).toBeInTheDocument()
+  expect(document.documentElement).toHaveAttribute('data-layout', 'structured')
+  expect(screen.getByRole('button', { name: 'Muted AdminLTE' })).toBeInTheDocument()
+})
+
 test('selects and saves a typeface from settings', async () => {
   window.location.hash = '#preview'
   render(<App />)
@@ -74,7 +95,42 @@ test('shows manual duplex and retry controls', async () => {
   expect(screen.getByRole('button', { name: 'Stack flipped' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Stack flipped' }))
+  expect(screen.getByRole('heading', { name: 'Reload the printed stack' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Continue printing' }))
   expect(screen.queryByRole('button', { name: 'Stack flipped' })).not.toBeInTheDocument()
+})
+
+test('searches jobs and shows truthful CUPS job details', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.type(screen.getByRole('searchbox', { name: 'Search print jobs' }), 'onboarding')
+  expect(screen.getByRole('button', { name: 'onboarding-handbook.pdf' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Q3-budget.pdf' })).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'onboarding-handbook.pdf' }))
+  expect(screen.getByRole('complementary', { name: 'Print job details' })).toBeInTheDocument()
+  expect(screen.getByText('CUPS reported the job as completed.')).toBeInTheDocument()
+  expect(screen.getByText('Studio Color')).toBeInTheDocument()
+  expect(screen.getByText('$2.80')).toBeInTheDocument()
+})
+
+test('requires confirmation before canceling a job', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  const row = screen.getByRole('button', { name: 'Q3-budget.pdf' }).closest('article')!
+  await userEvent.click(within(row).getByRole('button', { name: 'Cancel' }))
+  expect(screen.getByRole('alertdialog', { name: 'Cancel this print job?' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel job' }))
+  expect(await screen.findByText('Print job canceled.')).toBeInTheDocument()
+  expect(within(row).getByText('Canceled')).toBeInTheDocument()
+})
+
+test('identifies the CUPS mock fleet and its scenarios', async () => {
+  window.location.hash = '#preview'; render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
+  expect(await screen.findByRole('heading', { name: 'Mock printing is active' })).toBeInTheDocument()
+  expect(screen.getAllByText('Paper jam').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Monochrome only').length).toBeGreaterThan(0)
 })
 
 test('renders printer, group, report, and diagnostic administration views', async () => {

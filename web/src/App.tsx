@@ -1,8 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report } from './api'
 
-type Page = 'queue' | 'printers' | 'users' | 'groups' | 'reports' | 'settings'
+type Page = 'queue' | 'profile' | 'printers' | 'users' | 'groups' | 'reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
+type PreviewVariant = 'default' | 'structured' | 'adminlte' | 'shadcn'
 
 const TYPES = [
   { id: 'geist', short: '1 Geist', blurb: 'printLe’s original geometric sans' },
@@ -15,13 +16,13 @@ type TypeId = typeof TYPES[number]['id']
 const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' }
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
 const previewJobs: Job[] = [
-  { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z', attempt: 1 },
-  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD_COMPLETE' },
-  { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z', attempt: 1 },
-  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', attempt: 1, ippStateReasons: 'media-jam' },
-  { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z', attempt: 1 },
-  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8 },
-  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z', attempt: 1 },
+  { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z', expiresAt: '2026-09-04T14:20:00Z', attempt: 1 },
+  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', submittedAt: '2026-09-01T13:06:00Z', cupsJobId: 202, oddCupsJobId: 202, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD' },
+  { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z', expiresAt: '2026-09-04T11:40:00Z', attempt: 1 },
+  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', submittedAt: '2026-09-01T10:16:00Z', completedAt: '2026-09-01T10:17:00Z', cupsJobId: 204, cupsQueue: 'mock-jam', printerName: 'Jammed Printer', attempt: 1, ippStateReasons: 'media-jam' },
+  { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z', expiresAt: '2026-09-03T16:02:00Z', attempt: 1 },
+  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', submittedAt: '2026-08-31T09:14:00Z', completedAt: '2026-08-31T09:16:00Z', cupsJobId: 206, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8, costRateVersion: 1, pricedAt: '2026-08-31T09:16:00Z' },
+  { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z', completedAt: '2026-08-30T15:47:00Z', attempt: 1 },
 ]
 
 const previewPrinters: Printer[] = [
@@ -39,6 +40,10 @@ export default function App() {
   const [page, setPage] = useState<Page>('queue')
   const theme = useTheme()
   useEffect(() => {
+    document.documentElement.dataset.layout = preview.variant
+    return () => { delete document.documentElement.dataset.layout }
+  }, [preview.variant])
+  useEffect(() => {
     if (preview.on) { setUser(previewUser); return }
     api.me().then(setUser).catch(() => setUser(null))
   }, [preview.on])
@@ -46,14 +51,15 @@ export default function App() {
   if (!user) return <Login onLogin={() => api.me().then(setUser)} theme={theme} />
   return (
     <>
-      {preview.on && <PreviewBanner />}
+      {preview.on && <PreviewBanner variant={preview.variant} />}
       <div className="shell">
         <aside className="sidebar">
-          <button className="brand" onClick={() => setPage('queue')}><span className="brand-mark"><Mark /></span><span>printLe</span></button>
+          <button className="brand" onClick={() => setPage('queue')} aria-label="printLe home"><img className="brand-logo" src="/printle-logo.svg" alt="printLe" /></button>
           <div className="sidebar-section">
             <span className="nav-label">Workspace</span>
             <nav>
               <button className={page === 'queue' ? 'active' : ''} onClick={() => setPage('queue')}><NavIcon name="queue" />Print queue</button>
+              <button className={page === 'profile' ? 'active' : ''} onClick={() => setPage('profile')}><NavIcon name="profile" />My profile</button>
               {(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on) && <button className={page === 'reports' ? 'active' : ''} onClick={() => setPage('reports')}><NavIcon name="reports" />Reports</button>}
               <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><NavIcon name="settings" />Settings</button>
             </nav>
@@ -79,7 +85,7 @@ export default function App() {
             <span className="role-badge">{user.role.toLowerCase()}</span>
           </header>
           {user.passwordChangeRequired && <div className="security-notice">Your password is temporary. Change it in Settings.</div>}
-          {page === 'queue' ? <Queue preview={preview.on} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'groups' ? <Groups preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
+          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'groups' ? <Groups preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
         </div>
       </div>
     </>
@@ -96,7 +102,7 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
   }
   return <main className="login-layout">
     <section className="login-copy">
-      <div className="wordmark"><Mark /> printLe</div>
+      <div className="wordmark"><img src="/printle-logo.svg" alt="printLe" /></div>
       <h1>Print what you need.<br/>Pick it up when you're ready.</h1>
       <p>A private web print queue for your team. Upload a PDF, then release it at the printer.</p>
     </section>
@@ -117,15 +123,24 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
   </main>
 }
 
-function PreviewBanner() {
+function PreviewBanner({ variant }: { variant: PreviewVariant }) {
+  const label = variant === 'shadcn' ? 'shadcn dashboard study' : variant === 'adminlte' ? 'Muted AdminLTE study' : variant === 'structured' ? 'Structured monochrome study' : 'Dashboard preview'
   return <div className="preview-banner">
-    <span className="preview-blurb"><strong>Dashboard preview</strong></span>
-    <button type="button" onClick={() => { location.hash = '' }}>Leave preview</button>
+    <span className="preview-blurb"><strong>{label}</strong></span>
+    <span className="preview-actions">
+      {variant !== 'default' && <button type="button" onClick={() => { location.hash = '#preview-original' }}>Original</button>}
+      {variant !== 'structured' && <button type="button" onClick={() => { location.hash = '#preview-structured' }}>In-between</button>}
+      {variant !== 'adminlte' && <button type="button" onClick={() => { location.hash = '#preview-adminlte' }}>Muted AdminLTE</button>}
+      {variant !== 'shadcn' && <button type="button" onClick={() => { location.hash = '#preview-shadcn' }}>shadcn</button>}
+      <button type="button" onClick={() => { location.hash = '' }}>Leave preview</button>
+    </span>
   </div>
 }
 
 type QueueModel = {
   preview: boolean
+  organized: boolean
+  variant: PreviewVariant
   jobs: Job[]
   quota?: Quota
   held: Job[]
@@ -144,11 +159,15 @@ type QueueModel = {
   flip: (id: string) => void
 }
 
-function Queue({ preview }: { preview: boolean }) {
+function Queue({ preview, organized = false, variant = 'default' }: { preview: boolean; organized?: boolean; variant?: PreviewVariant }) {
   const [jobs, setJobs] = useState<Job[]>(preview ? previewJobs : [])
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
   const [printers, setPrinters] = useState<Printer[]>(preview ? previewPrinters : [])
   const [releaseJob, setReleaseJob] = useState<Job>()
+  const [selectedJobId, setSelectedJobId] = useState<string>()
+  const [confirmCancel, setConfirmCancel] = useState<Job>()
+  const [confirmFlip, setConfirmFlip] = useState<Job>()
+  const [notice, setNotice] = useState('')
   const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     if (preview) { setJobs(previewJobs); setQuota(previewQuota); return }
@@ -159,21 +178,35 @@ function Queue({ preview }: { preview: boolean }) {
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
     setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
-    try { await api.upload(form); element.reset(); await load() }
+    try { await api.upload(form); element.reset(); setNotice('PDF added to the held queue.'); await load() }
     catch (e) { setError(message(e)) } finally { setBusy(false) }
   }
   async function cancel(id: string) {
-    if (preview) { setJobs(current => current.filter(job => job.id !== id)); return }
-    setError(''); setLoadError(''); try { await api.cancel(id); await load() } catch (e) { setError(message(e)) }
+    const target = jobs.find(job => job.id === id)
+    if (target) setConfirmCancel(target)
+  }
+  async function confirmCancellation() {
+    if (!confirmCancel) return
+    const id = confirmCancel.id
+    setConfirmCancel(undefined)
+    if (preview) { setJobs(current => current.map(job => job.id === id ? { ...job, status: 'CANCELED', completedAt: new Date().toISOString() } : job)); setNotice('Print job canceled.'); return }
+    setError(''); setLoadError(''); try { await api.cancel(id); setNotice('Print job canceled.'); await load() } catch (e) { setError(message(e)) }
   }
   function release(id: string) { setReleaseJob(jobs.find(job => job.id === id)) }
   async function confirmRelease(printer: Printer) {
     if (!releaseJob) return
-    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name } : job)); setReleaseJob(undefined); return }
-    setError(''); setLoadError(''); try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); await load() } catch (e) { setError(message(e)) }
+    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name, submittedAt: new Date().toISOString() } : job)); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); return }
+    setError(''); setLoadError(''); try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); await load() } catch (e) { setError(message(e)) }
   }
   async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
-  async function flip(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN_SUBMITTED' } : j)); return } setError(''); setLoadError(''); try { await api.flip(id); await load() } catch (e) { setError(message(e)) } }
+  async function flip(id: string) { const target = jobs.find(job => job.id === id); if (target) setConfirmFlip(target) }
+  async function confirmManualFlip() {
+    if (!confirmFlip) return
+    const id = confirmFlip.id
+    setConfirmFlip(undefined)
+    if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenCupsJobId: 203, cupsJobId: 203 } : j)); setNotice('Even pages submitted to CUPS.'); return }
+    setError(''); setLoadError(''); try { await api.flip(id); setNotice('Even pages submitted to CUPS.'); await load() } catch (e) { setError(message(e)) }
+  }
   useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
@@ -181,8 +214,16 @@ function Queue({ preview }: { preview: boolean }) {
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error: error || loadError, printers, upload, cancel, release, retry, flip }
-  return <><LayoutLedger model={model} />{releaseJob && <ReleaseDialog job={releaseJob} printers={printers} onChoose={confirmRelease} onClose={() => setReleaseJob(undefined)} />}</>
+  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error: error || loadError, printers, upload, cancel, release, retry, flip }
+  const selectedJob = jobs.find(job => job.id === selectedJobId)
+  return <>
+    <LayoutLedger model={model} onInspect={job => setSelectedJobId(job.id)} />
+    {releaseJob && <ReleaseDialog job={releaseJob} printers={printers} onChoose={confirmRelease} onClose={() => setReleaseJob(undefined)} />}
+    {selectedJob && <JobDetails job={selectedJob} onClose={() => setSelectedJobId(undefined)} onCancel={cancel} onRelease={release} onRetry={retry} onFlip={flip} />}
+    {confirmCancel && <ConfirmDialog title="Cancel this print job?" copy={`${confirmCancel.filename} will stop printing if CUPS still allows cancellation. This cannot be undone.`} confirm="Cancel job" danger onClose={() => setConfirmCancel(undefined)} onConfirm={confirmCancellation} />}
+    {confirmFlip && <FlipDialog job={confirmFlip} onClose={() => setConfirmFlip(undefined)} onConfirm={confirmManualFlip} />}
+    {notice && <Toast message={notice} onClose={() => setNotice('')} />}
+  </>
 }
 
 function Heading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
@@ -202,6 +243,21 @@ function Metrics({ model }: { model: QueueModel }) {
     <article className="metric"><span>Waiting</span><strong>{held.length}</strong><small>jobs held at printer</small></article>
     <article className="metric"><span>Reserved</span><strong>{pendingPages}</strong><small>pages in the queue</small></article>
     <article className="metric"><span>Printed</span><strong>{used}</strong><small>this month</small></article>
+  </section>
+}
+
+function ActivityOverview({ model }: { model: QueueModel }) {
+  const bars = [34, 48, 41, 62, 55, 72, 68, 83, 58, 76, 66, 88, 79, 92, 74, 84, 71, 94, 86, 97, 82, 91, 78, 89]
+  return <section className="activity-card" aria-label="Print activity">
+    <div className="activity-heading">
+      <div><h2>Print activity</h2><p>Pages submitted during the last 30 days</p></div>
+      <button type="button" className="quiet">Last 30 days⌄</button>
+    </div>
+    <div className="activity-chart" aria-hidden="true">
+      <div className="chart-grid"><i /><i /><i /><i /></div>
+      <div className="chart-bars">{bars.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
+    </div>
+    <div className="activity-foot"><span><i className="legend-dot" /> Printed pages</span><strong>{model.used + model.pendingPages} total pages</strong></div>
   </section>
 }
 
@@ -258,12 +314,12 @@ function Printers() {
   </section>
 }
 
-function JobLine({ job, onCancel, onRelease, onRetry, onFlip, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void; wide?: boolean }) {
+function JobLine({ job, onCancel, onRelease, onRetry, onFlip, onInspect, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void; onInspect?: (job: Job) => void; wide?: boolean }) {
   const color = job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
   if (wide) {
     return <article className="job job-wide">
       <div className="doc-icon">PDF</div>
-      <strong className="job-name">{job.filename}</strong>
+      {onInspect ? <button type="button" className="job-name job-link" onClick={() => onInspect(job)}>{job.filename}</button> : <strong className="job-name">{job.filename}</strong>}
       <span>{job.pages}</span>
       <span>{job.copies}</span>
       <span>{color}</span>
@@ -517,26 +573,33 @@ function sortJobs(jobs: Job[], key: SortKey, dir: SortDir) {
   })
 }
 
-function LayoutLedger({ model }: { model: QueueModel }) {
-  const [filter, setFilter] = useState<'all' | 'HELD' | 'CANCELED'>('all')
+function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job: Job) => void }) {
+  const [filter, setFilter] = useState('all')
+  const [query, setQuery] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'added', dir: 'desc' })
   const rows = useMemo(() => {
-    const filtered = filter === 'all' ? model.jobs : model.jobs.filter(job => job.status === filter)
+    const needle = query.trim().toLocaleLowerCase()
+    const filtered = model.jobs.filter(job => (filter === 'all' || job.status === filter) && (!needle || [job.filename, job.id, job.printerName, job.cupsQueue, job.ippStateReasons].some(value => value?.toLocaleLowerCase().includes(needle))))
     return sortJobs(filtered, sort.key, sort.dir)
-  }, [model.jobs, filter, sort])
+  }, [model.jobs, filter, query, sort])
+  const states = [...new Set(model.jobs.map(job => job.status))]
   function toggleSort(key: SortKey) {
     setSort(current => current.key === key
       ? { key, dir: current.dir === 'asc' ? 'desc' : 'asc' }
       : { key, dir: NUMERIC_SORT.has(key) ? 'desc' : 'asc' })
   }
   return <main className="page ledger-page">
+    {model.organized && <div className="alt-content-heading"><div><h1>Print dashboard</h1><p>Queue activity and print service health</p></div><nav aria-label="Breadcrumb"><span>Home</span><b>/</b><strong>Dashboard</strong></nav></div>}
+    {model.organized && <Metrics model={model} />}
+    {model.variant === 'shadcn' && <ActivityOverview model={model} />}
     <DropBox model={model} />
     <div className="ledger-list">
       <div className="ledger-bar">
         <h1>Queue</h1>
+        <label className="queue-search"><span className="sr-only">Search print jobs</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search jobs, printers, or IDs" /></label>
         <div className="filter-pills">
-          {([['all', 'All'], ['HELD', 'Held'], ['CANCELED', 'Canceled']] as const).map(([id, label]) => (
-            <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>
+          {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
+            <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>
       </div>
@@ -559,10 +622,66 @@ function LayoutLedger({ model }: { model: QueueModel }) {
           })}
           <span />
         </div>
-        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} onRetry={model.retry} onFlip={model.flip} wide />)}
+        {rows.map(job => <JobLine key={job.id} job={job} onCancel={model.cancel} onRelease={model.release} onRetry={model.retry} onFlip={model.flip} onInspect={onInspect} wide />)}
       </>}
     </div>
   </main>
+}
+
+function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { job: Job; onClose: () => void; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry: (id: string) => void; onFlip: (id: string) => void }) {
+  const terminal = ['COMPLETED', 'CANCELED', 'ABORTED', 'EXPIRED'].includes(job.status)
+  return <div className="drawer-backdrop" onMouseDown={onClose}>
+    <aside className="detail-drawer" aria-label="Print job details" onMouseDown={event => event.stopPropagation()}>
+      <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+      <section className="drawer-section current-state">
+        <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
+        <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
+        {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical CUPS reason</summary><code>{job.ippStateReasons}</code></details>}
+      </section>
+      <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
+        <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
+        <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
+        <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
+        <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
+      </dl></section>
+      <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
+        <TimelineItem label="Created and held" time={job.createdAt} complete />
+        <TimelineItem label={job.cupsJobId ? `Submitted to CUPS · job ${job.cupsJobId}` : 'Not submitted to CUPS'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
+        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenCupsJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddCupsJobId || 'pending'}`} complete={Boolean(job.oddCupsJobId)} />}
+        <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
+      </ol></section>
+      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>CUPS queue</dt><dd>{job.cupsQueue || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
+      <div className="drawer-actions">
+        {job.status === 'HELD' && <button className="primary" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</button>}
+        {job.status === 'AWAITING_FLIP' && <button className="primary" onClick={() => onFlip(job.id)}>Stack flipped—continue</button>}
+        {job.status === 'ABORTED' && <button className="primary" onClick={() => onRetry(job.id)}>Retry job</button>}
+        {!terminal && <button className="danger-outline" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</button>}
+      </div>
+    </aside>
+  </div>
+}
+
+function TimelineItem({ label, time, complete = false, active = false }: { label: string; time?: string; complete?: boolean; active?: boolean }) {
+  return <li className={complete ? 'complete' : active ? 'active' : ''}><i /><span><strong>{label}</strong>{time && <time dateTime={time}>{new Date(time).toLocaleString()}</time>}</span></li>
+}
+
+function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" onMouseDown={event => event.stopPropagation()}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Keep job</button><button className={danger ? 'danger-button' : 'primary'} onClick={onConfirm}>{confirm}</button></div></section></div>
+}
+
+function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: () => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal flip-modal" role="dialog" aria-modal="true" aria-labelledby="flip-title" onMouseDown={event => event.stopPropagation()}>
+    <p className="eyebrow">Manual duplex · step 2 of 2</p><h2 id="flip-title">Reload the printed stack</h2>
+    <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
+    <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
+    <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
+    <div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Not ready</button><button className="primary" onClick={onConfirm}>Continue printing</button></div>
+  </section></div>
+}
+
+function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => { const timer = window.setTimeout(onClose, 4000); return () => window.clearTimeout(timer) }, [onClose])
+  return <div className="toast" role="status"><span>{message}</span><button aria-label="Dismiss notification" onClick={onClose}>×</button></div>
 }
 
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
@@ -620,8 +739,44 @@ const previewGroups: Group[] = [
   { id: 'g2', name: 'Studio', monthlyPageQuota: 250, builtIn: false, members: [{ id: '2', email: 'sam@printle.local', displayName: 'Sam Chen' }] },
 ]
 
+function Profile({ user, preview, onManage }: { user: CurrentUser; preview: boolean; onManage: () => void }) {
+  const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (preview) return
+    api.quota().then(setQuota).catch(e => setError(message(e)))
+  }, [preview])
+  const remaining = quota?.exempt ? '∞' : quota?.remaining ?? '—'
+  const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
+  return <main className="page profile-page">
+    <div className="page-heading"><div><p className="eyebrow">Account</p><h1>My profile</h1><p>Your identity, role, and current print allowance.</p></div></div>
+    {error && <p className="error" role="alert">{error}</p>}
+    <div className="profile-layout">
+      <section className="panel print-pass-panel">
+        <div className="profile-section-heading"><h2>My print pass</h2><p>Your live monthly print allowance at a glance.</p></div>
+        <div className="print-pass">
+          <div className="pass-brand"><img src="/printle-logo.svg" alt="printLe" /></div>
+          <div className="pass-balance"><span>Pages remaining</span><strong>{remaining}</strong></div>
+          <div className="pass-number">•••• &nbsp;•••• &nbsp;PL&nbsp;{identifier}</div>
+          <div className="pass-footer"><span><small>MEMBER</small><strong>{user.displayName.toUpperCase()}</strong></span><span><small>ROLE</small><strong>{statusLabel(user.role).toUpperCase()}</strong></span><i><span /><span /></i></div>
+        </div>
+        <dl className="pass-details"><div><dt>Monthly allowance</dt><dd>{quota?.exempt ? 'Unlimited' : quota?.limit ?? '—'}</dd></div><div><dt>Printed this month</dt><dd>{quota?.used ?? '—'} pages</dd></div><div><dt>Reserved in queue</dt><dd>{quota?.pending ?? '—'} pages</dd></div><div><dt>Available to print</dt><dd>{remaining}{remaining !== '∞' && remaining !== '—' ? ' pages' : ''}</dd></div></dl>
+        <button className="primary pass-action" onClick={onManage}>Manage profile settings</button>
+      </section>
+      <section className="panel profile-info-panel">
+        <div className="profile-section-heading"><h2>Account information</h2><p>Details associated with your printLe membership.</p></div>
+        <dl><div><dt>Name</dt><dd>{user.displayName}</dd></div><div><dt>Email</dt><dd>{user.email}</dd></div><div><dt>Access role</dt><dd>{statusLabel(user.role)}</dd></div><div><dt>Allowance policy</dt><dd>{quota?.exempt ? 'Quota exempt' : 'Monthly page quota'}</dd></div></dl>
+      </section>
+    </div>
+  </main>
+}
+
 function PrinterAdmin({ preview }: { preview: boolean }) {
   const [printers, setPrinters] = useState<Printer[]>(preview ? previewPrinters : [])
+  const [usage, setUsage] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [capabilityFilter, setCapabilityFilter] = useState('ALL')
   const [selected, setSelected] = useState<Printer>()
   const [rules, setRules] = useState<AclRule[]>([])
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
@@ -632,6 +787,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { if (!preview) api.report().then(setUsage).catch(e => setError(message(e))) }, [preview])
   async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
   async function edit(printer: Printer) { setSelected(printer); try { setRules(preview ? [] : await api.printerAcl(printer.id)) } catch (e) { setError(message(e)) } }
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -648,19 +804,56 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     const first = users[0]
     if (first) setRules(current => [...current, { principalType: 'USER', principalId: first.id, permission: 'RELEASE_OWN' }])
   }
+  const visiblePrinters = printers.filter(printer => {
+    const needle = query.trim().toLocaleLowerCase()
+    const matchesQuery = !needle || [printer.name, printer.location, printer.cupsQueue, printer.deviceSerial].some(value => value?.toLocaleLowerCase().includes(needle))
+    const effectiveStatus = printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED'
+    const matchesStatus = statusFilter === 'ALL' || effectiveStatus === statusFilter
+    const matchesCapability = capabilityFilter === 'ALL' || (capabilityFilter === 'COLOR' ? printer.colorCapable : capabilityFilter === 'DUPLEX' ? printer.duplexCapable : !printer.colorCapable)
+    return matchesQuery && matchesStatus && matchesCapability
+  })
   return <main className="page">
     <div className="page-heading"><div><p className="eyebrow">CUPS fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><button className="primary compact" disabled={busy} onClick={sync}>{busy ? 'Syncing…' : 'Sync CUPS'}</button></div>
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="admin-card-grid">
-      {printers.map(printer => <article className="panel admin-card" key={printer.id}>
-        <div className="card-row"><div><h2>{printer.name}</h2><p>{printer.location || printer.cupsQueue || 'Unassigned'}</p></div><span className={`status ${printer.status === 'ONLINE' && printer.enabled && !printer.maintenance ? 'active' : 'suspended'}`}>{printer.maintenance ? 'Maintenance' : printer.status.toLowerCase()}</span></div>
-        <dl className="capability-grid"><div><dt>Color</dt><dd>{yesNo(printer.colorCapable)}</dd></div><div><dt>Duplex</dt><dd>{yesNo(printer.duplexCapable)}</dd></div><div><dt>Media</dt><dd>{printer.mediaSupported || 'Unknown'}</dd></div><div><dt>Policy</dt><dd>{printer.errorPolicy.toLowerCase()}</dd></div><div><dt>Mono</dt><dd>{money(printer.monoPageRate)}/page</dd></div><div><dt>Color</dt><dd>{money(printer.colorPageRate)}/page</dd></div></dl>
-        {printer.stateReasons && printer.stateReasons !== 'none' && <p className="device-reason">CUPS: {printer.stateReasons}</p>}
-        <div className="card-actions"><small>{printer.transport || 'CUPS'}{printer.deviceSerial ? ` · ${printer.deviceSerial}` : ''}</small><button className="quiet" onClick={() => edit(printer)}>Configure</button></div>
-      </article>)}
-    </div>
+    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <section className="panel mock-panel">
+      <div><p className="eyebrow">Development fleet</p><h2>Mock printing is active</h2><p>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</p></div>
+      <div className="mock-scenarios">{printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}</div>
+    </section>}
+    <section className="printer-table panel">
+      <header className="printer-table-toolbar">
+        <div><h2>Printer fleet</h2><p>Monitor CUPS queues, capabilities, health, and page pricing.</p></div>
+        <div className="printer-table-controls">
+          <label className="sr-only" htmlFor="printer-search">Search printers</label><input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => setQuery(event.target.value)} />
+          <select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="ALL">☰ Status</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="ERROR">Error</option><option value="MAINTENANCE">Maintenance</option><option value="DISABLED">Disabled</option></select>
+          <select aria-label="Filter by capability" value={capabilityFilter} onChange={event => setCapabilityFilter(event.target.value)}><option value="ALL">☰ Capability</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></select>
+        </div>
+      </header>
+      <div className="printer-table-scroll">
+        <div className="printer-table-head"><input type="checkbox" aria-label="Select all printers" /><span>Queue</span><span>Printer</span><span>State</span><span>Capabilities</span><span>Print share</span><span>Price / page</span><span>Edit</span></div>
+        {visiblePrinters.map(printer => {
+          const healthy = printer.status === 'ONLINE' && printer.enabled && !printer.maintenance
+          const printedPages = usage.jobs.filter(job => job.printer === printer.name).reduce((total, job) => total + job.printedPages, 0)
+          const printShare = usage.printedPages > 0 ? Math.round((printedPages / usage.printedPages) * 100) : 0
+          const filledShare = printShare > 0 ? Math.max(1, Math.round(printShare / 10)) : 0
+          return <article className="printer-table-row" key={printer.id}>
+            <input type="checkbox" aria-label={`Select ${printer.name}`} />
+            <code>{printer.cupsQueue || 'unassigned'}</code>
+            <span className="printer-name-cell"><strong>{printer.name}</strong><small>{printer.location || printer.deviceSerial || 'No location'}</small></span>
+            <span><i className={`fleet-state ${healthy ? 'ready' : ''}`} />{printer.maintenance ? 'Maintenance' : !printer.enabled ? 'Disabled' : statusLabel(printer.status)}</span>
+            <span className="capability-pills"><i>{printer.colorCapable ? 'Color' : 'Mono'}</i>{printer.duplexCapable && <i>Duplex</i>}</span>
+            <span className="health-meter print-share" aria-label={`${printShare}% of printed pages`} title={`${printedPages} pages · ${printShare}% of fleet volume`}>{Array.from({ length: 10 }, (_, index) => <i className={index < filledShare ? 'filled' : ''} key={index} />)}<small>{printShare}%</small></span>
+            <span className="price-cell"><strong>{money(printer.monoPageRate)}</strong><small>{printer.colorCapable ? `${money(printer.colorPageRate)} color` : 'mono only'}</small></span>
+            <button type="button" className="printer-edit" aria-label={`Edit ${printer.name}`} onClick={() => edit(printer)}>✎</button>
+          </article>
+        })}
+        {visiblePrinters.length === 0 && <p className="empty-table">No printers match these filters.</p>}
+      </div>
+      <footer className="printer-table-footer"><span>Viewing {visiblePrinters.length} out of {printers.length} printers</span><nav aria-label="Printer pages"><button disabled>‹ Previous</button><button className="current">1</button><button disabled>Next ›</button></nav></footer>
+    </section>
     {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(undefined)}><section className="modal modal-wide" onMouseDown={e => e.stopPropagation()}>
       <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
+      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>CUPS queue</span><strong>{selected.cupsQueue || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
+      {selected.cupsQueue?.startsWith('mock-') && <p className="mock-callout"><strong>Mock scenario: {mockScenario(selected)}</strong><span>This queue runs through CUPS and the print node, but writes mock output instead of sending pages to hardware.</span></p>}
       <form onSubmit={save}>
         <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
         <label>Description<input name="description" defaultValue={selected.description} /></label>
@@ -682,6 +875,10 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
 
 function Users({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
+  const [query, setQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [checkedUsers, setCheckedUsers] = useState<string[]>([])
   const [open, setOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
   const load = useCallback(() => {
     if (preview) { setUsers(previewUsers); return Promise.resolve() }
@@ -699,25 +896,39 @@ function Users({ preview }: { preview: boolean }) {
   }
   async function adjust(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); try { if (!preview) await api.adjustQuota(selected.id, { pages: Number(data.get('pages')), reason: data.get('reason') }); form.reset(); setError('') } catch (e) { setError(message(e)) } }
   async function resetPassword(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected) return; const form = event.currentTarget; const data = new FormData(form); try { if (!preview) await api.resetUserPassword(selected.id, String(data.get('temporaryPassword'))); form.reset(); setError(''); await load() } catch (e) { setError(message(e)) } }
+  const visibleUsers = users.filter(user => {
+    const needle = query.trim().toLocaleLowerCase()
+    return (!needle || [user.displayName, user.email, user.role].some(value => value.toLocaleLowerCase().includes(needle)))
+      && (roleFilter === 'ALL' || user.role === roleFilter)
+      && (statusFilter === 'ALL' || user.status === statusFilter)
+  })
+  function toggleUser(id: string) { setCheckedUsers(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
+  function toggleVisibleUsers() {
+    const ids = visibleUsers.map(user => user.id)
+    const allSelected = ids.length > 0 && ids.every(id => checkedUsers.includes(id))
+    setCheckedUsers(current => allSelected ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])])
+  }
   return <main className="page">
-    <div className="page-heading">
-      <div><p className="eyebrow">Administration</p><h1>Users</h1><p>Manage access, roles, and individual page allowances.</p></div>
-      <button className="primary compact" onClick={() => setOpen(true)}>Add user</button>
-    </div>
     {error && <p className="error" role="alert">{error}</p>}
-    <section className="panel">
-      <div className="user-table">
-        <div className="table-row table-head"><span>User</span><span>Role</span><span>Status</span><span>Monthly quota</span><span /></div>
-        {users.map(user => (
-          <div className="table-row" key={user.id}>
-            <span><strong>{user.displayName}</strong><small>{user.email}</small></span>
-            <span className="role">{user.role.toLowerCase()}</span>
-            <span className={`status ${user.status.toLowerCase()}`}>{user.status.toLowerCase()}</span>
-            <span>{user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota ?? 'Default'}</span>
-            <button className="quiet" onClick={() => setSelected(user)}>Manage</button>
-          </div>
+    <section className="panel user-directory">
+      <header className="user-directory-header"><div><h1>Users</h1><p>Manage organization members and their printing access.</p></div><div><label className="user-search"><span className="sr-only">Search users</span><input type="search" placeholder="Search users..." value={query} onChange={event => setQuery(event.target.value)} /></label><button className="primary compact" onClick={() => setOpen(true)}>+ Add user</button></div></header>
+      <div className="user-filter-row"><div><select aria-label="Filter by role" value={roleFilter} onChange={event => setRoleFilter(event.target.value)}><option value="ALL">Role: All</option><option value="ADMIN">Admin</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="USER">User</option></select><select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="ALL">Status: All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select></div><span>{checkedUsers.length} selected</span></div>
+      <div className="user-directory-scroll">
+        <div className="user-directory-head"><input type="checkbox" aria-label="Select all visible users" checked={visibleUsers.length > 0 && visibleUsers.every(user => checkedUsers.includes(user.id))} onChange={toggleVisibleUsers} /><span>User</span><span>Role</span><span>Page allowance</span><span>Status</span><span>Joined date</span><span>Actions</span></div>
+        {visibleUsers.map(user => (
+          <article className="user-directory-row" key={user.id}>
+            <input type="checkbox" aria-label={`Select ${user.displayName}`} checked={checkedUsers.includes(user.id)} onChange={() => toggleUser(user.id)} />
+            <span className="directory-user"><i>{initials(user.displayName)}</i><span><strong>{user.displayName}</strong><small>{user.email}</small></span></span>
+            <span className="user-role"><strong>{statusLabel(user.role)}</strong><small>{user.role === 'ADMIN' ? 'Full administration' : user.role === 'OPERATOR' ? 'Print operations' : user.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}</small></span>
+            <span className="allowance-badge">{user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`}</span>
+            <span><i className={`directory-status-dot ${user.status.toLowerCase()}`} />{statusLabel(user.status)}</span>
+            <time dateTime={user.createdAt}>{new Date(user.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</time>
+            <button className="directory-actions" aria-label={`Manage ${user.displayName}`} onClick={() => setSelected(user)}>•••</button>
+          </article>
         ))}
+        {visibleUsers.length === 0 && <p className="empty-table">No users match these filters.</p>}
       </div>
+      <footer className="user-directory-footer"><span>Rows per page <select aria-label="Rows per page" defaultValue="10"><option>10</option><option>25</option><option>50</option></select></span><span>Page 1 of 1</span><nav aria-label="User pages"><button disabled>‹</button><button className="current">1</button><button disabled>›</button></nav></footer>
     </section>
     {open && <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
       <section className="modal" onMouseDown={e => e.stopPropagation()}>
@@ -845,7 +1056,8 @@ function relativeTime(iso: string) {
 }
 
 function parsePreviewHash(hash = typeof location === 'undefined' ? '' : location.hash) {
-  return { on: hash.startsWith('#preview') }
+  const variant: PreviewVariant = hash.startsWith('#preview-original') ? 'default' : hash.startsWith('#preview-adminlte') ? 'adminlte' : hash.startsWith('#preview-structured') ? 'structured' : 'shadcn'
+  return { on: hash.startsWith('#preview'), variant }
 }
 
 function usePreview() {
@@ -888,21 +1100,52 @@ function useTheme() {
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
 function SunIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> }
 function MoonIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg> }
-function NavIcon({ name }: { name: 'queue' | 'printer' | 'users' | 'groups' | 'reports' | 'settings' | 'logout' }) {
+function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'groups' | 'reports' | 'settings' | 'logout' }) {
   if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
   if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+  if (name === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
   if (name === 'users') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   if (name === 'groups') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M15 14h2a4 4 0 0 1 4 4v2"/></svg>
   if (name === 'reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
   if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', printers: 'Printers', users: 'Users', groups: 'Groups', reports: 'Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', users: 'Users', groups: 'Groups', reports: 'Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }
 function yesNo(value: boolean) { return value ? 'Yes' : 'No' }
 function optionalNumber(value: FormDataEntryValue | null) { return value === null || value === '' ? null : Number(value) }
+function formatBytes(value: number) { return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / 1024 / 1024).toFixed(1)} MB` }
+function formatDate(value?: string) { return value ? new Date(value).toLocaleString() : '—' }
+function humanizeReason(value: string) { return value.split(',').map(reason => reason.trim().replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())).join(', ') }
+function jobStatusCopy(status: string) {
+  return ({
+    HELD: 'Waiting for you to choose a printer.',
+    EXPIRED: 'The held job expired before it was released.',
+    PENDING: 'CUPS accepted the job and is waiting to print it.',
+    PENDING_HELD: 'CUPS is holding the submitted job.',
+    PROCESSING: 'CUPS is currently processing this job.',
+    PROCESSING_STOPPED: 'Printing stopped. Check the printer reason below.',
+    AWAITING_FLIP: 'The odd pages are complete. Reload the stack before continuing.',
+    CANCELED: 'The job was canceled.',
+    ABORTED: 'CUPS could not complete the job.',
+    COMPLETED: 'CUPS reported the job as completed.',
+  } as Record<string, string>)[status] || 'The job state was reported by CUPS.'
+}
+function mockScenario(printer: Printer) {
+  const queue = printer.cupsQueue || ''
+  if (queue.includes('jam')) return 'Paper jam'
+  if (queue.includes('offline')) return 'Offline printer'
+  if (queue.includes('delay') || queue.includes('slow')) return 'Delayed completion'
+  if (queue.includes('abort')) return 'Aborted job'
+  if (queue.includes('cancel')) return 'Cancellation'
+  if (queue.includes('hold')) return 'Held job'
+  if (queue.includes('stop')) return 'Stopped processing'
+  if (queue.includes('mono')) return 'Monochrome only'
+  if (queue.includes('simple')) return 'Simplex only'
+  return 'Successful print'
+}
 function duplexLabel(mode: string) {
   return ({ ONE_SIDED: 'One-sided', TWO_SIDED_LONG_EDGE: 'Hardware · long', TWO_SIDED_SHORT_EDGE: 'Hardware · short', MANUAL: 'Manual flip' } as Record<string, string>)[mode] ?? mode
 }
