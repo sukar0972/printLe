@@ -25,30 +25,30 @@ test('renders a dashboard preview with sample jobs', async () => {
   expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument()
   expect(screen.getByText('Drop PDF here')).toBeInTheDocument()
   expect(screen.getAllByText('Q3-budget.pdf')[0]).toBeInTheDocument()
+  expect(screen.getAllByText(/1st September 2026/).length).toBeGreaterThan(0)
   expect(screen.getAllByText('Grayscale')[0]).toBeInTheDocument()
   expect(screen.getAllByLabelText('Cancel').length).toBeGreaterThan(0)
   expect(document.documentElement).toHaveAttribute('data-type', 'dmsans')
 })
 
-test('renders the muted AdminLTE-inspired alternative independently', async () => {
-  window.location.hash = '#preview-adminlte'
+test('uses the permanent shadcn application layout', async () => {
+  window.location.hash = '#preview'
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
-  expect(screen.getByText('Queue activity and print service health')).toBeInTheDocument()
-  expect(screen.getByText('Muted AdminLTE study')).toBeInTheDocument()
-  expect(document.documentElement).toHaveAttribute('data-layout', 'adminlte')
-  await userEvent.click(screen.getByRole('button', { name: 'Original' }))
-  await waitFor(() => expect(document.documentElement).toHaveAttribute('data-layout', 'default'))
+  expect(screen.getByText('printLe preview')).toBeInTheDocument()
+  expect(screen.getByText('Pages left')).toBeInTheDocument()
+  expect(document.documentElement).toHaveAttribute('data-layout', 'shadcn')
+  expect(screen.queryByRole('button', { name: 'Muted AdminLTE' })).not.toBeInTheDocument()
 })
 
-test('renders the organized monochrome in-between variant', async () => {
-  window.location.hash = '#preview-structured'
+test('shows the print pass on My profile', async () => {
+  window.location.hash = '#preview'
   render(<App />)
-  expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
-  expect(screen.getByText('Structured monochrome study')).toBeInTheDocument()
-  expect(screen.getByText('Pages left')).toBeInTheDocument()
-  expect(document.documentElement).toHaveAttribute('data-layout', 'structured')
-  expect(screen.getByRole('button', { name: 'Muted AdminLTE' })).toBeInTheDocument()
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByRole('button', { name: 'My profile' }))
+  expect(screen.getByText('Pages remaining')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'My print pass' })).toBeInTheDocument()
+  expect(document.documentElement).not.toHaveAttribute('data-pass')
 })
 
 test('selects and saves a typeface from settings', async () => {
@@ -80,7 +80,7 @@ test('sorts the queue when a column header is clicked', async () => {
 test('selects only a compatible printer when releasing a job', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })
-  const colorRow = screen.getByText('lab-safety-poster.pdf').closest('article')!
+  const colorRow = screen.getByText('lab-safety-poster.pdf').closest('tr')!
   await userEvent.click(within(colorRow).getByRole('button', { name: 'Print' }))
   expect(screen.getByRole('heading', { name: 'Choose a printer' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Reception Mono/ })).toBeDisabled()
@@ -116,7 +116,7 @@ test('searches jobs and shows truthful CUPS job details', async () => {
 test('requires confirmation before canceling a job', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })
-  const row = screen.getByRole('button', { name: 'Q3-budget.pdf' }).closest('article')!
+  const row = screen.getByRole('button', { name: 'Q3-budget.pdf' }).closest('tr')!
   await userEvent.click(within(row).getByRole('button', { name: 'Cancel' }))
   expect(screen.getByRole('alertdialog', { name: 'Cancel this print job?' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Cancel job' }))
@@ -139,13 +139,51 @@ test('renders printer, group, report, and diagnostic administration views', asyn
   await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
   expect(await screen.findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
   expect(screen.getByText('Studio Color')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Groups' }))
-  expect(await screen.findByRole('heading', { name: 'Groups' })).toBeInTheDocument()
-  expect(screen.getByText('Everyone')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Users' }))
+  expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Groups' })).toBeInTheDocument()
+  expect(screen.getAllByText('Everyone').length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: '+ Add group' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Reports' }))
   expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
   expect(screen.getByText('$3.18')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  expect(await screen.findByText('Print node')).toBeInTheDocument()
+})
+
+test('paginates the queue when the page size changes', async () => {
+  window.location.hash = '#preview'
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByLabelText('Rows per page'))
+  await userEvent.click(screen.getByRole('option', { name: '5' }))
+  expect(screen.getByText('Viewing 5 out of 7 jobs')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Next ›' }))
+  expect(screen.getByRole('button', { name: '2' })).toHaveClass('current')
+})
+
+test('opens account actions from the user directory menu', async () => {
+  window.location.hash = '#preview'
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByRole('button', { name: 'Users' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Manage Alex Rivera' }))
+  expect(screen.getByRole('menuitem', { name: 'Edit account' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Edit account' }))
+  expect(screen.getByRole('heading', { name: 'Alex Rivera' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Groups' })).toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: /Everyone/ })).toBeDisabled()
+})
+
+test('collapses the sidebar and opens the account menu', async () => {
+  window.location.hash = '#preview'
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Queue' })
+  await userEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+  expect(document.documentElement).toHaveAttribute('data-sidebar', 'collapsed')
+  await userEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+  expect(screen.getByRole('menuitem', { name: 'Profile' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Settings' }))
   expect(await screen.findByText('Print node')).toBeInTheDocument()
 })
 

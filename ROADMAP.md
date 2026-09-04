@@ -414,6 +414,19 @@ A release is not ready until:
 - Add contributor terms only after the commercialization model is clear.
 - Have counsel review trademark, privacy, third-party notices, and enterprise terms before charging customers.
 
+## Distant future: Scan to Email
+
+Scan to Email is a post-1.0 possibility, not part of the current release sequence. Revisit it only after physical printing, authentication, outbound email, upgrades, and production operations are stable.
+
+- Integrate with supported multifunction printers or scanner hardware and document the device compatibility boundary.
+- Acquire scans safely, generate a PDF, and enforce page, file-size, retention, and malware-scanning policies.
+- Deliver through the installation's configured SMTP service without exposing mail credentials to printers or browsers.
+- Add administrator policies for permitted recipients, address-book access, sender identity, rate limits, and audit retention.
+- Show scan progress and actionable device/email delivery failures without retaining document contents in logs.
+- Test authentication, document cleanup, duplicate delivery prevention, and representative hardware before advertising support.
+
+General scan workflows such as Scan to Folder, fax, OCR capture fields, and document-routing automation remain outside this item.
+
 ## Explicitly deferred
 
 These items are not part of the current plan unless the scope changes:
@@ -424,8 +437,8 @@ These items are not part of the current plan unless the scope changes:
 - Mobile applications
 - Native desktop/mobile print clients, offline submission, and endpoint-management deployment packages
 - Distributed edge-node meshes, super nodes, remote-site routing, and multi-site high availability
-- Embedded multifunction-printer apps, badge/card readers, access codes, and scan-to-email/folder/fax workflows
-- Integrated scanning and scan capture-field workflows
+- Embedded multifunction-printer apps, badge/card readers, access codes, and scan-to-folder/fax workflows
+- General-purpose scanning and scan capture-field workflows beyond the distant-future Scan to Email item
 - Non-PDF document conversion
 - Cloud-hosted document processing
 
@@ -441,3 +454,4 @@ Leaving these out keeps the first useful product focused: submit a PDF in the br
 6. ~~Add reporting, backups, diagnostics, and baseline browser security headers.~~ Implemented; upgrade tooling and deeper observability remain.
 7. Run hardware and upgrade testing before calling the project production-ready.
 8. Settle licensing and package enterprise features only after the core print path is dependable.
+9. After a stable 1.x release, reassess whether Scan to Email has enough user demand and compatible hardware to enter an active release plan.

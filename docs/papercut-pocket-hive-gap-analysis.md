@@ -23,7 +23,7 @@ The current roadmap already accounts for held jobs and secure web release, group
 
 ## Deliberately deferred
 
-The manual also describes native desktop/mobile printing, offline printing, endpoint bulk deployment, edge/super-node meshes, remote and multi-site delivery, badge/card release, embedded MFD apps, and integrated scanning. They imply new trusted clients, hardware integrations, or distributed-system boundaries. They are recorded under `Explicitly deferred` rather than silently omitted.
+The manual also describes native desktop/mobile printing, offline printing, endpoint bulk deployment, edge/super-node meshes, remote and multi-site delivery, badge/card release, embedded MFD apps, and integrated scanning. They imply new trusted clients, hardware integrations, or distributed-system boundaries. Most remain under `Explicitly deferred`; Scan to Email is recorded separately as a distant post-1.0 possibility rather than part of the active release plan.
 
 ## Source pages used for detailed requirements
 

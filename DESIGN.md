@@ -49,6 +49,18 @@ output: DESIGN.md
 - printLe mapping: role/team → account role and permission scope, workspace → page allowance policy, joined date → account creation timestamp, overflow action → existing account management dialog.
 - Scale correction: constrain shadcn application pages to roughly 1380px on wide screens instead of stretching edge-to-edge. Use 15px base text, 13–14px table content, 12px secondary metadata, and 20–21px directory headings; avoid 9–10px text except for truly tertiary labels.
 
+## Live Dashboard Typography Measurements
+
+- Source: https://next-shadcn-admin-dashboard.vercel.app/dashboard/default
+- Measured in the rendered application on 2026-09-03, rather than inferred from screenshots.
+- Body: Geist at 16px/24px, weight 400.
+- Primary application text: 14px/20px. This includes sidebar items, inputs, selects, ordinary buttons, table headers, table cells, and footer controls.
+- Secondary metadata and badges: 12px/16px, generally weight 400–500.
+- Table headers: 14px/20px at weight 500 with 44px header height.
+- Table cells: 14px/20px with 12px secondary lines and approximately 63px row height.
+- KPI values: 30px/30px at weight 500. Card titles are 16px/16px at weight 500.
+- printLe must not use the previous 13px application-text override. Reserve 12px for genuine metadata and use 14px as the compact UI default.
+
 ## Branded Print Pass
 
 - Screenshot supplied by the user on 2026-09-03.
