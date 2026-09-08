@@ -1894,7 +1894,7 @@ html .shell .sidebar-toggle { display: inline-flex; }
 .printle-brand-button .brand-mark { display: none; }
 [data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-mark { display: inline-flex; }
 [data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-logo { display: none; }
-.printle-nav-icon svg { width: 16px; height: 16px; }
+.printle-nav-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-mobile="true"] .brand-logo { display: block; }
 .queue-data-table .job-name, .queue-data-table .job-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .preview-banner + .shell [data-slot="sidebar-container"] { top: 40px; height: calc(100svh - 40px); }
