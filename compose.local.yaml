@@ -1,0 +1,5 @@
+# Local-only override for this machine: nested Docker here drops traffic on
+# Compose "internal" networks, so print-node cannot reach CUPS.
+networks:
+  backend:
+    internal: false
