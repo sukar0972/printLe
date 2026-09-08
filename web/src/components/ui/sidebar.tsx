@@ -1,1 +1,1 @@
-PLACEHOLDER_TEST_ONLY
+@/tmp/mcp_sidebar_final.json
