@@ -23,6 +23,14 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 @EnableMethodSecurity
 @EnableConfigurationProperties(PrintleProperties.class)
 public class SecurityConfig {
+    @Bean org.springframework.security.core.session.SessionRegistry sessionRegistry() {
+        return new org.springframework.security.core.session.SessionRegistryImpl();
+    }
+
+    @Bean org.springframework.security.web.session.HttpSessionEventPublisher sessionEventPublisher() {
+        return new org.springframework.security.web.session.HttpSessionEventPublisher();
+    }
+
     @Bean PasswordEncoder passwordEncoder() { return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8(); }
 
     @Bean UserDetailsService userDetailsService(AppUserRepository users) {
@@ -32,7 +40,7 @@ public class SecurityConfig {
             .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Invalid credentials"));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit, org.springframework.security.core.session.SessionRegistry sessions) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
         var handler = new CsrfTokenRequestAttributeHandler();
@@ -46,6 +54,12 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**", "/api/auth/csrf", "/api/auth/login").permitAll()
                 .anyRequest().authenticated())
+            .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessions)
+                .expiredSessionStrategy(event -> {
+                    event.getResponse().setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    event.getResponse().setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    objectMapper.writeValue(event.getResponse().getWriter(), java.util.Map.of("error", "Session revoked; sign in again"));
+                }))
             .formLogin(form -> form
                 .loginProcessingUrl("/api/auth/login")
                 .usernameParameter("email")

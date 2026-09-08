@@ -23,8 +23,9 @@ public class AdminUserController {
     private final AppUserRepository users; private final UserGroupRepository groups;
     private final PasswordEncoder passwords; private final AuditService audit;
     private final QuotaService quotas;
-    public AdminUserController(AppUserRepository users, UserGroupRepository groups, PasswordEncoder passwords, AuditService audit, QuotaService quotas) {
-        this.users = users; this.groups = groups; this.passwords = passwords; this.audit = audit; this.quotas = quotas;
+    private final org.springframework.security.core.session.SessionRegistry sessions;
+    public AdminUserController(AppUserRepository users, UserGroupRepository groups, PasswordEncoder passwords, AuditService audit, QuotaService quotas, org.springframework.security.core.session.SessionRegistry sessions) {
+        this.users = users; this.groups = groups; this.passwords = passwords; this.audit = audit; this.quotas = quotas; this.sessions = sessions;
     }
     @GetMapping public List<UserView> list() { return users.findAll().stream().map(UserView::from).toList(); }
 
@@ -46,7 +47,11 @@ public class AdminUserController {
         if (removingLastAdmin) throw new ResponseStatusException(HttpStatus.CONFLICT, "The final active administrator cannot be suspended or demoted");
         if (request.email() != null && users.findByEmailIgnoreCase(request.email()).filter(other -> !other.getId().equals(id)).isPresent())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already in use");
+        String previousEmail = user.getEmail();
+        boolean revoke = user.getRole() != request.role() || user.getStatus() != request.status()
+            || (request.email() != null && !request.email().isBlank() && !previousEmail.equalsIgnoreCase(request.email().trim()));
         user.update(request.email(), request.displayName(), request.role(), request.status(), request.monthlyPageQuota(), request.quotaExempt());
+        if (revoke) revokeSessionsAfterCommit(previousEmail);
         audit.record(actor(auth), "USER_UPDATED", "USER", user.getId().toString(), user.getEmail());
         return UserView.from(user);
     }
@@ -60,8 +65,23 @@ public class AdminUserController {
     public void resetPassword(@PathVariable UUID id, @Valid @RequestBody PasswordReset request, Authentication auth) {
         var user = users.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         user.resetPassword(passwords.encode(request.temporaryPassword()));
+        revokeSessionsAfterCommit(user.getEmail());
         audit.record(actor(auth), "PASSWORD_RESET", "USER", id.toString(), "Temporary password issued; change required");
     }
+    private void revokeSessionsAfterCommit(String email) {
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+            new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override public void afterCommit() {
+                    for (Object principal : sessions.getAllPrincipals()) {
+                        if (principal instanceof org.springframework.security.core.userdetails.UserDetails user
+                            && user.getUsername().equalsIgnoreCase(email)) {
+                            sessions.getAllSessions(principal, false).forEach(session -> session.expireNow());
+                        }
+                    }
+                }
+            });
+    }
+
     private AppUser actor(Authentication auth) { return users.findByEmailIgnoreCase(auth.getName()).orElseThrow(); }
 
     public record CreateUser(@Email @NotBlank String email, @NotBlank @Size(max=120) String displayName,
