@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: printle-server
+  datasource:
+    url: ${PRINTLE_DATABASE_URL:jdbc:postgresql://localhost:5432/printle}
+    username: ${PRINTLE_DATABASE_USER:printle}
+    password: ${PRINTLE_DATABASE_PASSWORD:printle}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  servlet:
+    multipart:
+      max-file-size: ${PRINTLE_MAX_UPLOAD_SIZE:25MB}
+      max-request-size: ${PRINTLE_MAX_UPLOAD_SIZE:25MB}
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: ${PRINTLE_SECURE_COOKIES:false}
+        same-site: lax
+      timeout: 8h
+management:
+  endpoints.web.exposure.include: health,info
+  endpoint.health.probes.enabled: true
+printle:
+  storage-path: ${PRINTLE_STORAGE_PATH:./data/jobs}
+  bootstrap-admin-email: ${PRINTLE_BOOTSTRAP_ADMIN_EMAIL:admin@printle.local}
+  bootstrap-admin-password: ${PRINTLE_BOOTSTRAP_ADMIN_PASSWORD:change-me-now}
+  default-monthly-page-quota: ${PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA:100}
+  print-node-url: ${PRINTLE_PRINT_NODE_URL:}
+  default-cups-queue: ${PRINTLE_DEFAULT_CUPS_QUEUE:mock-success}
+  quota-timezone: ${PRINTLE_QUOTA_TIMEZONE:UTC}
+  held-job-ttl: ${PRINTLE_HELD_JOB_TTL:24h}
+  completed-job-retention: ${PRINTLE_COMPLETED_JOB_RETENTION:720h}
+  failed-job-retention: ${PRINTLE_FAILED_JOB_RETENTION:168h}
+  cleanup-interval-ms: ${PRINTLE_CLEANUP_INTERVAL_MS:60000}
+  print-node-token: ${PRINTLE_PRINT_NODE_TOKEN:development-only-token}

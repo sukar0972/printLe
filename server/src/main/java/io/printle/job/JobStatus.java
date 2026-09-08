@@ -1,0 +1,7 @@
+package io.printle.job;
+
+public enum JobStatus {
+    HELD, EXPIRED, AWAITING_FLIP,
+    PENDING, PENDING_HELD, PROCESSING, PROCESSING_STOPPED,
+    CANCELED, ABORTED, COMPLETED
+}

@@ -1,0 +1,11 @@
+# Standalone Direct IPP deployment: no CUPS or print-node services.
+services:
+  server:
+    depends_on: !override
+      postgres: { condition: service_healthy }
+    environment:
+      PRINTLE_PRINT_NODE_URL: ""
+  cups:
+    profiles: [cups]
+  print-node:
+    profiles: [cups]

@@ -1,0 +1,71 @@
+#!/bin/sh
+set -eu
+
+# CUPS invokes a backend without job arguments when discovering devices.
+if [ "$#" -eq 0 ]; then
+  echo 'direct mockprint "Unknown" "printLe controllable mock printer"'
+  exit 0
+fi
+
+job_id=$1
+user=$2
+title=$3
+copies=$4
+options=$5
+input_file=${6:-}
+scenario=${DEVICE_URI#mockprint://}
+scenario=${scenario%%\?*}
+output_dir=/var/spool/printle-mock
+job_dir="$output_dir/$PRINTER/$job_id"
+
+mkdir -p "$job_dir"
+
+if [ -n "$input_file" ]; then
+  cp "$input_file" "$job_dir/document"
+else
+  cp /dev/stdin "$job_dir/document"
+fi
+
+{
+  echo "job_id=$job_id"
+  echo "printer=$PRINTER"
+  echo "scenario=$scenario"
+  echo "user=$user"
+  echo "title=$title"
+  echo "copies=$copies"
+  echo "options=$options"
+  echo "content_type=${CONTENT_TYPE:-}"
+  echo "device_uri=${DEVICE_URI:-}"
+} > "$job_dir/metadata"
+
+case "$scenario" in
+  success)
+    echo completed > "$job_dir/result"
+    exit 0
+    ;;
+  delay)
+    sleep "${MOCK_PRINT_DELAY_SECONDS:-5}"
+    echo completed > "$job_dir/result"
+    exit 0
+    ;;
+  cancel)
+    echo canceled-by-backend > "$job_dir/result"
+    exit 5
+    ;;
+  fail)
+    echo failed-by-backend > "$job_dir/result"
+    exit 1
+    ;;
+  hold)
+    echo held-by-backend > "$job_dir/result"
+    exit 3
+    ;;
+  stop)
+    echo printer-stopped-by-backend > "$job_dir/result"
+    exit 4
+    ;;
+  *)
+    echo "Unknown mock scenario: $scenario" > "$job_dir/result"
+    exit 1
+    ;;
+esac
