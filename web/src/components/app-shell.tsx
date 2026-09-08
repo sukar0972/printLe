@@ -1,5 +1,10 @@
-import { PanelLeft } from 'lucide-react'
-import { ReactNode } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
+import {
+  Sidebar,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
 import { cn } from '../lib/cn'
 
 export function AppShell({
@@ -8,29 +13,41 @@ export function AppShell({
   header,
   notice,
   children,
-  collapsed = false,
-  onToggleCollapse,
+  open = true,
+  onOpenChange,
 }: {
   banner?: ReactNode
   sidebar: ReactNode
   header: ReactNode
   notice?: ReactNode
   children: ReactNode
-  collapsed?: boolean
-  onToggleCollapse?: () => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  return <>
-    {banner}
-    <div className={cn('shell', collapsed && 'shell-collapsed')}>
-      <aside className="sidebar">{sidebar}</aside>
-      <div className="workspace">
-        <header className="topbar">
-          {onToggleCollapse && <button type="button" className="icon-button sidebar-toggle" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={collapsed} onClick={onToggleCollapse}><PanelLeft /></button>}
-          {header}
-        </header>
-        {notice}
-        {children}
-      </div>
-    </div>
-  </>
+  return (
+    <>
+      {banner}
+      <SidebarProvider
+        open={open}
+        onOpenChange={onOpenChange}
+        className={cn('shell', !open && 'shell-collapsed')}
+        style={{
+          '--sidebar-width': '16rem',
+          '--sidebar-width-icon': '3rem',
+        } as CSSProperties}
+      >
+        <Sidebar collapsible="icon" className="printle-sidebar">
+          {sidebar}
+        </Sidebar>
+        <SidebarInset className="workspace">
+          <header className="topbar">
+            <SidebarTrigger className="icon-button sidebar-toggle" aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'} />
+            {header}
+          </header>
+          {notice}
+          {children}
+        </SidebarInset>
+      </SidebarProvider>
+    </>
+  )
 }
