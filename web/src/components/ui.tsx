@@ -1,5 +1,6 @@
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
 import * as CollapsiblePrimitive from '@radix-ui/react-collapsible'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp, Minus } from 'lucide-react'
@@ -61,9 +62,21 @@ export function Select({ className, children, value, defaultValue, onChange, nam
 }
 
 export function Dialog({ children, className, label, labelledBy, role = 'dialog', onClose }: { children: ReactNode; className?: string; label?: string; labelledBy?: string; role?: 'dialog' | 'alertdialog'; onClose: () => void }) {
-  return <div className="ui-overlay" onMouseDown={onClose}>
-    <section className={cn('ui-dialog', className)} role={role} aria-modal="true" aria-label={label} aria-labelledby={labelledBy} onMouseDown={event => event.stopPropagation()}>{children}</section>
-  </div>
+  return <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose() }}>
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="ui-overlay" />
+      <DialogPrimitive.Content
+        className={cn('ui-dialog', className)}
+        role={role}
+        aria-modal="true"
+        aria-label={label}
+        aria-labelledby={labelledBy}
+        aria-describedby={undefined}
+      >
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  </DialogPrimitive.Root>
 }
 
 export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) {

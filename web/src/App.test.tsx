@@ -46,7 +46,7 @@ test('shows the print pass on My profile', async () => {
   render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })
   await userEvent.click(screen.getByRole('button', { name: 'My profile' }))
-  expect(screen.getByText('Pages remaining')).toBeInTheDocument()
+  expect(screen.getByText('Member')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'My print pass' })).toBeInTheDocument()
   expect(document.documentElement).not.toHaveAttribute('data-pass')
 })
