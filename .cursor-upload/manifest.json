@@ -1,0 +1,1 @@
+[{"key": "app", "target": "web/src/App.tsx"}, {"key": "styles", "target": "web/src/styles.css"}, {"key": "lock", "target": "web/package-lock.json"}, {"key": "sidebar", "target": "web/src/components/ui/sidebar.tsx"}]
