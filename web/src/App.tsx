@@ -6,6 +6,7 @@ import { useTable } from '@tanstack/react-table'
 import { ChevronDown, Download, MoreHorizontal, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
+import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
 import { dataTableFeatures, type AppTableFeatures } from './lib/table'
@@ -71,47 +72,44 @@ export default function App() {
   }, [preview.on])
   if (user === undefined) return <main className="center"><div className="spinner" aria-label="Loading" /></main>
   if (!user) return <Login onLogin={() => api.me().then(setUser)} theme={theme} />
+  const sidebarGroups: SidebarNavGroup[] = [
+    {
+      label: 'Workspace',
+      items: [
+        { page: 'queue', title: 'Print queue', icon: 'queue' },
+        { page: 'profile', title: 'My profile', icon: 'profile' },
+        ...(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on
+          ? [{ page: 'reports', title: 'Reports', icon: 'reports' } as const]
+          : []),
+        { page: 'settings', title: 'Settings', icon: 'settings' },
+      ],
+    },
+    ...((user.role === 'ADMIN' || preview.on)
+      ? [{
+          label: 'Manage',
+          items: [
+            { page: 'printers', title: 'Printers', icon: 'printer' },
+            { page: 'users', title: 'Users', icon: 'users' },
+          ],
+        } satisfies SidebarNavGroup]
+      : []),
+  ]
   return <AppShell
       banner={preview.on ? <PreviewBanner /> : undefined}
-      collapsed={sidebar.collapsed}
-      onToggleCollapse={sidebar.toggle}
-      sidebar={<>
-          <button className="brand" onClick={() => setPage('queue')} aria-label="printLe home"><img className="brand-logo" src="/printle-logo.svg" alt="printLe" /></button>
-          <div className="sidebar-section">
-            <span className="nav-label">Workspace</span>
-            <nav>
-              <button className={page === 'queue' ? 'active' : ''} onClick={() => setPage('queue')}><NavIcon name="queue" /><span className="nav-text">Print queue</span></button>
-              <button className={page === 'profile' ? 'active' : ''} onClick={() => setPage('profile')}><NavIcon name="profile" /><span className="nav-text">My profile</span></button>
-              {(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on) && <button className={page === 'reports' ? 'active' : ''} onClick={() => setPage('reports')}><NavIcon name="reports" /><span className="nav-text">Reports</span></button>}
-              <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><NavIcon name="settings" /><span className="nav-text">Settings</span></button>
-            </nav>
-          </div>
-          {(user.role === 'ADMIN' || preview.on) && <div className="sidebar-section">
-            <span className="nav-label">Manage</span>
-            <nav>
-              <button className={page === 'printers' ? 'active' : ''} onClick={() => setPage('printers')}><NavIcon name="printer" /><span className="nav-text">Printers</span></button>
-              <button className={page === 'users' ? 'active' : ''} onClick={() => setPage('users')}><NavIcon name="users" /><span className="nav-text">Users</span></button>
-            </nav>
-          </div>}
-          <div className="sidebar-footer">
-            <DropdownMenu>
-              <DropdownMenuTrigger className="user-menu-trigger" aria-label="Account menu">
-                <Avatar className="avatar"><AvatarFallback className="bg-transparent">{initials(user.displayName)}</AvatarFallback></Avatar>
-                <span className="user-meta"><strong>{user.displayName}</strong><small>{user.email}</small></span>
-                <ChevronDown className="user-menu-chevron" aria-hidden="true" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top">
-                <DropdownMenuLabel>{user.displayName}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setPage('profile')}>Profile</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setPage('settings')}>Settings</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => preview.on ? (location.hash = '') : api.logout().then(() => setUser(null))}>Sign out</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <ThemeButton theme={theme} />
-          </div>
-      </>}
+      open={!sidebar.collapsed}
+      onOpenChange={(open) => sidebar.setCollapsed(!open)}
+      sidebar={<AppSidebarBody
+        groups={sidebarGroups}
+        page={page}
+        onNavigate={setPage}
+        user={user}
+        onProfile={() => setPage('profile')}
+        onSettings={() => setPage('settings')}
+        onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => setUser(null))}
+        themeControl={<ThemeButton theme={theme} />}
+        renderIcon={(name) => <NavIcon name={name} />}
+        brandMark={<Mark />}
+      />}
       header={<>
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
             <span className="role-badge">{user.role.toLowerCase()}</span>
@@ -1203,7 +1201,7 @@ function useSidebar() {
     document.documentElement.dataset.sidebar = collapsed ? 'collapsed' : 'expanded'
     localStorage.setItem('printle-sidebar', collapsed ? 'collapsed' : 'expanded')
   }, [collapsed])
-  return { collapsed, toggle: () => setCollapsed(current => !current) }
+  return { collapsed, setCollapsed, toggle: () => setCollapsed(current => !current) }
 }
 
 function useTheme() {
