@@ -26,8 +26,16 @@ public class PrinterController {
     @GetMapping public List<PrinterView> list(Authentication auth) { return printers.findAll().stream().filter(p -> access.allowed(auth.getName(), p, PrinterPermission.VIEW) || access.allowed(auth.getName(), p, PrinterPermission.RELEASE_OWN)).map(PrinterView::from).toList(); }
     @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
     public PrinterView create(@Valid @RequestBody CreatePrinter request, Authentication auth) { var printer = printers.save(new Printer(request.name(), request.description())); record(auth, "PRINTER_CREATED", printer.getId(), printer.getName()); return PrinterView.from(printer); }
+    @PostMapping("/ipp") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
+    public PrinterView addIpp(@Valid @RequestBody AddIppPrinter request, Authentication auth) {
+        var printer = service.addIpp(request.name(), request.uri());
+        record(auth, "IPP_PRINTER_CREATED", printer.getId(), printer.getIppUri());
+        return PrinterView.from(printer);
+    }
+    public record AddIppPrinter(@NotBlank @Size(max=120) String name, @NotBlank @Size(max=1024) String uri) {}
+
     @PostMapping("/sync") @PreAuthorize("hasRole('ADMIN')")
-    public List<PrinterView> sync(Authentication auth) { var result = service.synchronize(); record(auth, "PRINTERS_SYNCHRONIZED", null, result.size() + " CUPS queues"); return result.stream().map(PrinterView::from).toList(); }
+    public List<PrinterView> sync(Authentication auth) { var result = service.refresh(); record(auth, "PRINTERS_SYNCHRONIZED", null, result.size() + " printers"); return result.stream().map(PrinterView::from).toList(); }
     @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
     public PrinterView update(@PathVariable UUID id, @Valid @RequestBody UpdatePrinter request, Authentication auth) {
         var printer = printers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -54,11 +62,11 @@ public class PrinterController {
     public record AclView(UUID id, PrinterPrincipalType principalType, UUID principalId, PrinterPermission permission) {
         static AclView from(PrinterAcl acl) { return new AclView(acl.getId(), acl.getPrincipalType(), acl.getPrincipalId(), acl.getPermission()); }
     }
-    public record PrinterView(UUID id, String name, String description, PrinterStatus status, String cupsQueue,
+    public record PrinterView(UUID id, String name, String description, PrinterStatus status, String cupsQueue, String ippUri,
                               String location, boolean enabled, boolean maintenance, boolean colorCapable,
                               boolean duplexCapable, String mediaSupported, String stateReasons, PrinterErrorPolicy errorPolicy,
                               String transport, String vendorId, String productId, String deviceSerial,
                               String ieee1284DeviceId, Instant lastSeenAt, BigDecimal monoPageRate, BigDecimal colorPageRate, int rateVersion) {
-        static PrinterView from(Printer p) { return new PrinterView(p.getId(), p.getName(), p.getDescription(), p.getStatus(), p.getCupsQueue(), p.getLocation(), p.isEnabled(), p.isMaintenance(), p.isColorCapable(), p.isDuplexCapable(), p.getMediaSupported(), p.getStateReasons(), p.getErrorPolicy(), p.getTransport(), p.getVendorId(), p.getProductId(), p.getDeviceSerial(), p.getIeee1284DeviceId(), p.getLastSeenAt(), p.getMonoPageRate(), p.getColorPageRate(), p.getRateVersion()); }
+        static PrinterView from(Printer p) { return new PrinterView(p.getId(), p.getName(), p.getDescription(), p.getStatus(), p.getCupsQueue(), p.getIppUri(), p.getLocation(), p.isEnabled(), p.isMaintenance(), p.isColorCapable(), p.isDuplexCapable(), p.getMediaSupported(), p.getStateReasons(), p.getErrorPolicy(), p.getTransport(), p.getVendorId(), p.getProductId(), p.getDeviceSerial(), p.getIeee1284DeviceId(), p.getLastSeenAt(), p.getMonoPageRate(), p.getColorPageRate(), p.getRateVersion()); }
     }
 }

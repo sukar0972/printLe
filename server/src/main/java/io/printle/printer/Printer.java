@@ -12,6 +12,7 @@ public class Printer {
     @Id private UUID id;
     @Column(nullable = false) private String name;
     private String description;
+    @Column(name = "ipp_uri", unique = true, length = 1024) private String ippUri;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private PrinterStatus status;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
@@ -44,6 +45,8 @@ public class Printer {
     public String getName() { return name; }
     public String getDescription() { return description; }
     public PrinterStatus getStatus() { return status; }
+    public String getIppUri() { return ippUri; }
+    public boolean isDirectIpp() { return ippUri != null; }
     public String getCupsQueue() { return cupsQueue; }
     public String getLocation() { return location; }
     public boolean isEnabled() { return enabled; }
@@ -85,6 +88,22 @@ public class Printer {
         }
         this.lastSeenAt = Instant.now(); this.updatedAt = lastSeenAt;
     }
+    public void connectIpp(String uri, io.printle.ipp.DirectIppClient.Capabilities caps) {
+        this.ippUri = uri; this.transport = "DIRECT_IPP"; this.location = caps.location();
+        refreshIpp(caps);
+    }
+    public void refreshIpp(io.printle.ipp.DirectIppClient.Capabilities caps) {
+        this.status = PrinterStatus.valueOf(caps.accepting() ? caps.status() : "ERROR");
+        this.colorCapable = caps.color();
+        this.duplexCapable = caps.sides().stream().anyMatch(value -> value.startsWith("two-sided"));
+        this.mediaSupported = String.join(",", caps.media());
+        if (mediaSupported.length() > 500) mediaSupported = mediaSupported.substring(0, 500);
+        this.stateReasons = caps.accepting() ? String.join(",", caps.reasons()) : "not-accepting-jobs";
+        if (stateReasons.length() > 1000) stateReasons = stateReasons.substring(0, 1000);
+        this.lastSeenAt = Instant.now(); this.updatedAt = lastSeenAt;
+    }
+    public void markIppUnavailable() { this.status = PrinterStatus.OFFLINE; this.stateReasons = "ipp-unavailable"; this.updatedAt = Instant.now(); }
+
     public void markMissing() {
         this.status = PrinterStatus.OFFLINE; this.stateReasons = "not-seen-by-print-node"; this.updatedAt = Instant.now();
     }

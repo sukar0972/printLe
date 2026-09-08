@@ -39,7 +39,7 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-    networks: [backend]
+    networks: [backend, edge]
   web:
     build: ./web
     restart: unless-stopped

@@ -201,3 +201,25 @@ test('renders an authenticated empty queue', async () => {
 })
 
 function json(value: unknown) { return Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
+
+test('adds a direct IPP printer and displays the connection', async () => {
+  const printer = { id: 'ipp-1', name: 'Office IPP', ippUri: 'ipp://192.168.1.50/ipp/print', transport: 'DIRECT_IPP', status: 'ONLINE', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, monoPageRate: 0.05, colorPageRate: 0.2, rateVersion: 1 }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+    const path = String(input)
+    const result = path === '/api/auth/me' ? { id: 'admin', email: 'admin@example.com', displayName: 'Admin', role: 'ADMIN' }
+      : path === '/api/auth/csrf' ? { token: 'csrf' }
+      : path === '/api/jobs/quota' ? { limit: 100, used: 0, pending: 0, remaining: 100, exempt: false }
+      : path === '/api/admin/reports' ? { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] }
+      : path === '/api/printers/ipp' && options?.method === 'POST' ? printer : []
+    return new Response(JSON.stringify(result), { status: path === '/api/printers/ipp' ? 201 : 200, headers: { 'Content-Type': 'application/json' } })
+  })
+  render(<App />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Printers' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Add IPP printer' }))
+  await userEvent.type(screen.getByLabelText('Name'), printer.name)
+  await userEvent.type(screen.getByLabelText('Printer URL'), printer.ippUri)
+  await userEvent.click(screen.getByRole('button', { name: 'Check and add printer' }))
+  expect(await screen.findByText(printer.ippUri)).toBeInTheDocument()
+  expect(screen.getByText('Direct IPP')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/printers/ipp' && JSON.parse(String(options?.body)).uri === printer.ippUri)).toBe(true)
+})

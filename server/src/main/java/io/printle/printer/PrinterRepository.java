@@ -5,5 +5,6 @@ import java.util.UUID;
 import java.util.Optional;
 
 public interface PrinterRepository extends JpaRepository<Printer, UUID> {
+    java.util.Optional<Printer> findByIppUri(String uri);
     Optional<Printer> findByCupsQueue(String cupsQueue);
 }

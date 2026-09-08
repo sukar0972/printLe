@@ -96,3 +96,36 @@ Back up the database, job files, and CUPS state together. See [`docs/backup-and-
 - There is no public registration endpoint.
 
 The project license is still undecided. Do not accept outside contributions until the community and commercial licensing model is settled.
+
+### Direct IPP printers (without CUPS)
+
+As an administrator, open **Printers → Add IPP printer**, enter a name and an
+`ipp://printer-address/ipp/print` or `ipps://printer-address/ipp/print` URL, then
+choose **Check and add printer**. Use the exact endpoint published by the printer;
+its path may differ. The backend must be able to reach the printer over the LAN.
+
+The connection check requires native PDF support and the IPP Create-Job,
+Send-Document, Get-Job-Attributes, and Cancel-Job operations. Copies, color, and
+hardware duplex are checked against the printer's capabilities. Manual flip and
+printers that need document conversion still use CUPS. Printer authentication is
+not yet supported. IPPS uses normal certificate verification; configure a trusted
+certificate rather than disabling TLS verification.
+
+Direct printers use the same access rules, held queue, quotas, and pricing as
+CUPS printers. An empty ACL permits all users, as with existing CUPS queues; edit
+the printer's policy to restrict access. Remote job IDs are stored together with
+the printer URL, so devices can reuse the same numeric IDs without mixing jobs.
+The remote ID is committed before sending the PDF. If delivery fails or the
+backend stops during delivery, release will not resend the document. Check the
+printer's state or cancel the existing job before uploading a replacement.
+
+For a deployment that starts no CUPS or print-node containers:
+
+```bash
+docker compose -f compose.yaml -f compose.ipp.yaml up -d --build
+```
+
+This override requires Compose support for `!override`. Use it
+with the production Compose file. The backend joins the outbound network so it
+can contact LAN printers. The normal deployment continues to support CUPS and
+Direct IPP together.

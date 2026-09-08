@@ -260,7 +260,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     <LayoutLedger model={model} onInspect={job => setSelectedJobId(job.id)} />
     {releaseJob && <ReleaseDialog job={releaseJob} printers={printers} onChoose={confirmRelease} onClose={() => setReleaseJob(undefined)} />}
     {selectedJob && <JobDetails job={selectedJob} onClose={() => setSelectedJobId(undefined)} onCancel={cancel} onRelease={release} onRetry={retry} onFlip={flip} />}
-    {confirmCancel && <ConfirmDialog title="Cancel this print job?" copy={`${confirmCancel.filename} will stop printing if CUPS still allows cancellation. This cannot be undone.`} confirm="Cancel job" danger onClose={() => setConfirmCancel(undefined)} onConfirm={confirmCancellation} />}
+    {confirmCancel && <ConfirmDialog title="Cancel this print job?" copy={`${confirmCancel.filename} will stop printing if the printer still allows cancellation. This cannot be undone.`} confirm="Cancel job" danger onClose={() => setConfirmCancel(undefined)} onConfirm={confirmCancellation} />}
     {confirmFlip && <FlipDialog job={confirmFlip} onClose={() => setConfirmFlip(undefined)} onConfirm={confirmManualFlip} />}
     {notice && <Toast message={notice} onClose={() => setNotice('')} />}
   </>
@@ -422,7 +422,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
       <Metrics model={model} />
     </div>}
     <DropBox model={model} />
-    <DataTableFrame className="queue-table" title="Queue" description="Held jobs, CUPS state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame className="queue-table" title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
             <button key={id} type="button" className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
@@ -442,7 +442,7 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       <section className="drawer-section current-state">
         <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
         <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
-        {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical CUPS reason</summary><code>{job.ippStateReasons}</code></details>}
+        {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical printer reason</summary><code>{job.ippStateReasons}</code></details>}
       </section>
       <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
         <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
@@ -452,11 +452,11 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </dl></section>
       <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
         <TimelineItem label="Created and held" time={job.createdAt} complete />
-        <TimelineItem label={job.cupsJobId ? `Submitted to CUPS · job ${job.cupsJobId}` : 'Not submitted to CUPS'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
+        <TimelineItem label={job.cupsJobId ? `Submitted to ${job.ippUri ? 'printer' : 'CUPS'} · job ${job.cupsJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
         {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenCupsJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddCupsJobId || 'pending'}`} complete={Boolean(job.oddCupsJobId)} />}
         <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
       </ol></section>
-      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>CUPS queue</dt><dd>{job.cupsQueue || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
+      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>{job.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</dt><dd>{job.ippUri || job.cupsQueue || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
         {job.status === 'HELD' && <button className="primary" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</button>}
         {job.status === 'AWAITING_FLIP' && <button className="primary" onClick={() => onFlip(job.id)}>Stack flipped—continue</button>}
@@ -499,6 +499,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
   const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
     && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
+    && !(job.duplexMode === 'MANUAL' && printer.ippUri)
     && (job.colorMode !== 'COLOR' || printer.colorCapable)
     && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
   return <Dialog className="modal release-modal" label="Choose a printer" onClose={onClose}>
@@ -506,10 +507,10 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
       <div className="release-printers">
         {printers.map(printer => {
           const ready = compatible(printer)
-          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.cupsQueue || 'CUPS'} · ready`
+          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.duplexMode === 'MANUAL' && printer.ippUri ? 'Manual flip requires CUPS' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || printer.cupsQueue || 'Printer'} · ready`
           return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
         })}
-        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to sync CUPS.</p>}
+        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer or sync CUPS.</p>}
       </div>
   </Dialog>
 }
@@ -607,6 +608,9 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [capabilityFilter, setCapabilityFilter] = useState('ALL')
   const [selected, setSelected] = useState<Printer>()
+  const [addingIpp, setAddingIpp] = useState(false)
+  const [ippError, setIppError] = useState('')
+  const [connectingIpp, setConnectingIpp] = useState(false)
   const [rules, setRules] = useState<AclRule[]>([])
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
   const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
@@ -618,6 +622,16 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   useEffect(() => { void load() }, [load])
   useEffect(() => { if (!preview) api.report().then(setUsage).catch(e => setError(message(e))) }, [preview])
   async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
+  async function addIpp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    setConnectingIpp(true); setIppError('')
+    try {
+      if (preview) { setIppError('Leave preview and sign in as an administrator to connect a real printer.'); return }
+      const printer = await api.addIppPrinter(String(form.get('name')), String(form.get('uri')))
+      setPrinters(current => [...current, printer]); setAddingIpp(false)
+    } catch (e) { setIppError(message(e)) } finally { setConnectingIpp(false) }
+  }
   async function edit(printer: Printer) { setSelected(printer); try { setRules(preview ? [] : await api.printerAcl(printer.id)) } catch (e) { setError(message(e)) } }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!selected) return
@@ -638,7 +652,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
-    const matchesQuery = !needle || [printer.name, printer.location, printer.cupsQueue, printer.deviceSerial].some(value => value?.toLocaleLowerCase().includes(needle))
+    const matchesQuery = !needle || [printer.name, printer.location, printer.cupsQueue, printer.ippUri, printer.deviceSerial].some(value => value?.toLocaleLowerCase().includes(needle))
     const effectiveStatus = printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED'
     const matchesStatus = statusFilter === 'ALL' || effectiveStatus === statusFilter
     const matchesCapability = capabilityFilter === 'ALL' || (capabilityFilter === 'COLOR' ? printer.colorCapable : capabilityFilter === 'DUPLEX' ? printer.duplexCapable : !printer.colorCapable)
@@ -651,7 +665,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.name}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
       enableSorting: false,
     },
-    { accessorKey: 'cupsQueue', header: 'Queue', cell: ({ row }) => <code>{row.original.cupsQueue || 'unassigned'}</code> },
+    { id: 'connection', accessorFn: printer => printer.ippUri || printer.cupsQueue || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'Direct IPP' : 'CUPS'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || row.original.cupsQueue || 'unassigned'}</code></span> },
     { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.deviceSerial || 'No location'}</small></span> },
     {
       id: 'state',
@@ -705,13 +719,24 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     enableRowSelection: true,
   })
   return <main className="page">
-    <div className="page-heading"><div><p className="eyebrow">CUPS fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><button className="primary compact" disabled={busy} onClick={sync}>{busy ? 'Syncing…' : 'Sync CUPS'}</button></div>
+    <div className="page-heading"><div><p className="eyebrow">Printer fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><div className="actions"><button className="quiet" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</button><button className="primary compact" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</button></div></div>
+    {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
+      <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
+      <p>Connect directly to a network printer without CUPS. The printer must accept PDFs. One-sided and hardware duplex printing are supported; manual flip uses CUPS.</p>
+      <form onSubmit={addIpp}>
+        <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
+        <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
+        <p className="muted">Use ipp:// or ipps://. Secure connections require a trusted certificate. Printers requiring a login are not supported yet.</p>
+        {ippError && <p className="error" role="alert">{ippError}</p>}
+        <button className="primary" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</button>
+      </form>
+    </Dialog>}
     {error && <p className="error" role="alert">{error}</p>}
     {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <section className="panel mock-panel surface-gradient">
       <div><p className="eyebrow">Development fleet</p><h2>Mock printing is active</h2><p>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</p></div>
       <div className="mock-scenarios">{printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}</div>
     </section>}
-    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor CUPS queues, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
+    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor direct IPP printers and CUPS queues, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
           <label className="sr-only" htmlFor="printer-search">Search printers</label><Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
           <Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Status</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="ERROR">Error</option><option value="MAINTENANCE">Maintenance</option><option value="DISABLED">Disabled</option></Select>
           <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Capability</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></Select>
@@ -720,7 +745,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
       <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
-      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>CUPS queue</span><strong>{selected.cupsQueue || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
+      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{selected.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</span><strong>{selected.ippUri || selected.cupsQueue || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
       {selected.cupsQueue?.startsWith('mock-') && <p className="mock-callout"><strong>Mock scenario: {mockScenario(selected)}</strong><span>This queue runs through CUPS and the print node, but writes mock output instead of sending pages to hardware.</span></p>}
       <form onSubmit={save}>
         <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>

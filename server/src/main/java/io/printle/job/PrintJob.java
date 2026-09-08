@@ -26,6 +26,7 @@ public class PrintJob {
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
     @Column(name = "submission_key", unique = true) private UUID submissionKey;
     @Column(name = "cups_job_id") private Integer cupsJobId;
+    @Column(name = "ipp_uri", length = 1024) private String ippUri;
     @Column(name = "cups_queue", length = 127) private String cupsQueue;
     @Column(name = "ipp_state_reasons", length = 1000) private String ippStateReasons;
     @Column(name = "submitted_at") private Instant submittedAt;
@@ -61,6 +62,8 @@ public class PrintJob {
     public Instant getCreatedAt() { return createdAt; }
     public UUID getSubmissionKey() { return submissionKey; }
     public Integer getCupsJobId() { return cupsJobId; }
+    public String getIppUri() { return ippUri; }
+    public void useDirectIpp(String uri) { this.ippUri = uri; }
     public String getCupsQueue() { return cupsQueue; }
     public String getIppStateReasons() { return ippStateReasons; }
     public Instant getSubmittedAt() { return submittedAt; }
@@ -91,7 +94,7 @@ public class PrintJob {
     }
     public void prepareRetry(Instant newExpiry) {
         if (status != JobStatus.ABORTED) throw new IllegalStateException("Only aborted jobs can be retried");
-        this.attempt++; this.submissionKey = UUID.randomUUID(); this.cupsJobId = null; this.cupsQueue = null;
+        this.attempt++; this.submissionKey = UUID.randomUUID(); this.cupsJobId = null; this.cupsQueue = null; this.ippUri = null;
         this.ippStateReasons = null; this.submittedAt = null; this.completedAt = null; this.printer = null;
         this.manualPhase = null; this.oddCupsJobId = null; this.evenCupsJobId = null;
         this.status = JobStatus.HELD; this.expiresAt = newExpiry; this.updatedAt = Instant.now();
