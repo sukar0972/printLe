@@ -81,6 +81,34 @@ The development Compose overlay includes a real CUPS scheduler with controllable
 
 See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and inspection commands.
 
+## Fake Printer
+
+Administrators can open **Manage → Fake Printer** to run a mock IPP printer inside
+the backend. Enable it, copy its IPP address, then use **Printers → Add IPP printer**
+to register it. The address uses the backend's loopback interface, so it also works
+when the backend runs in Docker. No additional container or physical printer is
+required.
+
+Upload a PDF in **Print queue** and release it to that printer. Return to
+**Fake Printer** to see discovery, Create-Job, Send-Document, status polls, and
+cancellation, including decoded request/response attributes and IPP status codes.
+The received-job view shows the submitted options, PDF page count, byte count,
+and SHA-256 checksum. PDF contents are discarded after inspection.
+
+Jobs remain processing until you choose **Complete**, **Fail**, **Stop**, or
+**Cancel at printer**. You can also cancel through Print queue to verify the
+outgoing Cancel-Job operation. printLe observes the new state on its next backend
+poll; refresh the queue view to see it. The mock also supports Print-Job,
+Validate-Job, and Get-Jobs. It simulates IPP delivery and job states, not physical
+rendering, paper handling, or full printer conformance.
+
+The simulator starts disabled. Controls and logs require an administrator session;
+IPP requests use an unguessable address without a browser login. It retains the
+last 200 actions and up to 100 jobs in memory, evicting finished jobs as needed.
+Clearing the log leaves jobs intact. Restarting the backend disables the simulator,
+clears its history, and changes its address; finish test jobs first and register
+the new address after restarting.
+
 ## Data
 
 Compose stores PostgreSQL data and uploaded PDFs in named volumes. Uploaded files are accepted only when they have a PDF header and can be parsed by PDFBox. The default upload limit is 25 MB.

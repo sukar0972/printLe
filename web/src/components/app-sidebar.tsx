@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from './ui'
 
-export type PrintlePage = 'queue' | 'profile' | 'printers' | 'users' | 'reports' | 'settings'
+export type PrintlePage = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'settings'
 
 export type NavIconName = 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'settings'
 

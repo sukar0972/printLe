@@ -159,10 +159,12 @@ class DirectIppIntegrationTest {
             .andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(first)).value("ONLINE"));
     }
 
-    @Test void manualFlipIsRejectedBeforeCreatingRemoteJob() throws Exception {
+    @Test void manualFlipIsAcceptedOnDirectIpp() throws Exception {
         String id = add("/manual-" + UUID.randomUUID()), job = upload("MANUAL");
-        mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf())).andExpect(status().isConflict());
-        assertFalse(received.stream().anyMatch(r -> r.operation() == 5));
+        mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.cupsJobId").value(42));
+        assertTrue(received.stream().anyMatch(r -> r.operation() == 5));
     }
 
     private String add(String path) throws Exception {

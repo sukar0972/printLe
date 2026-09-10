@@ -1,12 +1,17 @@
 package io.printle.job;
 
-import org.springframework.http.MediaType;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
-import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/admin/reports")
@@ -22,13 +27,28 @@ public class ReportController {
     }
     @GetMapping(value = "/jobs.csv", produces = "text/csv")
     @Transactional(readOnly = true) public String csv() {
-        var out = new StringBuilder("job_id,completed_at,user,printer,pages,color_mode,estimated_cost,rate_version\n");
-        for (var row : report().jobs()) out.append(row.id()).append(',').append(row.completedAt()).append(',')
-            .append(csv(row.user())).append(',').append(csv(row.printer())).append(',').append(row.printedPages()).append(',')
-            .append(row.colorMode()).append(',').append(row.estimatedCost()).append(',').append(row.rateVersion()).append('\n');
-        return out.toString();
+        var sw = new StringWriter();
+        var format = CSVFormat.RFC4180.builder()
+            .setHeader("job_id", "completed_at", "user", "printer", "pages", "color_mode", "estimated_cost", "rate_version")
+            .build();
+        try (var printer = new CSVPrinter(sw, format)) {
+            for (var row : report().jobs()) {
+                printer.printRecord(
+                    row.id(),
+                    row.completedAt(),
+                    row.user(),
+                    row.printer(),
+                    row.printedPages(),
+                    row.colorMode(),
+                    row.estimatedCost(),
+                    row.rateVersion()
+                );
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return sw.toString();
     }
-    private String csv(String value) { return "\"" + (value == null ? "" : value.replace("\"", "\"\"")) + "\""; }
     public record JobCostView(UUID id, Instant completedAt, String user, String printer, int printedPages,
                               ColorMode colorMode, BigDecimal estimatedCost, Integer rateVersion) {
         static JobCostView from(PrintJob j) { return new JobCostView(j.getId(), j.getCompletedAt(), j.getOwner().getEmail(),

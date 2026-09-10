@@ -6,6 +6,7 @@ import { useTable } from '@tanstack/react-table'
 import { ChevronDown, Download, MoreHorizontal, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
+import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
@@ -23,7 +24,7 @@ import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-type Page = 'queue' | 'profile' | 'printers' | 'users' | 'reports' | 'settings'
+type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
 
@@ -89,6 +90,7 @@ export default function App() {
           label: 'Manage',
           items: [
             { page: 'printers', title: 'Printers', icon: 'printer' },
+            { page: 'fake-printer', title: 'Fake Printer', icon: 'printer' },
             { page: 'users', title: 'Users', icon: 'users' },
           ],
         } satisfies SidebarNavGroup]
@@ -116,7 +118,7 @@ export default function App() {
       </>}
       notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
+          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
     </AppShell>
 }
 
@@ -1256,7 +1258,7 @@ function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | '
   if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', users: 'Users', reports: 'Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', users: 'Users', reports: 'Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }

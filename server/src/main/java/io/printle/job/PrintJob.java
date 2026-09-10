@@ -36,6 +36,7 @@ public class PrintJob {
     @Column(name = "cost_rate_version") private Integer costRateVersion;
     @Column(name = "priced_at") private Instant pricedAt;
     @Column(name = "attempt", nullable = false) private int attempt;
+    @Column(name = "page_range", length = 1000) private String pageRange;
     @Column(name = "manual_phase", length = 20) private String manualPhase;
     @Column(name = "odd_cups_job_id") private Integer oddCupsJobId;
     @Column(name = "even_cups_job_id") private Integer evenCupsJobId;
@@ -73,6 +74,13 @@ public class PrintJob {
     public Integer getCostRateVersion() { return costRateVersion; }
     public Instant getPricedAt() { return pricedAt; }
     public int getAttempt() { return attempt; }
+    public String getPageRange() { return pageRange; }
+    public void selectPages(String value) { pageRange = value == null || value.isBlank() ? null : value.trim(); }
+    public void beginDirectSubmission(UUID key, String phase) {
+        this.submissionKey = key; this.manualPhase = phase; this.cupsJobId = null;
+        this.status = JobStatus.SUBMISSION_UNKNOWN; this.submittedAt = Instant.now(); this.updatedAt = submittedAt;
+        this.completedAt = null; this.ippStateReasons = "Delivery not confirmed; check the printer before sending another job";
+    }
     public String getManualPhase() { return manualPhase; }
     public Integer getOddCupsJobId() { return oddCupsJobId; }
     public Integer getEvenCupsJobId() { return evenCupsJobId; }
@@ -101,7 +109,7 @@ public class PrintJob {
     }
     public void submittedManualOdd(int jobId, String queue, JobStatus initialState, String reasons) {
         this.manualPhase = "ODD"; this.oddCupsJobId = jobId; submitted(jobId, queue, initialState, reasons);
-        if (initialState == JobStatus.COMPLETED) awaitingFlip(reasons);
+        if (initialState == JobStatus.COMPLETED && this.pages > 1) awaitingFlip(reasons);
     }
     public void awaitingFlip(String reasons) { this.status = JobStatus.AWAITING_FLIP; this.ippStateReasons = reasons; this.completedAt = null; this.updatedAt = Instant.now(); }
     public void submittedManualEven(int jobId, JobStatus initialState, String reasons) {

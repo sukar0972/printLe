@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.printle.user.AppUserRepository;
 import io.printle.user.UserStatus;
 import io.printle.audit.AuditService;
+import io.printle.ratelimit.LoginRateLimitFilter;
+import io.printle.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -40,18 +42,21 @@ public class SecurityConfig {
             .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Invalid credentials"));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit, org.springframework.security.core.session.SessionRegistry sessions) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit, org.springframework.security.core.session.SessionRegistry sessions, RateLimitService rateLimitService) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
         var handler = new CsrfTokenRequestAttributeHandler();
         handler.setCsrfRequestAttributeName(null);
         return http
-            .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(handler))
+            .addFilterBefore(new LoginRateLimitFilter(rateLimitService, objectMapper), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+            .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(handler)
+                .ignoringRequestMatchers("/api/fake-printer/ipp/*"))
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"))
                 .frameOptions(frame -> frame.deny())
                 .contentTypeOptions(options -> {}))
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/fake-printer/ipp/*").permitAll()
                 .requestMatchers("/actuator/health/**", "/api/auth/csrf", "/api/auth/login").permitAll()
                 .anyRequest().authenticated())
             .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessions)

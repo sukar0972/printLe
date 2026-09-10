@@ -56,7 +56,7 @@ public class JobService {
     }
 
     @Transactional
-    public PrintJob create(String email, MultipartFile file, int copies, ColorMode color, DuplexMode duplex) {
+    public PrintJob create(String email, MultipartFile file, int copies, ColorMode color, DuplexMode duplex, String pageRange) {
         if (file.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a PDF to upload");
         var policy = settings.current();
         if (copies < 1 || copies > policy.getMaxCopies()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Copies must be between 1 and " + policy.getMaxCopies());
@@ -65,6 +65,8 @@ public class JobService {
         try { bytes = file.getBytes(); } catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read upload", e); }
         if (bytes.length < 5 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F' || bytes[4] != '-')
             throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only PDF files are supported");
+        try { bytes = PdfSelection.select(bytes, pageRange); }
+        catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF is invalid or encrypted", e); }
         int pages;
         try (var document = Loader.loadPDF(bytes)) { pages = document.getNumberOfPages(); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF is invalid or encrypted", e); }
@@ -79,6 +81,7 @@ public class JobService {
         try { Files.write(storage.resolve(storageKey), bytes, StandardOpenOption.CREATE_NEW); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not store upload", e); }
         var job = jobs.save(new PrintJob(owner, originalName, storageKey, bytes.length, pages, copies, color, duplex, Instant.now().plus(Duration.ofHours(policy.getHeldJobTtlHours()))));
+        job.selectPages(pageRange);
         quotas.reserve(job);
         audit.record(owner, "JOB_UPLOADED", "PRINT_JOB", job.getId().toString(), originalName);
         return job;
@@ -108,17 +111,81 @@ public class JobService {
     }
 
     public PrintJob release(String email, UUID id, UUID printerId) {
-        boolean[] sendDocument = {false};
-        var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, sendDocument));
-        // The remote ID is committed before sending bytes. If delivery times out or the
-        // process stops, repeating release cannot create or deliver a duplicate job.
-        if (sendDocument[0]) ipp.send(job.getIppUri(), job.getCupsJobId(), email, storage.resolve(job.getStorageKey()));
+        DirectSubmissionPlan[] plan = {null};
+        var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, plan));
+        if (plan[0] != null) {
+            return executeDirect(plan[0]);
+        }
         return job;
     }
 
-    private PrintJob prepareRelease(String email, UUID id, UUID printerId, boolean[] sendDocument) {
+    private record DirectSubmissionPlan(UUID jobId, String endpoint, UUID key, String email,
+                                        int copies, ColorMode colorMode, DuplexMode duplexMode,
+                                        int pages, String storageKey, String phase, boolean reverse) {}
+
+    private PrintJob executeDirect(DirectSubmissionPlan plan) {
+        boolean manual = plan.duplexMode() == DuplexMode.MANUAL;
+        boolean even = "EVEN".equals(plan.phase());
+        var prepared = ipp.prepare(plan.endpoint(), plan.key(), plan.email(),
+            manual ? 1 : plan.copies(), plan.colorMode(),
+            manual ? DuplexMode.ONE_SIDED : plan.duplexMode());
+        Path payload = storage.resolve(plan.storageKey());
+        boolean temporary = false;
+        try {
+            if (manual) {
+                var bytes = PdfSelection.manualPass(Files.readAllBytes(payload), even, plan.copies(), plan.reverse());
+                payload = Files.createTempFile(storage, "manual-", ".pdf");
+                temporary = true;
+                Files.write(payload, bytes);
+            }
+            if (prepared.staged()) {
+                var submission = ipp.submit(prepared, null);
+                transactions.execute(tx -> {
+                    var current = ownedJob(plan.email(), plan.jobId());
+                    applyRemote(current, submission, plan.phase());
+                    return current;
+                });
+                ipp.send(plan.endpoint(), submission.jobId(), plan.email(), payload);
+                return transactions.execute(tx -> {
+                    var current = ownedJob(plan.email(), plan.jobId());
+                    if (current.getPrinter() != null) current.getPrinter().getName();
+                    return current;
+                });
+            } else {
+                var remote = ipp.submit(prepared, payload);
+                return transactions.execute(tx -> {
+                    var current = ownedJob(plan.email(), plan.jobId());
+                    applyRemote(current, remote, plan.phase());
+                    return current;
+                });
+            }
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not prepare manual duplex pages", e);
+        } finally {
+            if (temporary) {
+                try { Files.deleteIfExists(payload); } catch (IOException ignored) {}
+            }
+        }
+    }
+
+    private void applyRemote(PrintJob job, PrintNodeClient.Submission remote, String phase) {
+        if ("ODD".equals(phase)) job.submittedManualOdd(remote.jobId(), null, cupsState(remote.state()), remote.reasons());
+        else if ("EVEN".equals(phase)) job.submittedManualEven(remote.jobId(), cupsState(remote.state()), remote.reasons());
+        else job.submitted(remote.jobId(), null, cupsState(remote.state()), remote.reasons());
+        settleTerminal(job);
+        if (job.getPrinter() != null) job.getPrinter().getName();
+    }
+    private void settleTerminal(PrintJob job) {
+        if (!Set.of(JobStatus.COMPLETED, JobStatus.CANCELED, JobStatus.ABORTED).contains(job.getStatus())) return;
+        quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
+        if (job.getStatus() != JobStatus.ABORTED) deletePayload(job);
+        priceIfCompleted(job);
+    }
+
+    private PrintJob prepareRelease(String email, UUID id, UUID printerId, DirectSubmissionPlan[] plan) {
         var job = ownedJob(email, id);
         if (job.getCupsJobId() != null) { if (job.getPrinter() != null) job.getPrinter().getName(); return job; }
+        if (job.getStatus() == JobStatus.SUBMISSION_UNKNOWN) throw new ResponseStatusException(HttpStatus.CONFLICT, "Delivery is unconfirmed. Check the printer; this job will not be resent automatically");
         if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be released");
         Printer printer = printerId == null ? printers.findByCupsQueue(defaultQueue).orElse(null)
             : printers.findById(printerId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Printer not found"));
@@ -128,14 +195,13 @@ public class JobService {
         var key = job.ensureSubmissionKey();
         jobs.flush();
         if (printer != null && printer.isDirectIpp()) {
-            var remote = ipp.create(printer.getIppUri(), key, email, job.getCopies(), job.getColorMode(), job.getDuplexMode());
-            // Retain the remote ID even when document delivery is ambiguous. A second release
-            // must never send a second copy; polling/canceling uses the original printer + ID.
+            String phase = (job.getDuplexMode() == DuplexMode.MANUAL && job.getPages() > 1) ? "ODD" : null;
             job.useDirectIpp(printer.getIppUri());
-            job.submitted(remote.jobId(), null, cupsState(remote.state()), remote.reasons());
-            jobs.flush();
-            audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "Direct IPP " + remote.jobId());
-            sendDocument[0] = true;
+            job.beginDirectSubmission(key, phase);
+            audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "Direct IPP");
+            plan[0] = new DirectSubmissionPlan(job.getId(), printer.getIppUri(), key, email,
+                job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getPages(),
+                job.getStorageKey(), phase, false);
             return job;
         }
         var submission = job.getDuplexMode() == DuplexMode.MANUAL
@@ -155,6 +221,16 @@ public class JobService {
 
     @Transactional
     public void syncActiveJobs() {
+        for (var uncertain : jobs.findAllByStatusOrderByCompletedAtDesc(JobStatus.SUBMISSION_UNKNOWN)) {
+            if (uncertain.getIppUri() == null) continue;
+            try {
+                var remote = ipp.findJob(uncertain.getIppUri(), uncertain.getSubmissionKey(), uncertain.getOwner().getEmail());
+                if (remote != null) {
+                    var current = jobs.findByIdForUpdate(uncertain.getId()).orElseThrow();
+                    if (current.getStatus() == JobStatus.SUBMISSION_UNKNOWN) applyRemote(current, remote, current.getManualPhase());
+                }
+            } catch (Exception ignored) { /* Never guess whether an unacknowledged Print-Job printed. */ }
+        }
         var active = Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED);
         for (var job : jobs.findAllByCupsJobIdIsNotNullAndStatusIn(active)) {
             try {
@@ -162,7 +238,7 @@ public class JobService {
                     : ipp.status(job.getIppUri(), job.getCupsJobId(), job.getOwner().getEmail());
                 var mapped = cupsState(state.state());
                 job.updateIppState(mapped, state.reasons());
-                if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase())) {
+                if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase()) && job.getPages() > 1) {
                     job.awaitingFlip(state.reasons());
                     audit.record(job.getOwner(), "JOB_AWAITING_FLIP", "PRINT_JOB", job.getId().toString(), "Odd pages complete");
                     continue;
@@ -192,12 +268,32 @@ public class JobService {
         return job;
     }
 
-    @Transactional
-    public PrintJob confirmFlip(String email, UUID id) {
+    public PrintJob confirmFlip(String email, UUID id) { return confirmFlip(email, id, false); }
+
+    public PrintJob confirmFlip(String email, UUID id, boolean reverse) {
+        DirectSubmissionPlan[] plan = {null};
+        var job = transactions.execute(transaction -> prepareFlip(email, id, reverse, plan));
+        if (plan[0] != null) {
+            return executeDirect(plan[0]);
+        }
+        return job;
+    }
+
+    private PrintJob prepareFlip(String email, UUID id, boolean reverse, DirectSubmissionPlan[] plan) {
         var job = ownedJob(email, id);
         if (job.getStatus() != JobStatus.AWAITING_FLIP || job.getDuplexMode() != DuplexMode.MANUAL)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This job is not waiting for a paper-stack flip");
         var key = UUID.nameUUIDFromBytes((job.getId() + ":even:" + job.getAttempt()).getBytes(StandardCharsets.UTF_8));
+        if (job.getIppUri() != null) {
+            printerAccess.require(email, job.getPrinter(), PrinterPermission.RELEASE_OWN);
+            validatePrinter(job, job.getPrinter());
+            job.beginDirectSubmission(key, "EVEN");
+            audit.record(job.getOwner(), "JOB_FLIP_CONFIRMED", "PRINT_JOB", id.toString(), "Direct IPP even pages");
+            plan[0] = new DirectSubmissionPlan(job.getId(), job.getIppUri(), key, email,
+                job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getPages(),
+                job.getStorageKey(), "EVEN", reverse);
+            return job;
+        }
         var submission = printNode.submit(key, job.getCupsQueue(), storage.resolve(job.getStorageKey()), job.getOriginalFilename() + " (even pages)",
             job.getOwner().getEmail(), job.getCopies(), job.getColorMode(), DuplexMode.MANUAL, "even");
         job.submittedManualEven(submission.jobId(), cupsState(submission.state()), submission.reasons());
@@ -262,7 +358,6 @@ public class JobService {
         if ((job.getDuplexMode() == DuplexMode.TWO_SIDED_LONG_EDGE || job.getDuplexMode() == DuplexMode.TWO_SIDED_SHORT_EDGE) && !printer.isDuplexCapable())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This printer does not support hardware duplex");
         if (printer.isDirectIpp()) {
-            if (job.getDuplexMode() == DuplexMode.MANUAL) throw new ResponseStatusException(HttpStatus.CONFLICT, "Manual flip requires a CUPS printer; select one-sided or hardware duplex for Direct IPP");
             return null;
         }
         if (printer.getCupsQueue() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Printer has no CUPS queue");

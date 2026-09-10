@@ -1,0 +1,1 @@
+ALTER TABLE print_job ADD COLUMN page_range VARCHAR(1000);
