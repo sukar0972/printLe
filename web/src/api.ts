@@ -34,7 +34,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json()
 }
 
+export type FakePrinterAttribute = { group: number; tag: string; name: string; value: unknown }
+export type FakePrinterDocument = { bytes: number; pages: number; sha256: string }
+export type FakePrinterJob = { id: number; name: string; user: string; state: string; stateCode: number; reason: string; createdAt: string; attributes: FakePrinterAttribute[]; document: FakePrinterDocument | null }
+export type FakePrinterEvent = { id: number; time: string; operation: string; requestId: number; status: string; message: string; jobId: number | null; request: FakePrinterAttribute[]; response: FakePrinterAttribute[]; document: FakePrinterDocument | null }
+export type FakePrinterSnapshot = { enabled: boolean; localUri: string; path: string; jobs: FakePrinterJob[]; events: FakePrinterEvent[] }
+
 export const api = {
+  fakePrinter: () => request<FakePrinterSnapshot>('/api/admin/fake-printer'),
+  enableFakePrinter: (enabled: boolean) => request<void>('/api/admin/fake-printer', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }),
+  fakePrinterJobState: (id: number, state: string) => request<void>(`/api/admin/fake-printer/jobs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) }),
+  clearFakePrinterEvents: () => request<void>('/api/admin/fake-printer/events', { method: 'DELETE' }),
   me: () => request<CurrentUser>('/api/auth/me'),
   login: async (email: string, password: string) => {
     const body = new URLSearchParams({ email, password })

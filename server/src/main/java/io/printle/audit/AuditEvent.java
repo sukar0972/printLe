@@ -20,5 +20,12 @@ public class AuditEvent {
         this.id = UUID.randomUUID(); this.actor = actor; this.action = action; this.targetType = targetType;
         this.targetId = targetId; this.details = details; this.createdAt = Instant.now();
     }
+    public UUID getId() { return id; }
+    public AppUser getActor() { return actor; }
+    public String getAction() { return action; }
+    public String getTargetType() { return targetType; }
+    public String getTargetId() { return targetId; }
+    public String getDetails() { return details; }
+    public Instant getCreatedAt() { return createdAt; }
 }
 

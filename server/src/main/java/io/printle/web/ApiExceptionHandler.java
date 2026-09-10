@@ -13,7 +13,9 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<Map<String, String>> status(ResponseStatusException exception) {
         var reason = exception.getReason() == null ? "Request could not be completed" : exception.getReason();
-        return ResponseEntity.status(exception.getStatusCode()).body(Map.of("error", reason));
+        return ResponseEntity.status(exception.getStatusCode())
+            .headers(exception.getResponseHeaders())
+            .body(Map.of("error", reason));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

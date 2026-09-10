@@ -23,12 +23,19 @@ public class AppUser {
     protected AppUser() {}
 
     public AppUser(String email, String displayName, String passwordHash, Role role) {
+        this(email, displayName, passwordHash, role, UserStatus.ACTIVE, null, false, false);
+    }
+
+    public AppUser(String email, String displayName, String passwordHash, Role role, UserStatus status, Integer monthlyPageQuota, boolean quotaExempt, boolean passwordChangeRequired) {
         this.id = UUID.randomUUID();
         this.email = email.trim().toLowerCase();
         this.displayName = displayName.trim();
         this.passwordHash = passwordHash;
-        this.role = role;
-        this.status = UserStatus.ACTIVE;
+        this.role = role == null ? Role.USER : role;
+        this.status = status == null ? UserStatus.ACTIVE : status;
+        this.monthlyPageQuota = monthlyPageQuota;
+        this.quotaExempt = quotaExempt;
+        this.passwordChangeRequired = passwordChangeRequired;
         this.createdAt = Instant.now();
         this.updatedAt = createdAt;
     }
