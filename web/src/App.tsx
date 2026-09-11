@@ -3,13 +3,14 @@ import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { ChevronDown, Download, MoreHorizontal, X } from 'lucide-react'
+import { Activity, CheckCircle2, ChevronDown, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, Sliders, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
+import { cn } from './lib/cn'
 import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -539,19 +540,57 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
     if (preview) return
     api.quota().then(setQuota).catch(e => setError(message(e)))
   }, [preview])
+  const limit = quota?.limit ?? 100
+  const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - (quota?.used ?? 0) - (quota?.pending ?? 0))
   const usedPct = quota && !quota.exempt && quota.limit > 0 ? Math.min(100, Math.round(((quota.used + (quota.pending ?? 0)) / quota.limit) * 100)) : 0
   const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
   return <main className="page grid gap-6">
-    <div>
-      <p className="text-muted-foreground text-xs font-medium">Account</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">My profile</h1>
-      <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
+    <div className="alt-content-heading">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">My profile</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
+      </div>
+      <nav aria-label="Breadcrumb"><span>Account</span><b>/</b><strong>My profile</strong></nav>
     </div>
-    {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
+
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    {quota && <section className="metrics quota-strip" aria-label="Allowance overview">
+      <MetricCard
+        label="Pages left"
+        value={quota.exempt ? '∞' : remaining}
+        hint={quota.exempt ? 'Unlimited quota' : `of ${limit} monthly allowance`}
+        meter={quota.exempt ? undefined : usedPct}
+      />
+      <MetricCard
+        label="Printed this month"
+        value={quota.used}
+        hint="pages processed"
+      />
+      <MetricCard
+        label="Reserved in queue"
+        value={quota.pending ?? 0}
+        hint="pages awaiting release"
+      />
+      <MetricCard
+        label="Account role"
+        value={statusLabel(user.role)}
+        hint={user.role === 'ADMIN' ? 'Full administrative access' : 'Standard printing access'}
+      />
+    </section>}
+
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">My print pass</h2></CardTitle>
-        <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">My print pass</h2></CardTitle>
+            <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
+          </div>
+          <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'} className="gap-1 px-2.5 py-0.5">
+            <Shield className="size-3.5" />
+            {statusLabel(user.role)}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
         <div className="lg:pr-10">
@@ -576,8 +615,8 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           </dl>
           <div className="grid max-w-xl gap-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Quota used</span>
-              <span className="font-medium">{quota ? quota.used : 0}{quota && !quota.exempt ? ` / ${quota.limit}` : ''}</span>
+              <span className="text-muted-foreground font-medium">Quota used</span>
+              <span className="font-semibold">{quota ? quota.used : 0}{quota && !quota.exempt ? ` / ${quota.limit}` : ''} ({usedPct}%)</span>
             </div>
             <Progress value={usedPct} aria-label="Quota used" />
           </div>
@@ -585,6 +624,68 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
         </div>
       </CardContent>
     </Card>
+
+    <div className="grid gap-6 md:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Key className="size-4 text-primary" /> Role permissions</h3></CardTitle>
+          <CardDescription>Capabilities granted to your account role.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Direct document release</p>
+              <p className="text-muted-foreground text-xs">Submit and release print jobs directly to any enabled printer.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">{user.role === 'ADMIN' ? 'Full printer & fleet management' : 'Personal queue tracking'}</p>
+              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Configure IPP and CUPS printers, manage error policies, and inspect fake printer actions.' : 'Monitor status, cancel held jobs, and flip double-sided jobs.'}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">{user.role === 'ADMIN' ? 'User directory & group quotas' : 'Automatic allowance renewal'}</p>
+              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Add users, adjust monthly quotas, assign groups, and inspect accounting reports.' : 'Your monthly allowance resets automatically on the first of each month.'}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Shield className="size-4 text-primary" /> Print pass security</h3></CardTitle>
+          <CardDescription>Credential security and audit protections.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Virtual identifier</p>
+              <p className="text-muted-foreground text-xs">Pass PL {identifier} is bound to your account for hardware badge verification.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Encrypted transport</p>
+              <p className="text-muted-foreground text-xs">Jobs sent via IPP use TLS and secure session headers.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Audit record logging</p>
+              <p className="text-muted-foreground text-xs">Page counts and timestamps are preserved in accounting reports for quota fidelity.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   </main>
 }
 
@@ -720,8 +821,49 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     getRowId: printer => printer.id,
     enableRowSelection: true,
   })
-  return <main className="page">
-    <div className="page-heading"><div><p className="eyebrow">Printer fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><div className="actions"><button className="quiet" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</button><button className="primary compact" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</button></div></div>
+  const statuses = ['ALL', 'ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE', 'DISABLED'] as const
+
+  return <main className="page grid gap-6">
+    <div className="alt-content-heading">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Printers</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Discovered queues, hardware identity, capabilities, policy, and pricing.</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={busy} onClick={sync}>
+          <Activity className="mr-1.5 size-3.5" />
+          {busy ? 'Refreshing…' : 'Refresh printers'}
+        </Button>
+        <Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>
+          Add IPP printer
+        </Button>
+      </div>
+    </div>
+
+    <section className="metrics quota-strip" aria-label="Fleet metrics">
+      <MetricCard
+        label="Active fleet"
+        value={printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length}
+        hint={`of ${printers.length} registered printers`}
+        meter={printers.length > 0 ? Math.round((printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length / printers.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Color capable"
+        value={printers.filter(p => p.colorCapable).length}
+        hint="support full-spectrum color"
+      />
+      <MetricCard
+        label="Duplex hardware"
+        value={printers.filter(p => p.duplexCapable).length}
+        hint="two-sided printing enabled"
+      />
+      <MetricCard
+        label="Fleet volume"
+        value={`${usage.printedPages} pages`}
+        hint={`${usage.completedJobs} completed jobs`}
+      />
+    </section>
+
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
       <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
       <p>Connect directly to a network printer without CUPS. The printer must accept PDFs. One-sided and hardware duplex printing are supported; manual flip uses CUPS.</p>
@@ -733,16 +875,59 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
         <button className="primary" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</button>
       </form>
     </Dialog>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <section className="panel mock-panel surface-gradient">
-      <div><p className="eyebrow">Development fleet</p><h2>Mock printing is active</h2><p>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</p></div>
-      <div className="mock-scenarios">{printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}</div>
-    </section>}
-    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor direct IPP printers and CUPS queues, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
-          <label className="sr-only" htmlFor="printer-search">Search printers</label><Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-          <Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Status</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="ERROR">Error</option><option value="MAINTENANCE">Maintenance</option><option value="DISABLED">Disabled</option></Select>
-          <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Capability</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></Select>
-        </div>} footer={<TablePagination table={table} noun="printers" />}>
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <Card className="border-amber-500/20 bg-amber-500/5">
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">Mock printing is active</h2></CardTitle>
+            <CardDescription>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</CardDescription>
+          </div>
+          <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-300">CUPS Emulation</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="mock-scenarios">
+          {printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}
+        </div>
+      </CardContent>
+    </Card>}
+
+    <DataTableFrame
+      className="printer-table"
+      title="Printer fleet"
+      description="Monitor direct IPP printers and CUPS queues, capabilities, health, and page pricing."
+      actions={<div className="printer-table-controls">
+        <label className="sr-only" htmlFor="printer-search">Search printers</label>
+        <Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
+        <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+          <option value="ALL">All capabilities</option>
+          <option value="COLOR">Color</option>
+          <option value="MONO">Mono</option>
+          <option value="DUPLEX">Duplex</option>
+        </Select>
+      </div>}
+      filters={<div className="filter-pills">
+        {statuses.map(status => {
+          const count = status === 'ALL'
+            ? printers.length
+            : printers.filter(p => (p.maintenance ? 'MAINTENANCE' : p.enabled ? p.status : 'DISABLED') === status).length
+          return (
+            <button
+              key={status}
+              type="button"
+              className={statusFilter === status ? 'active' : ''}
+              onClick={() => { setStatusFilter(status); table.setPageIndex(0) }}
+            >
+              {status === 'ALL' ? 'All' : statusLabel(status)}
+              <small>{count}</small>
+            </button>
+          )
+        })}
+      </div>}
+      footer={<TablePagination table={table} noun="printers" />}
+    >
       <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
@@ -895,12 +1080,75 @@ function Users({ preview }: { preview: boolean }) {
       cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.displayName}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
       enableSorting: false,
     },
-    { accessorKey: 'displayName', header: 'User', cell: ({ row }) => <span className="directory-user"><i>{initials(row.original.displayName)}</i><span><strong>{row.original.displayName}</strong><small>{row.original.email}</small></span></span> },
-    { accessorKey: 'role', header: 'Role', cell: ({ row }) => <span className="user-role"><strong>{statusLabel(row.original.role)}</strong><small>{row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'OPERATOR' ? 'Print operations' : row.original.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}</small></span> },
-    { id: 'groups', accessorFn: user => userGroups(groups, user.id).map(group => group.name).join(', '), header: 'Groups', cell: ({ row }) => <span className="user-group-chips">{userGroups(groups, row.original.id).map(group => <i key={group.id}>{group.name}</i>)}</span> },
-    { id: 'allowance', accessorFn: user => user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`, header: 'Page allowance', cell: ({ row }) => <span className="allowance-badge">{row.original.quotaExempt ? 'Unlimited' : row.original.monthlyPageQuota == null ? 'Default' : `${row.original.monthlyPageQuota} pages`}</span> },
-    { accessorKey: 'status', header: 'Status', cell: ({ row }) => <span className={`directory-status ${row.original.status.toLowerCase()}`}><i className={`directory-status-dot ${row.original.status.toLowerCase()}`} />{statusLabel(row.original.status)}</span> },
-    { id: 'joinedDate', accessorFn: user => new Date(user.createdAt).getTime(), header: 'Joined date', cell: ({ row }) => <time dateTime={row.original.createdAt}>{new Date(row.original.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</time> },
+    {
+      accessorKey: 'displayName',
+      header: 'User',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="size-8 border">
+            <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+              {initials(row.original.displayName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="grid gap-0.5 leading-none">
+            <span className="font-semibold text-sm text-foreground">{row.original.displayName}</span>
+            <span className="text-xs text-muted-foreground">{row.original.email}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'role',
+      header: 'Role',
+      cell: ({ row }) => (
+        <div className="grid gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <Badge variant={row.original.role === 'ADMIN' ? 'default' : 'secondary'} className="text-[11px] font-medium py-0 px-2">
+              {statusLabel(row.original.role)}
+            </Badge>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'OPERATOR' ? 'Print operations' : row.original.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'groups',
+      accessorFn: user => userGroups(groups, user.id).map(group => group.name).join(', '),
+      header: 'Groups',
+      cell: ({ row }) => {
+        const gList = userGroups(groups, row.original.id)
+        return <div className="flex flex-wrap gap-1">
+          {gList.map(group => (
+            <Badge key={group.id} variant="outline" className="text-[11px] font-normal px-2 py-0 border-border/70">
+              {group.name}
+            </Badge>
+          ))}
+        </div>
+      },
+    },
+    {
+      id: 'allowance',
+      accessorFn: user => user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`,
+      header: 'Page allowance',
+      cell: ({ row }) => (
+        <Badge variant={row.original.quotaExempt ? 'default' : 'secondary'} className="text-xs font-normal">
+          {row.original.quotaExempt ? 'Unlimited' : row.original.monthlyPageQuota == null ? 'Default' : `${row.original.monthlyPageQuota} pages`}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => <span className={`directory-status ${row.original.status.toLowerCase()}`}><i className={`directory-status-dot ${row.original.status.toLowerCase()}`} />{statusLabel(row.original.status)}</span>,
+    },
+    {
+      id: 'joinedDate',
+      accessorFn: user => new Date(user.createdAt).getTime(),
+      header: 'Joined date',
+      cell: ({ row }) => <time dateTime={row.original.createdAt} className="text-xs text-muted-foreground">{new Date(row.original.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</time>,
+    },
     {
       id: 'actions',
       header: () => <span className="table-actions-head">Actions</span>,
@@ -928,28 +1176,167 @@ function Users({ preview }: { preview: boolean }) {
     getRowId: user => user.id,
     enableRowSelection: true,
   })
-  return <main className="page users-page">
-    {error && <p className="error" role="alert">{error}</p>}
-    <DataTableFrame className="user-directory" title="Users" description="Manage organization members and their printing access." actions={<><label className="user-search"><span className="sr-only">Search users</span><Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} /></label><button className="primary compact" onClick={() => setOpen(true)}>+ Add user</button></>} filters={<div className="user-filter-row"><div><Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Role: All</option><option value="ADMIN">Admin</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="USER">User</option></Select><Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Status: All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select><Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Group: All</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>{selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}><option value="" disabled>Add selected to group…</option>{groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>}</div><span>{selectedCount} selected</span></div>} footer={<TablePagination table={table} noun="users" />}>
+  return <main className="page users-page grid gap-6">
+    <div className="alt-content-heading">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Directory</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, and access policy groups.</p>
+      </div>
+      <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Directory</strong></nav>
+    </div>
+
+    <section className="metrics quota-strip" aria-label="Directory metrics">
+      <MetricCard
+        label="Total members"
+        value={users.length}
+        hint={`${users.filter(u => u.status === 'ACTIVE').length} active accounts`}
+        meter={users.length > 0 ? Math.round((users.filter(u => u.status === 'ACTIVE').length / users.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Administrators"
+        value={users.filter(u => u.role === 'ADMIN').length}
+        hint="full administration"
+      />
+      <MetricCard
+        label="Access groups"
+        value={groups.length}
+        hint={`${groups.filter(g => !g.builtIn).length} custom policy groups`}
+      />
+      <MetricCard
+        label="Quota exempt"
+        value={users.filter(u => u.quotaExempt).length}
+        hint="unlimited page allowance"
+      />
+    </section>
+
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    <DataTableFrame
+      className="user-directory"
+      title="Users"
+      description="Manage organization members and their printing access."
+      actions={<div className="flex items-center gap-2">
+        <label className="user-search">
+          <span className="sr-only">Search users</span>
+          <Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
+        </label>
+        <Button size="sm" onClick={() => setOpen(true)}>+ Add user</Button>
+      </div>}
+      filters={<div className="space-y-3">
+        <div className="filter-pills">
+          {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => {
+            const count = status === 'ALL' ? users.length : users.filter(u => u.status === status).length
+            return (
+              <button
+                key={status}
+                type="button"
+                className={statusFilter === status ? 'active' : ''}
+                onClick={() => { setStatusFilter(status); table.setPageIndex(0) }}
+              >
+                {status === 'ALL' ? 'All accounts' : statusLabel(status)}
+                <small>{count}</small>
+              </button>
+            )
+          })}
+        </div>
+        <div className="user-filter-row">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+              <option value="ALL">Role: All</option>
+              <option value="ADMIN">Admin</option>
+              <option value="MANAGER">Manager</option>
+              <option value="OPERATOR">Operator</option>
+              <option value="USER">User</option>
+            </Select>
+            <Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+              <option value="ALL">Status: All</option>
+              <option value="ACTIVE">Active</option>
+              <option value="SUSPENDED">Suspended</option>
+            </Select>
+            <Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+              <option value="ALL">Group: All</option>
+              {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </Select>
+            {selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}>
+              <option value="" disabled>Add selected to group…</option>
+              {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </Select>}
+          </div>
+          <Badge variant="outline" className="text-muted-foreground font-normal">
+            {selectedCount} selected
+          </Badge>
+        </div>
+      </div>}
+      footer={<TablePagination table={table} noun="users" />}
+    >
       <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />
     </DataTableFrame>
-    <DataTableFrame className="group-directory" title="Groups" description="Named sets for printer access and shared page quotas." actions={<button className="primary compact" onClick={() => setGroupOpen(true)}>+ Add group</button>}>
+
+    <DataTableFrame
+      className="group-directory"
+      title="Groups"
+      description="Named sets for printer access and shared page quotas."
+      actions={<Button size="sm" onClick={() => setGroupOpen(true)}>+ Add group</Button>}
+    >
       <Table className="ui-table group-policy-table">
-        <TableHeader><TableRow><TableHead>Group</TableHead><TableHead>Members</TableHead><TableHead>Page allowance</TableHead><TableHead /></TableRow></TableHeader>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[180px]">Group</TableHead>
+            <TableHead>Members</TableHead>
+            <TableHead className="w-[160px]">Page allowance</TableHead>
+            <TableHead className="w-[220px] text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
         <TableBody>
           {groups.map(group => {
             const available = users.filter(user => !group.members.some(member => member.id === user.id))
-            return <TableRow key={group.id}>
-              <TableCell><span className="group-name-cell"><strong>{group.name}</strong><small>{group.builtIn ? 'Built in' : 'Custom'}</small></span></TableCell>
-              <TableCell>
-                <span className="user-group-chips">{group.members.length ? group.members.map(member => <i key={member.id}>{member.displayName}{!group.builtIn && <button type="button" aria-label={`Remove ${member.displayName} from ${group.name}`} onClick={() => void dropMember(group, member.id)}>×</button>}</i>) : <span className="muted">No members</span>}</span>
-              </TableCell>
-              <TableCell>{group.monthlyPageQuota == null ? 'Default' : `${group.monthlyPageQuota} pages`}</TableCell>
-              <TableCell className="table-row-actions">{!group.builtIn && <>
-                <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}><option value="" disabled>Add member…</option>{available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}</Select>
-                <button type="button" className="danger-text" onClick={() => void removeGroup(group)}>Delete</button>
-              </>}</TableCell>
-            </TableRow>
+            return (
+              <TableRow key={group.id}>
+                <TableCell>
+                  <div className="grid gap-0.5">
+                    <strong className="font-semibold text-sm">{group.name}</strong>
+                    <span className="text-xs text-muted-foreground">{group.builtIn ? 'Built in' : 'Custom'}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {group.members.length ? group.members.map(member => (
+                      <Badge key={member.id} variant="secondary" className="gap-1 py-0.5 px-2 text-xs font-normal">
+                        {member.displayName}
+                        {!group.builtIn && (
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground ml-0.5 rounded-full size-3.5 inline-flex items-center justify-center text-xs hover:bg-muted"
+                            aria-label={`Remove ${member.displayName} from ${group.name}`}
+                            onClick={() => void dropMember(group, member.id)}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </Badge>
+                    )) : <span className="text-xs text-muted-foreground">No members</span>}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className="font-normal text-xs">
+                    {group.monthlyPageQuota == null ? 'Default' : `${group.monthlyPageQuota} pages`}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  {!group.builtIn && (
+                    <div className="flex items-center justify-end gap-2">
+                      <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}>
+                        <option value="" disabled>Add member…</option>
+                        {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+                      </Select>
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => void removeGroup(group)}>
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            )
           })}
         </TableBody>
       </Table>
@@ -1000,12 +1387,69 @@ function Reports({ preview }: { preview: boolean }) {
     colorJobs: jobs.filter(job => job.colorMode === 'COLOR').length,
   }), [jobs])
   const columns = useMemo<ColumnDef<AppTableFeatures, ReportJob>[]>(() => [
-    { id: 'completedAt', accessorFn: job => new Date(job.completedAt).getTime(), header: 'Completed', cell: ({ row }) => <time dateTime={row.original.completedAt}>{new Date(row.original.completedAt).toLocaleString()}</time> },
-    { accessorKey: 'user', header: 'User' },
-    { accessorKey: 'printer', header: 'Printer', cell: ({ row }) => row.original.printer || 'Unknown' },
-    { accessorKey: 'printedPages', header: 'Pages' },
-    { accessorKey: 'colorMode', header: 'Mode', cell: ({ row }) => row.original.colorMode === 'COLOR' ? 'Color' : 'Mono' },
-    { accessorKey: 'estimatedCost', header: 'Cost', cell: ({ row }) => <strong>{money(row.original.estimatedCost)}</strong> },
+    {
+      id: 'completedAt',
+      accessorFn: job => new Date(job.completedAt).getTime(),
+      header: 'Completed',
+      cell: ({ row }) => (
+        <time dateTime={row.original.completedAt} className="text-xs text-muted-foreground">
+          {new Date(row.original.completedAt).toLocaleString()}
+        </time>
+      ),
+    },
+    {
+      accessorKey: 'user',
+      header: 'User',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="size-6 border">
+            <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">
+              {initials(row.original.user.split('@')[0])}
+            </AvatarFallback>
+          </Avatar>
+          <span className="font-medium text-sm text-foreground">{row.original.user}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'printer',
+      header: 'Printer',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5">
+          <PrinterIcon className="size-3.5 text-muted-foreground" />
+          <span className="text-sm font-medium">{row.original.printer || 'Unknown'}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'printedPages',
+      header: 'Pages',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <FileText className="size-3.5 text-muted-foreground" />
+          <span className="font-medium text-sm">{row.original.printedPages}</span>
+          <span className="text-xs text-muted-foreground">pgs</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'colorMode',
+      header: 'Mode',
+      cell: ({ row }) => (
+        <Badge variant={row.original.colorMode === 'COLOR' ? 'default' : 'secondary'} className="text-[11px] font-medium py-0 px-2">
+          {row.original.colorMode === 'COLOR' ? 'Color' : 'Mono'}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'estimatedCost',
+      header: 'Cost',
+      cell: ({ row }) => (
+        <strong className="font-semibold text-sm text-foreground">
+          {money(row.original.estimatedCost)}
+        </strong>
+      ),
+    },
   ], [])
   const table = useTable({
     features: dataTableFeatures,
@@ -1017,30 +1461,84 @@ function Reports({ preview }: { preview: boolean }) {
     getRowId: job => job.id,
   })
   return <main className="page grid gap-6">
-    <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="alt-content-heading">
       <div>
-        <p className="text-muted-foreground text-xs font-medium">Accounting</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Reports</h1>
-        <p className="text-muted-foreground mt-1 max-w-2xl text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
       </div>
-      {!preview && <Button variant="outline" asChild><a href="/api/admin/reports/jobs.csv"><Download aria-hidden="true" />Export CSV</a></Button>}
+      <div className="flex items-center gap-3">
+        <nav aria-label="Breadcrumb"><span>Accounting</span><b>/</b><strong>Reports</strong></nav>
+        <Button variant="outline" size="sm" asChild>
+          <a href={preview ? '#preview' : '/api/admin/reports/jobs.csv'} download={!preview}>
+            <Download aria-hidden="true" className="size-3.5" />
+            Export CSV
+          </a>
+        </Button>
+      </div>
     </div>
-    {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
-    <section aria-label="Usage" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <ReportStat label="Completed jobs" value={totals.completedJobs} hint={range === 'all' ? 'all retained history' : 'in the selected range'} />
-      <ReportStat label="Printed pages" value={totals.printedPages} hint="copies included" />
-      <ReportStat label="Estimated cost" value={money(totals.estimatedCost)} hint="at the recorded rate" />
-      <ReportStat label="Color jobs" value={totals.colorJobs} hint="of completed jobs" />
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <section aria-label="Usage" className="metrics quota-strip">
+      <MetricCard
+        label="Completed jobs"
+        value={totals.completedJobs}
+        hint={range === 'all' ? 'all retained history' : 'in selected range'}
+        meter={report.jobs.length > 0 ? Math.round((totals.completedJobs / report.jobs.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Printed pages"
+        value={totals.printedPages}
+        hint="copies included"
+      />
+      <MetricCard
+        label="Estimated cost"
+        value={money(totals.estimatedCost)}
+        hint="at the recorded rate"
+      />
+      <MetricCard
+        label="Color jobs"
+        value={totals.colorJobs}
+        hint={totals.completedJobs > 0 ? `${Math.round((totals.colorJobs / totals.completedJobs) * 100)}% of completed` : '0% of completed'}
+        meter={totals.completedJobs > 0 ? Math.round((totals.colorJobs / totals.completedJobs) * 100) : 0}
+      />
     </section>
-    <DataTableFrame className="report-table" title="Completed jobs" description="Volume and estimated cost by user and printer." actions={<SelectMenu value={range} onValueChange={value => { setRange(value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-          <SelectTrigger className="w-44" aria-label="Report date range"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All time</SelectItem>
-            <SelectItem value="month">This month</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="7">Last 7 days</SelectItem>
-          </SelectContent>
-        </SelectMenu>} footer={<TablePagination table={table} noun="jobs" />}>
+    <DataTableFrame
+      className="report-table"
+      title="Completed jobs"
+      description="Volume and estimated cost by user and printer."
+      actions={<SelectMenu value={range} onValueChange={value => { setRange(value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+        <SelectTrigger className="w-40" aria-label="Report date range"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All time</SelectItem>
+          <SelectItem value="month">This month</SelectItem>
+          <SelectItem value="30">Last 30 days</SelectItem>
+          <SelectItem value="7">Last 7 days</SelectItem>
+        </SelectContent>
+      </SelectMenu>}
+      filters={<div className="space-y-3">
+        <div className="filter-pills">
+          {([
+            { id: 'all', label: 'All time' },
+            { id: 'month', label: 'This month' },
+            { id: '30', label: 'Last 30 days' },
+            { id: '7', label: 'Last 7 days' },
+          ] as const).map(item => {
+            const count = filterReportJobs(report.jobs, item.id).length
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={range === item.id ? 'active' : ''}
+                onClick={() => { setRange(item.id); setPagination(current => ({ ...current, pageIndex: 0 })) }}
+              >
+                {item.label}
+                <small>{count}</small>
+              </button>
+            )
+          })}
+        </div>
+      </div>}
+      footer={<TablePagination table={table} noun="jobs" />}
+    >
       <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
     </DataTableFrame>
   </main>
@@ -1086,81 +1584,164 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
     try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
   }
   return <main className="page grid gap-6">
-    <div>
-      <p className="text-muted-foreground text-xs font-medium">Management</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="text-muted-foreground mt-1 text-sm">Personal appearance, account security, and instance print policy.</p>
+    <div className="alt-content-heading">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Personal appearance, account security, and instance print policy.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <nav aria-label="Breadcrumb"><span>Management</span><b>/</b><strong>Settings</strong></nav>
+      </div>
     </div>
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
+    {user.role === 'ADMIN' && (
+      <section aria-label="System status" className="metrics quota-strip">
+        <MetricCard
+          label="Database"
+          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.database}</Badge>}
+          hint="PostgreSQL connection"
+        />
+        <MetricCard
+          label="Job storage"
+          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.storage}</Badge>}
+          hint="Spool file storage"
+        />
+        <MetricCard
+          label="Print node"
+          value={<Badge variant={diagnostics.printNode === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.printNode}</Badge>}
+          hint="CUPS backend daemon"
+        />
+        <MetricCard
+          label="Printers discovered"
+          value={diagnostics.discoveredPrinters}
+          hint="mDNS & IPP services"
+        />
+      </section>
+    )}
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">Typeface</h2></CardTitle>
-        <CardDescription>DM Sans is the default. Your selection is saved locally.</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">Typeface</h2></CardTitle>
+            <CardDescription className="mt-1">DM Sans is the default. Your selection is saved locally.</CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs font-normal">Appearance</Badge>
+        </div>
       </CardHeader>
       <CardContent>
         <RadioGroup className="grid gap-3 sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
-          {TYPES.map(item => <Label key={item.id} htmlFor={`typeface-${item.id}`} className="has-[button[data-state=checked]]:border-foreground flex flex-row cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-accent">
-            <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-0.5" />
-            <span className="grid gap-0.5"><strong className="text-sm font-medium">{item.short.replace(/^\d+ /, '')}</strong><small className="text-muted-foreground text-xs">{item.blurb}</small></span>
-          </Label>)}
+          {TYPES.map(item => (
+            <Label
+              key={item.id}
+              htmlFor={`typeface-${item.id}`}
+              className={cn(
+                "flex flex-row cursor-pointer items-start gap-3.5 rounded-lg border p-3.5 transition-colors hover:bg-accent/40",
+                typeface.value === item.id ? "border-primary bg-primary/5 shadow-xs" : "border-border"
+              )}
+            >
+              <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-1" />
+              <div className="grid gap-0.5">
+                <div className="flex items-center gap-2">
+                  <strong className="text-sm font-semibold tracking-tight">{item.short.replace(/^\d+ /, '')}</strong>
+                  {item.id === 'dmsans' && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Default</Badge>}
+                </div>
+                <small className="text-muted-foreground text-xs leading-relaxed">{item.blurb}</small>
+              </div>
+            </Label>
+          ))}
         </RadioGroup>
       </CardContent>
     </Card>
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">Password</h2></CardTitle>
-        <CardDescription>Use at least 12 characters.</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">Password</h2></CardTitle>
+            <CardDescription className="mt-1">Use at least 12 characters.</CardDescription>
+          </div>
+          <Lock className="size-4 text-muted-foreground" />
+        </div>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={changePassword}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2"><Label htmlFor="current-password">Current password</Label><TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required /></div>
-            <div className="grid gap-2"><Label htmlFor="new-password">New password</Label><TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></div>
-            <div className="grid gap-2"><Label htmlFor="confirm-password">Confirm new password</Label><TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></div>
+            <div className="grid gap-2">
+              <Label htmlFor="current-password">Current password</Label>
+              <TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-password">New password</Label>
+              <TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="confirm-password">Confirm new password</Label>
+              <TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
           </div>
-          <div><Button type="submit" size="sm">Change password</Button></div>
+          <div className="flex justify-end pt-1">
+            <Button type="submit" size="sm">Change password</Button>
+          </div>
         </form>
       </CardContent>
     </Card>
-    {user.role === 'ADMIN' && <>
+    {user.role === 'ADMIN' && (
       <Card key={settings.updatedAt}>
         <CardHeader>
-          <CardTitle asChild><h2 className="text-base">Print and retention policy</h2></CardTitle>
-          <CardDescription>Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle asChild><h2 className="text-base font-semibold">Print and retention policy</h2></CardTitle>
+              <CardDescription className="mt-1">Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</CardDescription>
+            </div>
+            <Badge variant="secondary" className="text-xs font-normal">Instance Policy</Badge>
+          </div>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4" onSubmit={savePolicy}>
+          <form className="grid gap-5" onSubmit={savePolicy}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="grid gap-2"><Label htmlFor="policy-quota">Default monthly pages</Label><TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-timezone">Quota timezone</Label><TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-ttl">Held job lifetime (hours)</Label><TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-completed">Completed retention (hours)</Label><TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-failed">Failed retention (hours)</Label><TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-copies">Maximum copies</Label><TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-pages">Maximum pages per job</Label><TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required /></div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-quota">Default monthly pages</Label>
+                <TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-timezone">Quota timezone</Label>
+                <TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-ttl">Held job lifetime (hours)</Label>
+                <TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-completed">Completed retention (hours)</Label>
+                <TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-failed">Failed retention (hours)</Label>
+                <TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-copies">Maximum copies</Label>
+                <TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-pages">Maximum pages per job</Label>
+                <TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 sm:max-w-md">
-              <div className="grid gap-0.5"><strong className="text-sm font-medium">Allow color printing</strong><small className="text-muted-foreground text-xs">Users may submit jobs in color.</small></div>
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3.5 sm:max-w-md bg-muted/20">
+              <div className="grid gap-0.5">
+                <strong className="text-sm font-medium">Allow color printing</strong>
+                <small className="text-muted-foreground text-xs">Users may submit jobs in color across the fleet.</small>
+              </div>
               <Switch checked={colorAllowed} onCheckedChange={setColorAllowed} aria-label="Allow color printing" />
             </div>
-            <div><Button type="submit" size="sm">Save instance policy</Button></div>
+            <div className="flex justify-end pt-1">
+              <Button type="submit" size="sm">Save instance policy</Button>
+            </div>
           </form>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle asChild><h2 className="text-base">Diagnostics</h2></CardTitle>
-          <CardDescription>Live dependency checks; no document contents are inspected.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Diagnostic label="Database" value={diagnostics.database} />
-          <Diagnostic label="Job storage" value={diagnostics.storage} />
-          <Diagnostic label="Print node" value={diagnostics.printNode} />
-          <Diagnostic label="Printers discovered" value={String(diagnostics.discoveredPrinters)} />
-        </CardContent>
-      </Card>
-    </>}
+    )}
   </main>
 }
 
