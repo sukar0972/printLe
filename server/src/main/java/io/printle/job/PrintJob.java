@@ -25,9 +25,8 @@ public class PrintJob {
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
     @Column(name = "submission_key", unique = true) private UUID submissionKey;
-    @Column(name = "cups_job_id") private Integer cupsJobId;
+    @Column(name = "ipp_job_id") private Integer ippJobId;
     @Column(name = "ipp_uri", length = 1024) private String ippUri;
-    @Column(name = "cups_queue", length = 127) private String cupsQueue;
     @Column(name = "ipp_state_reasons", length = 1000) private String ippStateReasons;
     @Column(name = "submitted_at") private Instant submittedAt;
     @Column(name = "completed_at") private Instant completedAt;
@@ -38,8 +37,8 @@ public class PrintJob {
     @Column(name = "attempt", nullable = false) private int attempt;
     @Column(name = "page_range", length = 1000) private String pageRange;
     @Column(name = "manual_phase", length = 20) private String manualPhase;
-    @Column(name = "odd_cups_job_id") private Integer oddCupsJobId;
-    @Column(name = "even_cups_job_id") private Integer evenCupsJobId;
+    @Column(name = "odd_ipp_job_id") private Integer oddIppJobId;
+    @Column(name = "even_ipp_job_id") private Integer evenIppJobId;
 
     protected PrintJob() {}
     public PrintJob(AppUser owner, String originalFilename, String storageKey, long sizeBytes, int pages,
@@ -62,10 +61,9 @@ public class PrintJob {
     public JobStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public UUID getSubmissionKey() { return submissionKey; }
-    public Integer getCupsJobId() { return cupsJobId; }
+    public Integer getIppJobId() { return ippJobId; }
     public String getIppUri() { return ippUri; }
     public void useDirectIpp(String uri) { this.ippUri = uri; }
-    public String getCupsQueue() { return cupsQueue; }
     public String getIppStateReasons() { return ippStateReasons; }
     public Instant getSubmittedAt() { return submittedAt; }
     public Instant getCompletedAt() { return completedAt; }
@@ -77,17 +75,25 @@ public class PrintJob {
     public String getPageRange() { return pageRange; }
     public void selectPages(String value) { pageRange = value == null || value.isBlank() ? null : value.trim(); }
     public void beginDirectSubmission(UUID key, String phase) {
-        this.submissionKey = key; this.manualPhase = phase; this.cupsJobId = null;
+        this.submissionKey = key; this.manualPhase = phase; this.ippJobId = null;
         this.status = JobStatus.SUBMISSION_UNKNOWN; this.submittedAt = Instant.now(); this.updatedAt = submittedAt;
         this.completedAt = null; this.ippStateReasons = "Delivery not confirmed; check the printer before sending another job";
     }
+    public void restoreBeforeSubmission(String phase) {
+        this.status = "EVEN".equals(phase) ? JobStatus.AWAITING_FLIP : JobStatus.HELD;
+        this.manualPhase = "EVEN".equals(phase) ? "ODD" : null;
+        this.ippJobId = "EVEN".equals(phase) ? oddIppJobId : null;
+        this.ippStateReasons = "Printer preflight failed; no document was submitted";
+        this.updatedAt = Instant.now();
+        if (status == JobStatus.HELD) this.submittedAt = null;
+    }
     public String getManualPhase() { return manualPhase; }
-    public Integer getOddCupsJobId() { return oddCupsJobId; }
-    public Integer getEvenCupsJobId() { return evenCupsJobId; }
+    public Integer getOddIppJobId() { return oddIppJobId; }
+    public Integer getEvenIppJobId() { return evenIppJobId; }
     public Printer getPrinter() { return printer; }
     public UUID ensureSubmissionKey() { if (submissionKey == null) submissionKey = UUID.randomUUID(); return submissionKey; }
-    public void submitted(int jobId, String queue, JobStatus initialState, String reasons) {
-        this.cupsJobId = jobId; this.cupsQueue = queue; this.submittedAt = Instant.now();
+    public void submitted(int jobId, JobStatus initialState, String reasons) {
+        this.ippJobId = jobId; this.submittedAt = Instant.now();
         updateIppState(initialState, reasons);
     }
     public void updateIppState(JobStatus state, String reasons) {
@@ -102,17 +108,17 @@ public class PrintJob {
     }
     public void prepareRetry(Instant newExpiry) {
         if (status != JobStatus.ABORTED) throw new IllegalStateException("Only aborted jobs can be retried");
-        this.attempt++; this.submissionKey = UUID.randomUUID(); this.cupsJobId = null; this.cupsQueue = null; this.ippUri = null;
+        this.attempt++; this.submissionKey = UUID.randomUUID(); this.ippJobId = null; this.ippUri = null;
         this.ippStateReasons = null; this.submittedAt = null; this.completedAt = null; this.printer = null;
-        this.manualPhase = null; this.oddCupsJobId = null; this.evenCupsJobId = null;
+        this.manualPhase = null; this.oddIppJobId = null; this.evenIppJobId = null;
         this.status = JobStatus.HELD; this.expiresAt = newExpiry; this.updatedAt = Instant.now();
     }
-    public void submittedManualOdd(int jobId, String queue, JobStatus initialState, String reasons) {
-        this.manualPhase = "ODD"; this.oddCupsJobId = jobId; submitted(jobId, queue, initialState, reasons);
+    public void submittedManualOdd(int jobId, JobStatus initialState, String reasons) {
+        this.manualPhase = "ODD"; this.oddIppJobId = jobId; submitted(jobId, initialState, reasons);
         if (initialState == JobStatus.COMPLETED && this.pages > 1) awaitingFlip(reasons);
     }
     public void awaitingFlip(String reasons) { this.status = JobStatus.AWAITING_FLIP; this.ippStateReasons = reasons; this.completedAt = null; this.updatedAt = Instant.now(); }
     public void submittedManualEven(int jobId, JobStatus initialState, String reasons) {
-        this.manualPhase = "EVEN"; this.evenCupsJobId = jobId; this.cupsJobId = jobId; this.submittedAt = Instant.now(); updateIppState(initialState, reasons);
+        this.manualPhase = "EVEN"; this.evenIppJobId = jobId; this.ippJobId = jobId; this.submittedAt = Instant.now(); updateIppState(initialState, reasons);
     }
 }

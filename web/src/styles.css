@@ -1183,6 +1183,7 @@ html.dark[data-skill="oklch"] {
 .feed p { margin: 4px 0 0; color: var(--subtle); font-size: 13px; }
 
 .ledger-page { padding-top: 18px; }
+.ledger-page > .upload-zone + .queue-table { margin-top: 24px; }
 .ledger-list {
   min-width: 0; padding: 0 14px 14px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -2152,3 +2153,5 @@ html .filter-pills.filter-pills button { height: 34px; min-height: 34px; border-
     transform: none;
   }
 }
+
+.upload-zone .zone-pages input { width: 150px; }

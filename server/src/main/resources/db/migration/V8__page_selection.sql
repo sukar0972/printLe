@@ -1,1 +1,1 @@
-ALTER TABLE print_job ADD COLUMN page_range VARCHAR(1000);
+alter table print_job add column page_range varchar(1000);

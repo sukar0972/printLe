@@ -1,7 +1,9 @@
 package io.printle;
 
 import com.jayway.jsonpath.JsonPath;
-import io.printle.job.PrintNodeClient;
+import io.printle.ipp.DirectIppClient;
+import io.printle.printer.Printer;
+import io.printle.printer.PrinterRepository;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,22 +32,34 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class PrinterWorkflowIntegrationTest {
     @Autowired MockMvc mvc;
-    @MockitoBean PrintNodeClient node;
+    @MockitoBean DirectIppClient node;
+    @Autowired PrinterRepository printers;
 
     @BeforeEach void profiles() {
-        when(node.printers()).thenReturn(List.of(
-            profile("mock-color", "Color Lab", true, true, "ONLINE", List.of()),
-            profile("mock-mono", "Mono Desk", false, true, "ONLINE", List.of()),
-            profile("mock-simple", "Simplex", false, false, "ONLINE", List.of()),
-            profile("mock-jam", "Jammed", true, true, "ERROR", List.of("media-jam"))));
+        register("mock-color", "Color Lab", true, true, "ONLINE", List.of());
+        register("mock-mono", "Mono Desk", false, true, "ONLINE", List.of());
+        register("mock-simple", "Simplex", false, false, "ONLINE", List.of());
+        register("mock-jam", "Jammed", true, true, "ERROR", List.of("media-jam"));
+        when(node.prepare(anyString(), any(), anyString(), anyInt(), any(), any()))
+            .thenAnswer(call -> new DirectIppClient.PreparedSubmission(call.getArgument(0), null, false));
+    }
+    private void register(String host, String name, boolean color, boolean duplex, String status, List<String> reasons) {
+        String uri = "ipp://" + host + "/ipp/print";
+        var caps = new DirectIppClient.Capabilities(name, "Test", status, true, color,
+            duplex ? List.of("one-sided", "two-sided-long-edge", "two-sided-short-edge") : List.of("one-sided"),
+            List.of("A4"), reasons, color ? List.of("monochrome", "color") : List.of("monochrome"), 100, List.of(2,8,9));
+        when(node.inspect(uri)).thenReturn(caps);
+        if (printers.findByIppUri(uri).isEmpty()) {
+            var p = new Printer(name, "Test IPP device"); p.connectIpp(uri, caps); printers.save(p);
+        }
     }
 
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
-    void discoversProfilesPreservesAdminConfigAndRejectsCapabilities() throws Exception {
+    void refreshesProfilesPreservesAdminConfigAndRejectsCapabilities() throws Exception {
         var sync = mvc.perform(post("/api/printers/sync").with(csrf())).andExpect(status().isOk())
-            .andExpect(jsonPath("$[?(@.cupsQueue == 'mock-color')].colorCapable").value(true)).andReturn();
-        List<String> colorIds = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.cupsQueue == 'mock-color')].id");
-        List<String> monoIds = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.cupsQueue == 'mock-mono')].id");
+            .andExpect(jsonPath("$[?(@.ippUri == 'ipp://mock-color/ipp/print')].colorCapable").value(true)).andReturn();
+        List<String> colorIds = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.ippUri == 'ipp://mock-color/ipp/print')].id");
+        List<String> monoIds = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.ippUri == 'ipp://mock-mono/ipp/print')].id");
         var colorId = colorIds.getFirst(); var monoId = monoIds.getFirst();
         mvc.perform(put("/api/printers/{id}", colorId).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("""
             {"name":"Edited Color","description":"admin choice","location":"Floor 2","enabled":true,"maintenance":false,"errorPolicy":"WARN","monoPageRate":0.03,"colorPageRate":0.25}
@@ -56,8 +70,7 @@ class PrinterWorkflowIntegrationTest {
         var job = upload("color-capability.pdf", 2, "COLOR", "ONE_SIDED");
         mvc.perform(post("/api/jobs/{id}/release", job).queryParam("printerId", monoId).with(csrf()))
             .andExpect(status().isConflict());
-        when(node.submit(any(), eq("mock-color"), any(), anyString(), anyString(), anyInt(), any(), any()))
-            .thenReturn(new PrintNodeClient.Submission(91, "mock-color", "completed", "none"));
+        when(node.submit(any(), any())).thenReturn(new DirectIppClient.Submission(91, "ipp://mock-color/ipp/print", "completed", "none"));
         mvc.perform(post("/api/jobs/{id}/release", job).queryParam("printerId", colorId).with(csrf()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"))
             .andExpect(jsonPath("$.estimatedCost").value(0.50)).andExpect(jsonPath("$.costRateVersion").value(2));
@@ -66,28 +79,26 @@ class PrinterWorkflowIntegrationTest {
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
     void manualDuplexWaitsForFlipAndSubmitsEvenPagesExactlyOnce() throws Exception {
         var sync = mvc.perform(post("/api/printers/sync").with(csrf())).andReturn();
-        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.cupsQueue == 'mock-simple')].id");
+        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.ippUri == 'ipp://mock-simple/ipp/print')].id");
         var printerId = ids.getFirst(); var job = upload("manual.pdf", 3, "MONOCHROME", "MANUAL");
-        when(node.submit(any(), eq("mock-simple"), any(), contains("odd pages"), anyString(), anyInt(), any(), any(), eq("odd")))
-            .thenReturn(new PrintNodeClient.Submission(101, "mock-simple", "completed", "none"));
-        when(node.submit(any(), eq("mock-simple"), any(), contains("even pages"), anyString(), anyInt(), any(), any(), eq("even")))
-            .thenReturn(new PrintNodeClient.Submission(102, "mock-simple", "completed", "none"));
+        when(node.submit(any(), any())).thenReturn(
+            new DirectIppClient.Submission(101, "ipp://mock-simple/ipp/print", "completed", "none"),
+            new DirectIppClient.Submission(102, "ipp://mock-simple/ipp/print", "completed", "none"));
         mvc.perform(post("/api/jobs/{id}/release", job).queryParam("printerId", printerId).with(csrf()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("AWAITING_FLIP"))
-            .andExpect(jsonPath("$.oddCupsJobId").value(101));
+            .andExpect(jsonPath("$.oddIppJobId").value(101));
         mvc.perform(post("/api/jobs/{id}/flip", job).with(csrf())).andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.evenCupsJobId").value(102));
+            .andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.evenIppJobId").value(102));
         mvc.perform(post("/api/jobs/{id}/flip", job).with(csrf())).andExpect(status().isConflict());
-        verify(node).submit(any(), eq("mock-simple"), any(), contains("even pages"), anyString(), anyInt(), any(), any(), eq("even"));
+        verify(node, org.mockito.Mockito.times(2)).submit(any(), any());
     }
 
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
     void abortedJobCanBeRetriedAsANewQuotaAttempt() throws Exception {
         var sync = mvc.perform(post("/api/printers/sync").with(csrf())).andReturn();
-        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.cupsQueue == 'mock-color')].id");
+        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.ippUri == 'ipp://mock-color/ipp/print')].id");
         var printerId = ids.getFirst(); var job = upload("retry.pdf", 1, "MONOCHROME", "ONE_SIDED");
-        when(node.submit(any(), eq("mock-color"), any(), anyString(), anyString(), anyInt(), any(), any()))
-            .thenReturn(new PrintNodeClient.Submission(111, "mock-color", "aborted", "document-format-error"));
+        when(node.submit(any(), any())).thenReturn(new DirectIppClient.Submission(111, "ipp://mock-color/ipp/print", "aborted", "document-format-error"));
         mvc.perform(post("/api/jobs/{id}/release", job).queryParam("printerId", printerId).with(csrf()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ABORTED"));
         mvc.perform(post("/api/jobs/{id}/retry", job).with(csrf())).andExpect(status().isOk())
@@ -98,7 +109,7 @@ class PrinterWorkflowIntegrationTest {
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
     void printerAclHidesPrinterWithoutAnExplicitPermission() throws Exception {
         var sync = mvc.perform(post("/api/printers/sync").with(csrf())).andReturn();
-        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.cupsQueue == 'mock-mono')].id");
+        List<String> ids = JsonPath.read(sync.getResponse().getContentAsString(), "$[?(@.ippUri == 'ipp://mock-mono/ipp/print')].id");
         var printerId = ids.getFirst();
         var created = mvc.perform(post("/api/admin/users").with(csrf()).contentType(MediaType.APPLICATION_JSON).content("""
             {"email":"acl-user@example.com","displayName":"ACL User","password":"a-long-test-password","role":"USER"}
@@ -123,10 +134,6 @@ class PrinterWorkflowIntegrationTest {
         var response = mvc.perform(multipart("/api/jobs").file(new MockMultipartFile("file", name, "application/pdf", pdf(pages)))
             .param("colorMode", color).param("duplexMode", duplex).with(csrf())).andExpect(status().isCreated()).andReturn();
         return JsonPath.read(response.getResponse().getContentAsString(), "$.id");
-    }
-    private PrintNodeClient.PrinterProfile profile(String queue, String name, boolean color, boolean duplex, String status, List<String> reasons) {
-        return new PrintNodeClient.PrinterProfile(queue, name, "Test", status, true, color, duplex, List.of("A4"), reasons,
-            new PrintNodeClient.Device("MOCK_USB", "1209", "0001", queue, "MFG:printLe;MDL:Test;"));
     }
     private byte[] pdf(int pages) throws Exception {
         try (var document = new PDDocument(); var output = new ByteArrayOutputStream()) {

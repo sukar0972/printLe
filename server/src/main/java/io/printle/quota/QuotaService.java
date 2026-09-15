@@ -22,7 +22,7 @@ public class QuotaService {
 
     public void reserve(PrintJob job) { addOnce(job, QuotaEntryType.RESERVE, "Job uploaded"); }
     public void settle(PrintJob job, boolean printed) {
-        if (printed) addOnce(job, QuotaEntryType.DEBIT, "CUPS completed");
+        if (printed) addOnce(job, QuotaEntryType.DEBIT, "IPP completed");
         addOnce(job, QuotaEntryType.RELEASE, printed ? "Reservation settled" : "Reservation released");
     }
 

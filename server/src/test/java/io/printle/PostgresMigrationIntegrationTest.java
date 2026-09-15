@@ -33,9 +33,11 @@ class PostgresMigrationIntegrationTest {
                     id, user, id + ".pdf", id.equals(completed) ? "COMPLETED" : "HELD");
             }
 
+            jdbc.update("update " + schema + ".print_job set cups_job_id = 42 where id = ?", completed);
             var flyway = Flyway.configure().dataSource(dataSource).schemas(schema).defaultSchema(schema).load();
             flyway.migrate();
             assertEquals(0, flyway.info().pending().length);
+            assertEquals(42, jdbc.queryForObject("select ipp_job_id from " + schema + ".print_job where id = ?", Integer.class, completed));
             assertEquals(4, jdbc.queryForObject("select count(*) from " + schema + ".quota_ledger", Integer.class));
             assertEquals(6, jdbc.queryForObject("select pages from " + schema + ".quota_ledger where job_id = ? and entry_type = 'DEBIT'", Integer.class, completed));
             assertEquals(true, jdbc.queryForObject("select expires_at = created_at + interval '24 hours' from " + schema + ".print_job where id = ?", Boolean.class, held));

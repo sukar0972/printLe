@@ -33,7 +33,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DirectIppIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JobService jobs;
-    @MockitoBean PrintNodeClient cups;
     @MockitoBean PrinterPoller printerPoller;
     @MockitoBean JobStatePoller jobPoller;
     static HttpServer printer;
@@ -98,13 +97,13 @@ class DirectIppIntegrationTest {
     @AfterAll static void stopPrinter() { printer.stop(0); }
     @BeforeEach void reset() { received.clear(); jobState = 5; }
 
-    @Test void addsPrinterAndPrintsPdfWithoutCupsAndSettlesQuota() throws Exception {
+    @Test void addsPrinterAndPrintsPdfOverIppAndSettlesQuota() throws Exception {
         String path = "/print-" + UUID.randomUUID();
         String id = add(path);
         String job = upload("TWO_SIDED_LONG_EDGE");
         mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.ippUri").value(endpoint(path)))
-            .andExpect(jsonPath("$.cupsJobId").value(42));
+            .andExpect(jsonPath("$.ippJobId").value(42));
         var create = received.stream().filter(r -> r.operation() == 5).findFirst().orElseThrow();
         assertEquals("two-sided-long-edge", create.text("sides"));
         assertEquals("monochrome", create.text("print-color-mode"));
@@ -118,7 +117,6 @@ class DirectIppIntegrationTest {
         jobState = 9; jobs.syncActiveJobs(); jobs.syncActiveJobs();
         mvc.perform(get("/api/jobs")).andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(job)).value("COMPLETED"))
             .andExpect(jsonPath("$[?(@.id == '%s')].estimatedCost".formatted(job)).value(0.10));
-        org.mockito.Mockito.verifyNoInteractions(cups);
     }
 
     @Test void deliveryFailureKeepsRemoteIdAndDoesNotResubmitAndCanCancel() throws Exception {
@@ -126,7 +124,7 @@ class DirectIppIntegrationTest {
         String id = add(path), job = upload("ONE_SIDED");
         mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf())).andExpect(status().isBadGateway());
         mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf()))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.cupsJobId").value(42));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.ippJobId").value(42));
         assertEquals(1, received.stream().filter(r -> r.operation() == 6).count());
         mvc.perform(delete("/api/jobs/{id}", job).with(csrf())).andExpect(status().isNoContent());
         assertTrue(received.stream().anyMatch(r -> r.operation() == 8 && r.path().equals(path)));
@@ -145,7 +143,7 @@ class DirectIppIntegrationTest {
             .content("{\"name\":\"Bad URL\",\"uri\":\"file:///etc/passwd\"}")).andExpect(status().isBadRequest());
     }
 
-    @Test void identicalRemoteIdsAreScopedToTheirPrinterAndRefreshSurvivesCupsOutage() throws Exception {
+    @Test void identicalRemoteIdsAreScopedToTheirPrinterAndRefreshSurvivesWithoutASidecar() throws Exception {
         String firstPath = "/first-" + UUID.randomUUID(), secondPath = "/second-" + UUID.randomUUID();
         String first = add(firstPath), second = add(secondPath);
         String firstJob = upload("ONE_SIDED"), secondJob = upload("ONE_SIDED");
@@ -155,7 +153,6 @@ class DirectIppIntegrationTest {
         var cancellations = received.stream().filter(r -> r.operation() == 8).toList();
         assertEquals(1, cancellations.size());
         assertEquals(secondPath, cancellations.getFirst().path());
-        org.mockito.Mockito.when(cups.printers()).thenThrow(new IllegalStateException("CUPS is not running"));
         mvc.perform(post("/api/printers/sync").with(csrf())).andExpect(status().isOk())
             .andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(first)).value("ONLINE"));
     }
@@ -164,7 +161,7 @@ class DirectIppIntegrationTest {
         String id = add("/manual-" + UUID.randomUUID()), job = upload("MANUAL");
         mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.cupsJobId").value(42));
+            .andExpect(jsonPath("$.ippJobId").value(42));
         assertTrue(received.stream().anyMatch(r -> r.operation() == 5));
     }
 

@@ -1,15 +1,15 @@
 export type CurrentUser = { id: string; email: string; displayName: string; role: 'ADMIN' | 'OPERATOR' | 'MANAGER' | 'USER'; passwordChangeRequired?: boolean }
-export type Job = { id: string; filename: string; sizeBytes: number; pages: number; copies: number; colorMode: string; duplexMode: string; status: string; createdAt: string; cupsJobId?: number; cupsQueue?: string; ippUri?: string; ippStateReasons?: string; submittedAt?: string; completedAt?: string; expiresAt?: string; printerId?: string; printerName?: string; estimatedCost?: number; costRateVersion?: number; pricedAt?: string; attempt: number; manualPhase?: string; oddCupsJobId?: number; evenCupsJobId?: number }
+export type Job = { id: string; filename: string; sizeBytes: number; pages: number; copies: number; colorMode: string; duplexMode: string; status: string; createdAt: string; ippJobId?: number; ippUri?: string; ippStateReasons?: string; submittedAt?: string; completedAt?: string; expiresAt?: string; printerId?: string; printerName?: string; estimatedCost?: number; costRateVersion?: number; pricedAt?: string; attempt: number; manualPhase?: string; pageRange?: string; oddIppJobId?: number; evenIppJobId?: number }
 export type Quota = { limit: number; used: number; pending: number; remaining: number | null; exempt: boolean }
 export type ManagedUser = { id: string; email: string; displayName: string; role: CurrentUser['role']; status: 'ACTIVE' | 'SUSPENDED'; monthlyPageQuota: number | null; quotaExempt: boolean; createdAt: string; lastSignedInAt?: string; passwordChangeRequired?: boolean }
-export type Printer = { id: string; name: string; description?: string; status: 'ONLINE' | 'OFFLINE' | 'ERROR'; cupsQueue?: string; ippUri?: string; location?: string; enabled: boolean; maintenance: boolean; colorCapable: boolean; duplexCapable: boolean; mediaSupported?: string; stateReasons?: string; errorPolicy: 'ALLOW' | 'WARN' | 'BLOCK'; transport?: string; vendorId?: string; productId?: string; deviceSerial?: string; ieee1284DeviceId?: string; lastSeenAt?: string; monoPageRate: number; colorPageRate: number; rateVersion: number }
+export type Printer = { id: string; name: string; description?: string; status: 'UNCONFIGURED' | 'ONLINE' | 'OFFLINE' | 'ERROR'; ippUri?: string; location?: string; enabled: boolean; maintenance: boolean; colorCapable: boolean; duplexCapable: boolean; mediaSupported?: string; stateReasons?: string; errorPolicy: 'ALLOW' | 'WARN' | 'BLOCK'; transport?: string; lastSeenAt?: string; monoPageRate: number; colorPageRate: number; rateVersion: number }
 export type GroupMember = { id: string; email: string; displayName: string }
 export type Group = { id: string; name: string; monthlyPageQuota: number | null; builtIn: boolean; members: GroupMember[] }
 export type AclRule = { id?: string; principalType: 'USER' | 'GROUP'; principalId: string; permission: 'VIEW' | 'SUBMIT' | 'RELEASE_OWN' | 'RELEASE_ANY' | 'MANAGE' }
 export type ReportJob = { id: string; completedAt: string; user: string; printer?: string; printedPages: number; colorMode: string; estimatedCost: number; rateVersion?: number }
 export type Report = { completedJobs: number; printedPages: number; estimatedCost: number; jobs: ReportJob[] }
 export type InstanceSettings = { defaultMonthlyPageQuota: number; quotaTimezone: string; heldJobTtlHours: number; completedRetentionHours: number; failedRetentionHours: number; maxCopies: number; maxPagesPerJob: number; colorPrintingAllowed: boolean; updatedAt: string }
-export type Diagnostics = { database: string; storage: string; printNode: string; discoveredPrinters: number }
+export type Diagnostics = { database: string; storage: string; printing: string; registeredPrinters: number }
 
 let csrfToken: string | undefined
 
@@ -60,7 +60,7 @@ export const api = {
   cancel: (id: string) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   release: (id: string, printerId?: string) => request<Job>(`/api/jobs/${id}/release${printerId ? `?printerId=${encodeURIComponent(printerId)}` : ''}`, { method: 'POST' }),
   retry: (id: string) => request<Job>(`/api/jobs/${id}/retry`, { method: 'POST' }),
-  flip: (id: string) => request<Job>(`/api/jobs/${id}/flip`, { method: 'POST' }),
+  flip: (id: string, reverse = false) => request<Job>(`/api/jobs/${id}/flip?reverse=${reverse}`, { method: 'POST' }),
   printers: () => request<Printer[]>('/api/printers'),
   addIppPrinter: (name: string, uri: string) => request<Printer>('/api/printers/ipp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, uri }) }),
   syncPrinters: () => request<Printer[]>('/api/printers/sync', { method: 'POST' }),

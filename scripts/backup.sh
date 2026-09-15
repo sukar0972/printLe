@@ -15,18 +15,16 @@ fi
 mkdir -p "$destination"
 
 server_id=$(docker compose ps -aq server)
-cups_id=$(docker compose ps -aq cups)
-if [ -z "$server_id" ] || [ -z "$cups_id" ]; then
+if [ -z "$server_id" ]; then
   echo "Start the printLe stack before backing it up" >&2
   exit 1
 fi
 
-restart() { docker compose start cups print-node server >/dev/null 2>&1 || true; }
+restart() { docker compose start server >/dev/null 2>&1 || true; }
 trap restart EXIT INT TERM
-docker compose stop server print-node cups >/dev/null
+docker compose stop server >/dev/null
 docker compose exec -T postgres pg_dump --username printle --dbname printle --format custom > "$destination/database.dump"
 docker cp "$server_id:/var/lib/printle/jobs" "$destination/jobs" >/dev/null
-docker cp "$cups_id:/etc/cups" "$destination/cups" >/dev/null
 docker inspect --format '{{.Image}}' "$server_id" > "$destination/server-image.txt"
 date -u +%FT%TZ > "$destination/created-at.txt"
 restart

@@ -24,8 +24,6 @@ public class PrinterController {
     private final PrinterAclRepository acls; private final AuditService audit; private final AppUserRepository users;
     public PrinterController(PrinterRepository printers, PrinterService service, PrinterAccessService access, PrinterAclRepository acls, AuditService audit, AppUserRepository users) { this.printers = printers; this.service = service; this.access = access; this.acls = acls; this.audit = audit; this.users = users; }
     @GetMapping public List<PrinterView> list(Authentication auth) { return printers.findAll().stream().filter(p -> access.allowed(auth.getName(), p, PrinterPermission.VIEW) || access.allowed(auth.getName(), p, PrinterPermission.RELEASE_OWN)).map(PrinterView::from).toList(); }
-    @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
-    public PrinterView create(@Valid @RequestBody CreatePrinter request, Authentication auth) { var printer = printers.save(new Printer(request.name(), request.description())); record(auth, "PRINTER_CREATED", printer.getId(), printer.getName()); return PrinterView.from(printer); }
     @PostMapping("/ipp") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
     public PrinterView addIpp(@Valid @RequestBody AddIppPrinter request, Authentication auth) {
         var printer = service.addIpp(request.name(), request.uri());
@@ -52,7 +50,6 @@ public class PrinterController {
         record(auth, "PRINTER_ACL_REPLACED", id, result.size() + " rules"); return result.stream().map(AclView::from).toList();
     }
     private void record(Authentication auth, String action, UUID id, String details) { audit.record(users.findByEmailIgnoreCase(auth.getName()).orElseThrow(), action, "PRINTER", id == null ? null : id.toString(), details); }
-    public record CreatePrinter(@NotBlank @Size(max=120) String name, @Size(max=500) String description) {}
     public record UpdatePrinter(@NotBlank @Size(max=120) String name, @Size(max=500) String description,
                                 @Size(max=160) String location, boolean enabled, boolean maintenance,
                                 @jakarta.validation.constraints.NotNull PrinterErrorPolicy errorPolicy,
@@ -62,11 +59,10 @@ public class PrinterController {
     public record AclView(UUID id, PrinterPrincipalType principalType, UUID principalId, PrinterPermission permission) {
         static AclView from(PrinterAcl acl) { return new AclView(acl.getId(), acl.getPrincipalType(), acl.getPrincipalId(), acl.getPermission()); }
     }
-    public record PrinterView(UUID id, String name, String description, PrinterStatus status, String cupsQueue, String ippUri,
+    public record PrinterView(UUID id, String name, String description, PrinterStatus status, String ippUri,
                               String location, boolean enabled, boolean maintenance, boolean colorCapable,
                               boolean duplexCapable, String mediaSupported, String stateReasons, PrinterErrorPolicy errorPolicy,
-                              String transport, String vendorId, String productId, String deviceSerial,
-                              String ieee1284DeviceId, Instant lastSeenAt, BigDecimal monoPageRate, BigDecimal colorPageRate, int rateVersion) {
-        static PrinterView from(Printer p) { return new PrinterView(p.getId(), p.getName(), p.getDescription(), p.getStatus(), p.getCupsQueue(), p.getIppUri(), p.getLocation(), p.isEnabled(), p.isMaintenance(), p.isColorCapable(), p.isDuplexCapable(), p.getMediaSupported(), p.getStateReasons(), p.getErrorPolicy(), p.getTransport(), p.getVendorId(), p.getProductId(), p.getDeviceSerial(), p.getIeee1284DeviceId(), p.getLastSeenAt(), p.getMonoPageRate(), p.getColorPageRate(), p.getRateVersion()); }
+                              String transport, Instant lastSeenAt, BigDecimal monoPageRate, BigDecimal colorPageRate, int rateVersion) {
+        static PrinterView from(Printer p) { return new PrinterView(p.getId(), p.getName(), p.getDescription(), p.getStatus(), p.getIppUri(), p.getLocation(), p.isEnabled(), p.isMaintenance(), p.isColorCapable(), p.isDuplexCapable(), p.getMediaSupported(), p.getStateReasons(), p.getErrorPolicy(), p.getTransport(), p.getLastSeenAt(), p.getMonoPageRate(), p.getColorPageRate(), p.getRateVersion()); }
     }
 }

@@ -4,11 +4,11 @@
 
 - `web/`: React, TypeScript, Vite, Tailwind CSS v4, shadcn/Radix UI, Lucide icons, and TanStack Table. Keep the frontend lean.
 - `server/`: Java 21, Spring Boot 3, Maven, Spring Security, JPA, PostgreSQL, and Flyway migrations.
-- Docker Compose runs the services. `print-node/` is a Python bridge for CUPS.
+- Docker Compose runs the web app, backend, and PostgreSQL.
 
 ## Printers
 
-Printers connect over IPP (`ipp://`) or encrypted IPPS (`ipps://`). The backend supports direct IPP connections; CUPS handles the separate print-node path.
+Printers connect over IPP (`ipp://`) or encrypted IPPS (`ipps://`). The backend connects directly to PDF-capable IPP printers. CUPS and the Python print-node are no longer used.
 
 ## Checks
 

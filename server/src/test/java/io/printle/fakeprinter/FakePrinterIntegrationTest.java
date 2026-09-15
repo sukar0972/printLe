@@ -36,7 +36,6 @@ class FakePrinterIntegrationTest {
     @Autowired FakePrinterService fake;
     @Autowired DirectIppClient ipp;
     @Autowired JobService jobs;
-    @MockitoBean PrintNodeClient cups;
     @MockitoBean PrinterPoller printerPoller;
     @MockitoBean JobStatePoller jobPoller;
 
@@ -54,7 +53,7 @@ class FakePrinterIntegrationTest {
             .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         var release = mvc.perform(post("/api/jobs/{id}/release", jobId).param("printerId", printerId).with(csrf()))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        int remoteId = JsonPath.read(release, "$.cupsJobId");
+        int remoteId = JsonPath.read(release, "$.ippJobId");
         var received = fake.snapshot().jobs().stream().filter(j -> j.id() == remoteId).findFirst().orElseThrow();
         assertEquals("processing", received.state());
         assertEquals(2, received.document().pages());
@@ -71,7 +70,6 @@ class FakePrinterIntegrationTest {
         var operations = fake.snapshot().events().stream().map(FakePrinterService.Event::operation).toList();
         assertTrue(operations.containsAll(List.of("Get-Printer-Attributes", "Create-Job", "Send-Document", "Get-Job-Attributes", "Set job state")));
         mvc.perform(get("/api/admin/fake-printer")).andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
-        org.mockito.Mockito.verifyNoInteractions(cups);
     }
 
     @Test void actualClientCanFindCancelStopAndFailJobs() throws Exception {

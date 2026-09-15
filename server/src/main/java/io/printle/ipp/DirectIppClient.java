@@ -50,7 +50,7 @@ public class DirectIppClient {
 
         var formats = response.getStrings(Tag.printerAttributes, Types.documentFormatSupported);
         if (!formats.contains("application/pdf"))
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This printer does not accept PDF documents directly. Use CUPS for document conversion.");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This printer does not accept PDF documents directly. Register a printer that supports application/pdf.");
 
         var opEnums = response.getValues(Tag.printerAttributes, Types.operationsSupported);
         var operations = opEnums.stream().map(Operation::getCode).toList();
@@ -92,8 +92,8 @@ public class DirectIppClient {
         if (!caps.sides().isEmpty() && !caps.sides().contains(sides)) throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer does not support the selected sides setting");
         String mode = color == ColorMode.COLOR ? "color" : "monochrome";
         if (color == ColorMode.COLOR && !caps.color()) throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer does not support color");
-        if (caps.color() && !caps.colorModes().isEmpty() && !caps.colorModes().contains(mode))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer cannot guarantee the selected color mode; use CUPS for this printer");
+        if (caps.color() && !caps.colorModes().contains(mode))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer cannot guarantee the selected color mode");
         boolean staged = caps.operations().containsAll(List.of(5, 6));
 
         var opAttrs = new ArrayList<Attribute<?>>();
@@ -111,7 +111,7 @@ public class DirectIppClient {
         return new PreparedSubmission(endpoint, request, staged);
     }
 
-    public PrintNodeClient.Submission submit(PreparedSubmission prepared, Path file) {
+    public Submission submit(PreparedSubmission prepared, Path file) {
         var response = exchange(prepared.endpoint(), prepared.packet(), prepared.staged() ? null : file);
         Integer id = response.getValue(Tag.jobAttributes, Types.jobId);
         if (id == null) id = response.getValue(Tag.operationAttributes, Types.jobId);
@@ -125,7 +125,7 @@ public class DirectIppClient {
         if (reasons.isEmpty()) reasons = response.getStrings(Tag.operationAttributes, Types.jobStateReasons);
         String reasonsStr = reasons.isEmpty() ? (prepared.staged() ? "job-incoming" : "none") : String.join(",", reasons);
 
-        return new PrintNodeClient.Submission(id, prepared.endpoint(), stateStr, reasonsStr);
+        return new Submission(id, prepared.endpoint(), stateStr, reasonsStr);
     }
 
     public void send(String endpoint, int id, String user, Path file) {
@@ -138,7 +138,7 @@ public class DirectIppClient {
         exchange(endpoint, request, file);
     }
 
-    public PrintNodeClient.IppStatus status(String endpoint, int id, String user) {
+    public IppStatus status(String endpoint, int id, String user) {
         var opAttrs = List.<Attribute<?>>of(
             Types.jobId.of(id),
             Types.requestedAttributes.of("job-state", "job-state-reasons")
@@ -154,12 +154,12 @@ public class DirectIppClient {
         if (reasons.isEmpty()) reasons = response.getStrings(Tag.operationAttributes, Types.jobStateReasons);
         String reasonsStr = reasons.isEmpty() ? "none" : String.join(",", reasons);
 
-        return new PrintNodeClient.IppStatus(id, stateStr, reasonsStr);
+        return new IppStatus(id, stateStr, reasonsStr);
     }
 
-    public PrintNodeClient.Submission findJob(String endpoint, UUID key, String user) {
+    public Submission findJob(String endpoint, UUID key, String user) {
         var opAttrs = List.<Attribute<?>>of(
-            Types.whichJobs.of("not-completed"),
+            Types.whichJobs.of("all"),
             Types.myJobs.of(true),
             Types.requestedAttributes.of("job-name", "job-id", "job-state", "job-state-reasons")
         );
@@ -176,7 +176,7 @@ public class DirectIppClient {
                     String stateStr = jobState != null ? jobState.getName() : "pending";
                     var reasons = group.getStrings(Types.jobStateReasons);
                     String reasonsStr = reasons.isEmpty() ? "none" : String.join(",", reasons);
-                    return new PrintNodeClient.Submission(jobId, endpoint, stateStr, reasonsStr);
+                    return new Submission(jobId, endpoint, stateStr, reasonsStr);
                 }
             }
         }
@@ -237,11 +237,16 @@ public class DirectIppClient {
                 String message = resPacket.getString(Tag.operationAttributes, Types.statusMessage);
                 throw new IppException("Printer rejected the IPP request (0x" + Integer.toHexString(code) + "): " + (message != null ? message : "unsupported operation or settings"));
             }
+            if (code != 0 && (packet.getCode() == 2 || packet.getCode() == 5))
+                throw new IppException("Printer did not honor all required print settings; delivery is unconfirmed");
             return resPacket;
         } catch (IppException e) { throw e; }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IppException("Printer request interrupted"); }
         catch (Exception e) { throw new IppException("Could not communicate with the IPP printer; check its address, network access, and TLS certificate"); }
     }
+
+    public record Submission(int jobId, String endpoint, String state, String reasons) {}
+    public record IppStatus(int jobId, String state, String reasons) {}
 
     public static class IppException extends ResponseStatusException {
         public IppException(String message) { super(HttpStatus.BAD_GATEWAY, message); }

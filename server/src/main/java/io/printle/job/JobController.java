@@ -44,13 +44,13 @@ public class JobController {
     @PostMapping("/{id}/retry")
     public JobView retry(Authentication auth, @PathVariable UUID id) { return JobView.from(service.retry(auth.getName(), id)); }
     @PostMapping("/{id}/flip")
-    public JobView flip(Authentication auth, @PathVariable UUID id, @RequestParam(defaultValue = "false") boolean reverseOrder) { return JobView.from(service.confirmFlip(auth.getName(), id, reverseOrder)); }
+    public JobView flip(Authentication auth, @PathVariable UUID id, @RequestParam(defaultValue = "false") boolean reverse) { return JobView.from(service.confirmFlip(auth.getName(), id, reverse)); }
 
     public record JobView(UUID id, String filename, long sizeBytes, int pages, int copies, ColorMode colorMode,
-                          DuplexMode duplexMode, JobStatus status, Instant createdAt, Integer cupsJobId,
-                          String cupsQueue, String ippUri, String ippStateReasons, Instant submittedAt, Instant completedAt, Instant expiresAt,
+                          DuplexMode duplexMode, JobStatus status, Instant createdAt, Integer ippJobId,
+                          String ippUri, String ippStateReasons, Instant submittedAt, Instant completedAt, Instant expiresAt,
                           UUID printerId, String printerName, java.math.BigDecimal estimatedCost, Integer costRateVersion, Instant pricedAt, int attempt,
-                          String manualPhase, String pageRange, Integer oddCupsJobId, Integer evenCupsJobId) {
-        static JobView from(PrintJob job) { return new JobView(job.getId(), job.getOriginalFilename(), job.getSizeBytes(), job.getPages(), job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getStatus(), job.getCreatedAt(), job.getCupsJobId(), job.getCupsQueue(), job.getIppUri(), job.getIppStateReasons(), job.getSubmittedAt(), job.getCompletedAt(), job.getExpiresAt(), job.getPrinter() == null ? null : job.getPrinter().getId(), job.getPrinter() == null ? null : job.getPrinter().getName(), job.getEstimatedCost(), job.getCostRateVersion(), job.getPricedAt(), job.getAttempt(), job.getManualPhase(), job.getPageRange(), job.getOddCupsJobId(), job.getEvenCupsJobId()); }
+                          String manualPhase, String pageRange, Integer oddIppJobId, Integer evenIppJobId) {
+        static JobView from(PrintJob job) { return new JobView(job.getId(), job.getOriginalFilename(), job.getSizeBytes(), job.getPages(), job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getStatus(), job.getCreatedAt(), job.getIppJobId(), job.getIppUri(), job.getIppStateReasons(), job.getSubmittedAt(), job.getCompletedAt(), job.getExpiresAt(), job.getPrinter() == null ? null : job.getPrinter().getId(), job.getPrinter() == null ? null : job.getPrinter().getName(), job.getEstimatedCost(), job.getCostRateVersion(), job.getPricedAt(), job.getAttempt(), job.getManualPhase(), job.getPageRange(), job.getOddIppJobId(), job.getEvenIppJobId()); }
     }
 }

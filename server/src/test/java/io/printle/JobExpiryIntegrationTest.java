@@ -1,7 +1,6 @@
 package io.printle;
 
 import io.printle.job.JobService;
-import io.printle.job.PrintNodeClient;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class JobExpiryIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JobService jobs;
-    @MockitoBean PrintNodeClient printNode;
 
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
     void expiresHeldJobReleasesQuotaAndPurgesRecord() throws Exception {

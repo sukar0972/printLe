@@ -49,20 +49,20 @@ const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', d
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
 const previewJobs: Job[] = [
   { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z', expiresAt: '2026-09-04T14:20:00Z', attempt: 1 },
-  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', submittedAt: '2026-09-01T13:06:00Z', cupsJobId: 202, oddCupsJobId: 202, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD' },
+  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', submittedAt: '2026-09-01T13:06:00Z', ippJobId: 202, oddIppJobId: 202, ippUri: 'ipp://preview-success.example/ipp/print', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD' },
   { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z', expiresAt: '2026-09-04T11:40:00Z', attempt: 1 },
-  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', submittedAt: '2026-09-01T10:16:00Z', completedAt: '2026-09-01T10:17:00Z', cupsJobId: 204, cupsQueue: 'mock-jam', printerName: 'Jammed Printer', attempt: 1, ippStateReasons: 'media-jam' },
+  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', submittedAt: '2026-09-01T10:16:00Z', completedAt: '2026-09-01T10:17:00Z', ippJobId: 204, ippUri: 'ipp://preview-jam.example/ipp/print', printerName: 'Jammed Printer', attempt: 1, ippStateReasons: 'media-jam' },
   { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z', expiresAt: '2026-09-03T16:02:00Z', attempt: 1 },
-  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', submittedAt: '2026-08-31T09:14:00Z', completedAt: '2026-08-31T09:16:00Z', cupsJobId: 206, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8, costRateVersion: 1, pricedAt: '2026-08-31T09:16:00Z' },
+  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', submittedAt: '2026-08-31T09:14:00Z', completedAt: '2026-08-31T09:16:00Z', ippJobId: 206, ippUri: 'ipp://preview-success.example/ipp/print', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8, costRateVersion: 1, pricedAt: '2026-08-31T09:16:00Z' },
   { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z', completedAt: '2026-08-30T15:47:00Z', attempt: 1 },
 ]
 
 const previewPrinters: Printer[] = [
-  { id: 'p1', name: 'Studio Color', description: 'Full-capability mock printer', status: 'ONLINE', cupsQueue: 'mock-success', location: 'Studio', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4,LETTER', stateReasons: 'none', errorPolicy: 'WARN', transport: 'usb', vendorId: '1209', productId: '0001', deviceSerial: 'MOCK-001', lastSeenAt: new Date().toISOString(), monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p2', name: 'Reception Mono', status: 'ONLINE', cupsQueue: 'mock-mono', location: 'Reception', enabled: true, maintenance: false, colorCapable: false, duplexCapable: true, mediaSupported: 'A4,LETTER', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p3', name: 'Warehouse Simplex', status: 'ONLINE', cupsQueue: 'mock-simple', location: 'Warehouse', enabled: true, maintenance: false, colorCapable: false, duplexCapable: false, mediaSupported: 'A4', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p4', name: 'Jammed Printer', status: 'ERROR', cupsQueue: 'mock-jam', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'media-jam', errorPolicy: 'BLOCK', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p5', name: 'Offline Printer', status: 'OFFLINE', cupsQueue: 'mock-offline', enabled: false, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'offline', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p1', name: 'Studio Color', description: 'Full-capability mock printer', status: 'ONLINE', ippUri: 'ipp://preview-success.example/ipp/print', location: 'Studio', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4,LETTER', stateReasons: 'none', errorPolicy: 'WARN', transport: 'DIRECT_IPP', lastSeenAt: new Date().toISOString(), monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p2', name: 'Reception Mono', status: 'ONLINE', ippUri: 'ipp://preview-mono.example/ipp/print', location: 'Reception', enabled: true, maintenance: false, colorCapable: false, duplexCapable: true, mediaSupported: 'A4,LETTER', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p3', name: 'Warehouse Simplex', status: 'ONLINE', ippUri: 'ipp://preview-simple.example/ipp/print', location: 'Warehouse', enabled: true, maintenance: false, colorCapable: false, duplexCapable: false, mediaSupported: 'A4', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p4', name: 'Jammed Printer', status: 'ERROR', ippUri: 'ipp://preview-jam.example/ipp/print', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'media-jam', errorPolicy: 'BLOCK', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p5', name: 'Offline Printer', status: 'OFFLINE', ippUri: 'ipp://preview-offline.example/ipp/print', enabled: false, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'offline', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
 ]
 
 export default function App() {
@@ -230,7 +230,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     }
     if (j.status === 'fulfilled' && q.status === 'fulfilled' && p.status === 'fulfilled') {
       setJobs(j.value); setQuota(q.value); setPrinters(p.value); setLoadError('')
-      return j.value.some(job => ['QUEUED', 'PROCESSING', 'PENDING', 'HELD_FOR_AUTHENTICATION', 'STOPPED'].includes(job.status))
+      return j.value.some(job => ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'SUBMISSION_UNKNOWN'].includes(job.status))
     }
     return false
   }, [])
@@ -255,17 +255,17 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   function release(id: string) { setReleaseJob(jobs.find(job => job.id === id)) }
   async function confirmRelease(printer: Printer) {
     if (!releaseJob) return
-    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name, submittedAt: new Date().toISOString() } : job)); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); return }
+    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', ippJobId: Number(job.id), ippUri: printer.ippUri, printerId: printer.id, printerName: printer.name, submittedAt: new Date().toISOString() } : job)); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); return }
     setError(''); setLoadError(''); try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); await load() } catch (e) { setError(message(e)) }
   }
   async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
   async function flip(id: string) { const target = jobs.find(job => job.id === id); if (target) setConfirmFlip(target) }
-  async function confirmManualFlip() {
+  async function confirmManualFlip(reverse = false) {
     if (!confirmFlip) return
     const id = confirmFlip.id
     setConfirmFlip(undefined)
-    if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenCupsJobId: 203, cupsJobId: 203 } : j)); setNotice('Even pages submitted to CUPS.'); return }
-    setError(''); setLoadError(''); try { await api.flip(id); setNotice('Even pages submitted to CUPS.'); await load() } catch (e) { setError(message(e)) }
+    if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenIppJobId: 203, ippJobId: 203 } : j)); setNotice('Even pages submitted to the printer.'); return }
+    setError(''); setLoadError(''); try { await api.flip(id, reverse); setNotice('Even pages submitted to the printer.'); await load() } catch (e) { setError(message(e)) }
   }
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
@@ -305,6 +305,7 @@ function DropBox({ model }: { model: QueueModel }) {
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
+      <label className="zone-field zone-pages">Pages<input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
       <label className="zone-field">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
       <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
       <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
@@ -323,7 +324,7 @@ function JobStatus({ job }: { job: Job }) {
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
   const held = job.status === 'HELD'
-  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'HELD_FOR_AUTHENTICATION', 'STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
   if (held) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   if (job.status === 'AWAITING_FLIP' && onFlip) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onFlip(job.id)}>Stack flipped</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   if (job.status === 'ABORTED' && onRetry) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
@@ -342,7 +343,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
   const visibleJobs = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
-    return model.jobs.filter(job => (statusFilter === 'all' || job.status === statusFilter) && (!needle || [job.filename, job.id, job.printerName, job.cupsQueue, job.ippStateReasons].some(value => value?.toLocaleLowerCase().includes(needle))))
+    return model.jobs.filter(job => (statusFilter === 'all' || job.status === statusFilter) && (!needle || [job.filename, job.id, job.printerName, job.ippUri, job.ippStateReasons].some(value => value?.toLocaleLowerCase().includes(needle))))
   }, [model.jobs, statusFilter, query])
   const columns = useMemo<ColumnDef<AppTableFeatures, Job>[]>(() => [
     { id: 'added', accessorFn: job => new Date(job.createdAt).getTime(), header: 'Added', cell: ({ row }) => <QueueDate value={row.original.createdAt} /> },
@@ -400,11 +401,11 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </dl></section>
       <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
         <TimelineItem label="Created and held" time={job.createdAt} complete />
-        <TimelineItem label={job.cupsJobId ? `Submitted to ${job.ippUri ? 'printer' : 'CUPS'} · job ${job.cupsJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
-        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenCupsJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddCupsJobId || 'pending'}`} complete={Boolean(job.oddCupsJobId)} />}
+        <TimelineItem label={job.ippJobId ? `Submitted to printer · job ${job.ippJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
+        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenIppJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddIppJobId || 'pending'}`} complete={Boolean(job.oddIppJobId)} />}
         <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
       </ol></section>
-      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>{job.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</dt><dd>{job.ippUri || job.cupsQueue || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
+      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>IPP URL</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
         {job.status === 'HELD' && <button className="primary" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</button>}
         {job.status === 'AWAITING_FLIP' && <button className="primary" onClick={() => onFlip(job.id)}>Stack flipped—continue</button>}
@@ -424,13 +425,15 @@ function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { t
   return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Keep job</button><button className={danger ? 'danger-button' : 'primary'} onClick={onConfirm}>{confirm}</button></div></Dialog>
 }
 
-function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: () => void }) {
+function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: (reverse: boolean) => void }) {
+  const [reverse, setReverse] = useState(false)
   return <Dialog className="modal flip-modal" labelledBy="flip-title" onClose={onClose}>
     <p className="eyebrow">Manual duplex · step 2 of 2</p><h2 id="flip-title">Reload the printed stack</h2>
     <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
-    <div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Not ready</button><button className="primary" onClick={onConfirm}>Continue printing</button></div>
+    <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Reverse the even-page order for this printer</label>
+    <div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Not ready</button><button className="primary" onClick={() => onConfirm(reverse)}>Continue printing</button></div>
   </Dialog>
 }
 
@@ -455,10 +458,10 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
       <div className="release-printers">
         {printers.map(printer => {
           const ready = compatible(printer)
-          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.duplexMode === 'MANUAL' && printer.ippUri ? 'Manual flip requires CUPS' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || printer.cupsQueue || 'Printer'} · ready`
+          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || 'Printer'} · ready`
           return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
         })}
-        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer or sync CUPS.</p>}
+        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer.</p>}
       </div>
   </Dialog>
 }
@@ -588,7 +591,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
             <div>
               <p className="font-medium">{user.role === 'ADMIN' ? 'Full printer & fleet management' : 'Personal queue tracking'}</p>
-              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Configure IPP and CUPS printers, manage error policies, and inspect fake printer actions.' : 'Monitor status, cancel held jobs, and flip double-sided jobs.'}</p>
+              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Configure IPP printers, manage error policies, and inspect fake printer actions.' : 'Monitor status, cancel held jobs, and flip double-sided jobs.'}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
@@ -700,7 +703,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
-    const matchesQuery = !needle || [printer.name, printer.location, printer.cupsQueue, printer.ippUri, printer.deviceSerial].some(value => value?.toLocaleLowerCase().includes(needle))
+    const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
     const effectiveStatus = printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED'
     const matchesStatus = statusFilter === 'ALL' || effectiveStatus === statusFilter
     const matchesCapability = capabilityFilter === 'ALL' || (capabilityFilter === 'COLOR' ? printer.colorCapable : capabilityFilter === 'DUPLEX' ? printer.duplexCapable : !printer.colorCapable)
@@ -713,8 +716,8 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.name}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
       enableSorting: false,
     },
-    { id: 'connection', accessorFn: printer => printer.ippUri || printer.cupsQueue || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'Direct IPP' : 'CUPS'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || row.original.cupsQueue || 'unassigned'}</code></span> },
-    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.deviceSerial || 'No location'}</small></span> },
+    { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
+    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.ippUri || 'No location'}</small></span> },
     {
       id: 'state',
       accessorFn: printer => printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED',
@@ -811,7 +814,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
 
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
       <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
-      <p>Connect directly to a network printer without CUPS. The printer must accept PDFs. One-sided and hardware duplex printing are supported; manual flip uses CUPS.</p>
+      <p>Connect to a printer that accepts PDFs over IPP. One-sided, hardware duplex, and manual flip printing are supported.</p>
       <form onSubmit={addIpp}>
         <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
         <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
@@ -822,27 +825,10 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     </Dialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <Card variant="warning">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle asChild><h2 className="text-base font-semibold">Mock printing is active</h2></CardTitle>
-            <CardDescription>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</CardDescription>
-          </div>
-          <Badge variant="warning">CUPS Emulation</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="mock-scenarios">
-          {printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}
-        </div>
-      </CardContent>
-    </Card>}
-
     <DataTableFrame
       className="printer-table"
       title="Printer fleet"
-      description="Monitor direct IPP printers and CUPS queues, capabilities, health, and page pricing."
+      description="Monitor IPP printers, capabilities, health, and page pricing."
       actions={<div className="printer-table-controls">
         <label className="sr-only" htmlFor="printer-search">Search printers</label>
         <Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
@@ -877,8 +863,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
       <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
-      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{selected.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</span><strong>{selected.ippUri || selected.cupsQueue || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
-      {selected.cupsQueue?.startsWith('mock-') && <p className="mock-callout"><strong>Mock scenario: {mockScenario(selected)}</strong><span>This queue runs through CUPS and the print node, but writes mock output instead of sending pages to hardware.</span></p>}
+      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
       <form onSubmit={save}>
         <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
         <label>Description<input name="description" defaultValue={selected.description} /></label>
@@ -1515,7 +1500,7 @@ const previewSettings: InstanceSettings = { defaultMonthlyPageQuota: 200, quotaT
 
 function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean }) {
   const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
-  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printNode: 'ok', discoveredPrinters: 5 } : { database: 'checking', storage: 'checking', printNode: 'checking', discoveredPrinters: 0 })
+  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : { database: 'checking', storage: 'checking', printing: 'checking', registeredPrinters: 0 })
   const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
   const [notice, setNotice] = useState(''); const [error, setError] = useState('')
   useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
@@ -1554,14 +1539,14 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
           hint="Spool file storage"
         />
         <MetricCard
-          label="Print node"
-          value={<Badge variant={diagnostics.printNode === 'ok' ? 'success' : 'warning'} mono>{diagnostics.printNode}</Badge>}
-          hint="CUPS backend daemon"
+          label="Printing protocol"
+          value={<Badge variant={diagnostics.printing === 'IPP' ? 'success' : 'warning'} mono>{diagnostics.printing}</Badge>}
+          hint="Direct printer connection"
         />
         <MetricCard
-          label="Printers discovered"
-          value={diagnostics.discoveredPrinters}
-          hint="mDNS & IPP services"
+          label="Registered printers"
+          value={diagnostics.registeredPrinters}
+          hint="Configured IPP endpoints"
         />
       </section>
     )}
@@ -1781,28 +1766,16 @@ function jobStatusCopy(status: string) {
   return ({
     HELD: 'Waiting for you to choose a printer.',
     EXPIRED: 'The held job expired before it was released.',
-    PENDING: 'CUPS accepted the job and is waiting to print it.',
-    PENDING_HELD: 'CUPS is holding the submitted job.',
-    PROCESSING: 'CUPS is currently processing this job.',
+    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Check the printer before submitting another copy.',
+    PENDING: 'The printer accepted the job and is waiting to print it.',
+    PENDING_HELD: 'The printer is holding the submitted job.',
+    PROCESSING: 'The printer is currently processing this job.',
     PROCESSING_STOPPED: 'Printing stopped. Check the printer reason below.',
     AWAITING_FLIP: 'The odd pages are complete. Reload the stack before continuing.',
     CANCELED: 'The job was canceled.',
-    ABORTED: 'CUPS could not complete the job.',
-    COMPLETED: 'CUPS reported the job as completed.',
-  } as Record<string, string>)[status] || 'The job state was reported by CUPS.'
-}
-function mockScenario(printer: Printer) {
-  const queue = printer.cupsQueue || ''
-  if (queue.includes('jam')) return 'Paper jam'
-  if (queue.includes('offline')) return 'Offline printer'
-  if (queue.includes('delay') || queue.includes('slow')) return 'Delayed completion'
-  if (queue.includes('abort')) return 'Aborted job'
-  if (queue.includes('cancel')) return 'Cancellation'
-  if (queue.includes('hold')) return 'Held job'
-  if (queue.includes('stop')) return 'Stopped processing'
-  if (queue.includes('mono')) return 'Monochrome only'
-  if (queue.includes('simple')) return 'Simplex only'
-  return 'Successful print'
+    ABORTED: 'The printer could not complete the job.',
+    COMPLETED: 'The printer reported the job as completed.',
+  } as Record<string, string>)[status] || 'The job state was reported by the printer.'
 }
 function duplexLabel(mode: string) {
   return ({ ONE_SIDED: 'One-sided', TWO_SIDED_LONG_EDGE: 'Hardware · long', TWO_SIDED_SHORT_EDGE: 'Hardware · short', MANUAL: 'Manual flip' } as Record<string, string>)[mode] ?? mode

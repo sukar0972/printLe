@@ -15,8 +15,8 @@ The current build includes:
 - `ADMIN`, `OPERATOR`, `MANAGER`, and `USER` roles
 - User and group administration, suspension, password resets, quota overrides, and adjustments
 - PDF validation, page counting, held-job storage, cancellation, retry, and expiry
-- CUPS-native job states, idempotent delivery, hardware duplex, and two-stage manual duplex
-- CUPS printer discovery, capability-aware release, maintenance/error policy, and printer ACLs
+- IPP job states, idempotent delivery, hardware duplex, and two-stage manual duplex
+- Direct IPP printer registration, capability-aware release, maintenance/error policy, and printer ACLs
 - Monthly page allowances with individual/group/default precedence and transactional accounting
 - Immutable per-job price estimates with versioned monochrome and color printer rates
 - Usage reports and CSV export
@@ -24,9 +24,7 @@ The current build includes:
 - PostgreSQL migrations with Flyway
 - A responsive React interface with light/dark/system themes and selectable local fonts
 - Configurable print/retention policy and dependency diagnostics
-- Development CUPS queues for success, delay, cancellation, failure, hold, stop, capability, jam, and offline scenarios
-- An internal token-protected print-node service and optional USB device mapping
-- Application-consistent backup tooling for PostgreSQL, job files, and CUPS state
+- Application-consistent backup tooling for PostgreSQL and job files
 - Backend and frontend integration tests
 - Production and development Docker Compose definitions with health checks and persistent service volumes
 
@@ -89,12 +87,6 @@ npm test
 npm run build
 ```
 
-### Mock printing with CUPS
-
-The development Compose overlay includes a real CUPS scheduler with controllable virtual printers for successful, delayed, canceled, aborted, held, stopped, jammed, offline, color, monochrome, duplex, and simplex behavior. It captures documents and submitted options without sending anything to physical hardware.
-
-See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and inspection commands.
-
 ## Fake Printer
 
 Administrators can open **Manage → Fake Printer** to run a mock IPP printer inside
@@ -127,7 +119,7 @@ the new address after restarting.
 
 Compose stores PostgreSQL data and uploaded PDFs in named volumes. Uploaded files are accepted only when they have a PDF header and can be parsed by PDFBox. The default upload limit is 25 MB.
 
-Back up the database, job files, and CUPS state together. See [`docs/backup-and-restore.md`](docs/backup-and-restore.md).
+Back up the database and job files together. See [`docs/backup-and-restore.md`](docs/backup-and-restore.md).
 
 ## Security notes
 
@@ -139,35 +131,22 @@ Back up the database, job files, and CUPS state together. See [`docs/backup-and-
 
 The project license is still undecided. Do not accept outside contributions until the community and commercial licensing model is settled.
 
-### Direct IPP printers (without CUPS)
+### IPP printers
 
-As an administrator, open **Printers → Add IPP printer**, enter a name and an
-`ipp://printer-address/ipp/print` or `ipps://printer-address/ipp/print` URL, then
-choose **Check and add printer**. Use the exact endpoint published by the printer;
-its path may differ. The backend must be able to reach the printer over the LAN.
+In Printers, choose Add IPP printer and enter the printer's `ipp://` or `ipps://`
+endpoint. The printer must accept PDF documents. The backend connects directly;
+CUPS, USB passthrough, and the Python print-node are no longer part of the stack.
 
-The connection check requires native PDF support and the IPP Create-Job,
-Send-Document, Get-Job-Attributes, and Cancel-Job operations. Copies, color, and
-hardware duplex are checked against the printer's capabilities. Manual flip and
-printers that need document conversion still use CUPS. Printer authentication is
-not yet supported. IPPS uses normal certificate verification; configure a trusted
-certificate rather than disabling TLS verification.
+The upload form accepts page ranges such as `1-3, 5`; leave Pages blank to print
+all pages. Quotas count the selected pages multiplied by the number of copies.
+Manual duplex prints odd pages first, waits for you to reload the stack, then
+prints even pages. The confirmation offers reverse order for printers that need it.
 
-Direct printers use the same access rules, held queue, quotas, and pricing as
-CUPS printers. An empty ACL permits all users, as with existing CUPS queues; edit
-the printer's policy to restrict access. Remote job IDs are stored together with
-the printer URL, so devices can reuse the same numeric IDs without mixing jobs.
-The remote ID is committed before sending the PDF. If delivery fails or the
-backend stops during delivery, release will not resend the document. Check the
-printer's state or cancel the existing job before uploading a replacement.
+IPPS verifies certificates. Printer authentication and document conversion are
+not supported. An empty printer ACL permits all users; configure the policy to
+restrict access. Unconfirmed submissions are not automatically sent again.
 
-For a deployment that starts no CUPS or print-node containers:
-
-```bash
-docker compose -f compose.yaml -f compose.ipp.yaml up -d --build
-```
-
-This override requires Compose support for `!override`. Use it
-with the production Compose file. The backend joins the outbound network so it
-can contact LAN printers. The normal deployment continues to support CUPS and
-Direct IPP together.
+Run `docker compose up -d --build` for the IPP-only stack. When upgrading,
+previously registered CUPS-only printers are disabled and need IPP registration.
+Historical job IDs are retained. Active legacy jobs are marked unconfirmed and
+must be checked on their original printer.
