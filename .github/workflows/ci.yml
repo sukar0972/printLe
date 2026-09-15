@@ -1,59 +1,41 @@
 name: CI
-
 on:
-  push:
-    branches:
-      - main
-      - master
+  push: { branches: [main] }
   pull_request:
-
+permissions:
+  contents: read
 jobs:
-  backend:
-    name: Backend Tests
+  server:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: printle-server
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: printle-server/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test
-
-  frontend:
-    name: Frontend Build
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: server/pom.xml
+      - run: mvn --batch-mode verify
+        working-directory: server
+  web:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: printle-web-app
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '24'
           cache: npm
-          cache-dependency-path: printle-web-app/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker compose build

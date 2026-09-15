@@ -1,0 +1,147 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": [
+    "@shadcn/lint"
+  ],
+  "ignorePatterns": [
+    "dist.bak/**"
+  ],
+  "rules": {
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": [
+          "layout",
+          "shell",
+          "workspace",
+          "icon-button",
+          "sidebar-toggle",
+          "printle-brand-button",
+          "group-policy-table"
+        ],
+        "contracts": [
+          {
+            "pattern": "^CardTitle$",
+            "allow": [
+              "layout",
+              "typography"
+            ]
+          },
+          {
+            "pattern": "^CardDescription$",
+            "allow": [
+              "layout",
+              "typography"
+            ]
+          },
+          {
+            "pattern": "^CardContent$",
+            "allow": [
+              "layout",
+              "spacing"
+            ]
+          },
+          {
+            "pattern": "^CardHeader$",
+            "allow": [
+              "layout",
+              "spacing"
+            ]
+          },
+          {
+            "pattern": "^CardFooter$",
+            "allow": [
+              "layout",
+              "spacing"
+            ]
+          },
+          {
+            "pattern": "^RadioGroup$",
+            "allow": [
+              "layout",
+              "spacing"
+            ]
+          },
+          {
+            "pattern": "^Dialog$",
+            "allow": [
+              "modal",
+              "confirm-modal",
+              "flip-modal",
+              "release-modal",
+              "modal-wide"
+            ]
+          },
+          {
+            "pattern": "^DataTableFrame$",
+            "allow": [
+              "printer-table",
+              "user-directory",
+              "report-table"
+            ]
+          },
+          {
+            "pattern": "^DropdownMenuTrigger$",
+            "allow": [
+              "row-menu-trigger"
+            ]
+          },
+          {
+            "pattern": "^DropdownMenuContent$",
+            "allow": [
+              "shape",
+              "layout"
+            ]
+          },
+          {
+            "pattern": "^DropdownMenuLabel$",
+            "allow": [
+              "spacing",
+              "typography"
+            ]
+          }
+        ]
+      }
+    ],
+    "shadcn/no-raw-colors": "error",
+    "shadcn/no-arbitrary-values": [
+      "error",
+      {
+        "allow": [
+          "layout"
+        ]
+      }
+    ],
+    "shadcn/no-inline-styles": "error",
+    "shadcn/require-static-classes": "error",
+    "shadcn/no-unknown-classes": [
+      "warn",
+      {
+        "allow": [
+          "shell",
+          "workspace",
+          "icon-button",
+          "sidebar-toggle",
+          "printle-brand-button",
+          "group-policy-table",
+          "printer-table",
+          "user-directory",
+          "report-table",
+          "ui-table"
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/ui/**"
+      ],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/require-static-classes": "off"
+      }
+    }
+  ]
+}
