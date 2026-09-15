@@ -60,12 +60,26 @@ npm install
 npm run dev
 ```
 
-Run backend tests with the included Maven wrapper:
+Run backend tests with Java 21, a running Docker daemon, and the included Maven wrapper:
 
 ```bash
 cd server
 ./mvnw test
 ```
+
+Backend integration tests use Testcontainers to start disposable PostgreSQL 17
+databases. They run the production Flyway migrations and validate the schema with
+Hibernate. The suite also tests upgrading existing job and quota data. No running
+Compose stack or manually created test database is needed; the first run downloads
+the PostgreSQL and Testcontainers helper images. Tests fail if Docker is unavailable.
+
+Spring manages each test database for the lifetime of its application context and
+removes it when that context closes. Maven limits the context cache to two entries
+to bound container usage. Run these commands on the Docker host; running them inside
+the application container requires separate access to a Docker daemon and its
+published container ports. CI runs the same tests on the GitHub-hosted Ubuntu runner.
+New Spring integration tests should import `PostgresTestConfiguration` to receive
+the managed database connection.
 
 Run the frontend checks:
 

@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@org.springframework.context.annotation.Import(io.printle.PostgresTestConfiguration.class)
 @AutoConfigureMockMvc
 class JobIntegrationTest {
     @Autowired MockMvc mvc;

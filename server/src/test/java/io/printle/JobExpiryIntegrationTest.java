@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"printle.held-job-ttl=1ms", "printle.failed-job-retention=1ms", "printle.cleanup-interval-ms=3600000"})
+@org.springframework.context.annotation.Import(io.printle.PostgresTestConfiguration.class)
 @AutoConfigureMockMvc
 class JobExpiryIntegrationTest {
     @Autowired MockMvc mvc;

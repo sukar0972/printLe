@@ -1,16 +1,23 @@
+import { useQueueRefresh } from './hooks/use-queue-refresh'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { Activity, CheckCircle2, ChevronDown, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, Sliders, X } from 'lucide-react'
+import { Activity, CheckCircle2, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
-import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
-import { cn } from './lib/cn'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DataTableFrame } from '@/components/ui/data-table-frame'
+import { Dialog } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
+import { MetricCard } from '@/components/ui/metric-card'
+import { OptionSelect as Select } from '@/components/ui/select'
 import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -24,8 +31,9 @@ import { Select as SelectMenu, SelectContent, SelectItem, SelectTrigger, SelectV
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Separator } from '@/components/ui/separator'
 
-type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'settings'
+type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
 
@@ -80,19 +88,18 @@ export default function App() {
       items: [
         { page: 'queue', title: 'Print queue', icon: 'queue' },
         { page: 'profile', title: 'My profile', icon: 'profile' },
-        ...(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on
-          ? [{ page: 'reports', title: 'Reports', icon: 'reports' } as const]
-          : []),
         { page: 'settings', title: 'Settings', icon: 'settings' },
       ],
     },
-    ...((user.role === 'ADMIN' || preview.on)
+    ...((user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on)
       ? [{
           label: 'Manage',
           items: [
-            { page: 'printers', title: 'Printers', icon: 'printer' },
-            { page: 'fake-printer', title: 'Fake Printer', icon: 'printer' },
-            { page: 'users', title: 'Users', icon: 'users' },
+            ...((user.role === 'ADMIN' || preview.on) ? [
+              { page: 'printers' as const, title: 'Printers', icon: 'printer' as const },
+              { page: 'fake-printer' as const, title: 'Fake Printer', icon: 'printer' as const },
+            ] : []),
+            { page: 'users-reports' as const, title: 'Users & Reports', icon: 'users' as const },
           ],
         } satisfies SidebarNavGroup]
       : []),
@@ -119,7 +126,7 @@ export default function App() {
       </>}
       notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
+          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : (page === 'users-reports' || page === 'users' || page === 'reports') ? <UsersReports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
     </AppShell>
 }
 
@@ -132,7 +139,7 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
     catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in') } finally { setBusy(false) }
   }
   return <main className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-    <section className="bg-[image:var(--pass-gradient)] relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+    <section className="login-hero relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
       <img src="/printle-logo.svg" alt="printLe" className="h-10 w-auto" />
       <div className="max-w-lg space-y-4">
         <h1 className="text-3xl font-semibold leading-tight tracking-tight">Print what you need.<br />Pick it up when you&rsquo;re ready.</h1>
@@ -144,7 +151,7 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
       <Card className="w-full max-w-sm">
         <CardHeader className="gap-2">
           <img src="/printle-logo.svg" alt="printLe" className="h-8 w-auto lg:hidden" />
-          <CardDescription className="text-xs font-medium tracking-[0.14em] uppercase">Welcome back</CardDescription>
+          <CardDescription className="text-xs font-medium tracking-widest uppercase">Welcome back</CardDescription>
           <CardTitle asChild><h2 className="text-xl tracking-tight">Sign in to printLe</h2></CardTitle>
           <CardDescription>Use the account provided by your administrator.</CardDescription>
         </CardHeader>
@@ -162,7 +169,7 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
             <Button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-between text-sm text-muted-foreground">
+        <CardFooter className="justify-between">
           <a href="#preview" className="hover:text-foreground underline-offset-4 hover:underline">Open dashboard preview</a>
           <ThemeButton theme={theme} />
         </CardFooter>
@@ -212,12 +219,22 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const [confirmFlip, setConfirmFlip] = useState<Job>()
   const [notice, setNotice] = useState('')
   const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
-  const load = useCallback(async () => {
-    if (preview) { setJobs(previewJobs); setQuota(previewQuota); return }
-    try { const [j, q, p] = await Promise.all([api.jobs(), api.quota(), api.printers()]); setJobs(j); setQuota(q); setPrinters(p); setLoadError('') }
-    catch (e) { setLoadError(message(e)) }
-  }, [preview])
-  useEffect(() => { void load() }, [load])
+  const fetchQueue = useCallback(async () => {
+    // Wait for every request, including failures, before allowing another batch.
+    const results = await Promise.allSettled([api.jobs(), api.quota(), api.printers()])
+    const [j, q, p] = results
+    const failure = results.find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') {
+      setLoadError(message(failure.reason))
+      return false
+    }
+    if (j.status === 'fulfilled' && q.status === 'fulfilled' && p.status === 'fulfilled') {
+      setJobs(j.value); setQuota(q.value); setPrinters(p.value); setLoadError('')
+      return j.value.some(job => ['QUEUED', 'PROCESSING', 'PENDING', 'HELD_FOR_AUTHENTICATION', 'STOPPED'].includes(job.status))
+    }
+    return false
+  }, [])
+  const load = useQueueRefresh(fetchQueue, !preview)
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
     setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
@@ -250,7 +267,6 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenCupsJobId: 203, cupsJobId: 203 } : j)); setNotice('Even pages submitted to CUPS.'); return }
     setError(''); setLoadError(''); try { await api.flip(id); setNotice('Even pages submitted to CUPS.'); await load() } catch (e) { setError(message(e)) }
   }
-  useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
@@ -267,10 +283,6 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     {confirmFlip && <FlipDialog job={confirmFlip} onClose={() => setConfirmFlip(undefined)} onConfirm={confirmManualFlip} />}
     {notice && <Toast message={notice} onClose={() => setNotice('')} />}
   </>
-}
-
-function Heading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
-  return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{copy}</p></div></div>
 }
 
 function Metrics({ model }: { model: QueueModel }) {
@@ -302,66 +314,6 @@ function DropBox({ model }: { model: QueueModel }) {
   </form>
 }
 
-function Compose({ model, variant = 'row' }: { model: QueueModel; variant?: 'row' | 'hero' | 'slim' }) {
-  return <section className={variant === 'hero' ? 'panel compose-panel compose-hero' : variant === 'slim' ? 'compose-plain' : 'panel compose-panel'}>
-    <form className={variant === 'hero' ? 'compose-form compose-stack' : 'compose-form'} onSubmit={model.upload}>
-      <label className="file-drop">
-        <span className="upload-icon">↑</span>
-        <strong>{variant === 'hero' ? 'Drop a PDF' : 'Choose a PDF'}</strong>
-        <span>Max 25 MB</span>
-        <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
-      </label>
-      {variant !== 'slim' && <>
-        <label className="field-copies">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
-        <label className="field-color">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
-        <label className="field-sides">Sides<Select name="duplexMode" defaultValue="ONE_SIDED">
-          <option value="ONE_SIDED">One-sided</option>
-          <option value="TWO_SIDED_LONG_EDGE">Hardware · long edge</option>
-          <option value="TWO_SIDED_SHORT_EDGE">Hardware · short edge</option>
-          <option value="MANUAL">Manual flip</option>
-        </Select></label>
-      </>}
-      <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
-    </form>
-    {model.error && <p className="error" role="alert">{model.error}</p>}
-  </section>
-}
-
-function Printers() {
-  return <section className="panel printers-panel">
-    <div className="panel-title"><h2>Printers</h2><span>0 online</span></div>
-    <div className="printer-list">
-      <div className="printer-row"><div><strong>Reception</strong><small>USB · not connected</small></div><span className="chip"><i className="dot warn" /> Offline</span></div>
-      <div className="printer-row"><div><strong>Warehouse</strong><small>USB · not connected</small></div><span className="chip"><i className="dot" /> Offline</span></div>
-    </div>
-  </section>
-}
-
-function JobLine({ job, onCancel, onRelease, onRetry, onFlip, onInspect, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void; onInspect?: (job: Job) => void; wide?: boolean }) {
-  const color = job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
-  if (wide) {
-    return <article className="job job-wide">
-      <QueueDate value={job.createdAt} />
-      <div className="doc-icon">PDF</div>
-      {onInspect ? <button type="button" className="job-name job-link" onClick={() => onInspect(job)}>{job.filename}</button> : <strong className="job-name">{job.filename}</strong>}
-      <span>{job.pages}</span>
-      <span>{job.copies}</span>
-      <span className="print-settings"><span>{color}</span><small>{duplexLabel(job.duplexMode)}</small></span>
-      <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-    </article>
-  }
-  return <article className="job">
-    <div className="doc-icon">PDF</div>
-    <div className="job-main">
-      <strong>{job.filename}</strong>
-      <span>{job.pages} page{job.pages === 1 ? '' : 's'} · {job.copies} cop{job.copies === 1 ? 'y' : 'ies'} · {color}</span>
-    </div>
-    <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
-    <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-    <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-  </article>
-}
-
 function JobStatus({ job }: { job: Job }) {
   return <span className={`status status-plain ${job.status.toLowerCase()}`} title={job.ippStateReasons || undefined}>
     <i className="status-dot" aria-hidden="true" />
@@ -377,13 +329,6 @@ function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; o
   if (job.status === 'ABORTED' && onRetry) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
   if (active) return <span className="job-actions"><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   return <span className="job-actions" />
-}
-
-function JobState({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
-  return <>
-    <JobStatus job={job} />
-    <JobActions job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-  </>
 }
 
 function statusLabel(status: string) {
@@ -425,9 +370,9 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
       <Metrics model={model} />
     </div>}
     <DropBox model={model} />
-    <DataTableFrame className="queue-table" title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
-            <button key={id} type="button" className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
+            <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>} footer={<TablePagination table={table} noun="jobs" />}>
       {model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
@@ -586,7 +531,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             <CardTitle asChild><h2 className="text-base font-semibold">My print pass</h2></CardTitle>
             <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
           </div>
-          <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'} className="gap-1 px-2.5 py-0.5">
+          <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'}>
             <Shield className="size-3.5" />
             {statusLabel(user.role)}
           </Badge>
@@ -631,7 +576,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Key className="size-4 text-primary" /> Role permissions</h3></CardTitle>
           <CardDescription>Capabilities granted to your account role.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+        <CardContent className="space-y-3">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
             <div>
@@ -661,7 +606,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Shield className="size-4 text-primary" /> Print pass security</h3></CardTitle>
           <CardDescription>Credential security and audit protections.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+        <CardContent className="space-y-3">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
             <div>
@@ -877,14 +822,14 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     </Dialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <Card className="border-amber-500/20 bg-amber-500/5">
+    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <Card variant="warning">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle asChild><h2 className="text-base font-semibold">Mock printing is active</h2></CardTitle>
             <CardDescription>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</CardDescription>
           </div>
-          <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-300">CUPS Emulation</Badge>
+          <Badge variant="warning">CUPS Emulation</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -957,7 +902,7 @@ function userGroups(groups: Group[], userId: string) {
   return groups.filter(group => group.members.some(member => member.id === userId))
 }
 
-function Users({ preview }: { preview: boolean }) {
+function UsersSection({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
   const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
   const [query, setQuery] = useState('')
@@ -1085,8 +1030,8 @@ function Users({ preview }: { preview: boolean }) {
       header: 'User',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <Avatar className="size-8 border">
-            <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+          <Avatar bordered>
+            <AvatarFallback>
               {initials(row.original.displayName)}
             </AvatarFallback>
           </Avatar>
@@ -1103,7 +1048,7 @@ function Users({ preview }: { preview: boolean }) {
       cell: ({ row }) => (
         <div className="grid gap-0.5">
           <div className="flex items-center gap-1.5">
-            <Badge variant={row.original.role === 'ADMIN' ? 'default' : 'secondary'} className="text-[11px] font-medium py-0 px-2">
+            <Badge variant={row.original.role === 'ADMIN' ? 'default' : 'secondary'}>
               {statusLabel(row.original.role)}
             </Badge>
           </div>
@@ -1121,7 +1066,7 @@ function Users({ preview }: { preview: boolean }) {
         const gList = userGroups(groups, row.original.id)
         return <div className="flex flex-wrap gap-1">
           {gList.map(group => (
-            <Badge key={group.id} variant="outline" className="text-[11px] font-normal px-2 py-0 border-border/70">
+            <Badge key={group.id} variant="outline">
               {group.name}
             </Badge>
           ))}
@@ -1133,7 +1078,7 @@ function Users({ preview }: { preview: boolean }) {
       accessorFn: user => user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`,
       header: 'Page allowance',
       cell: ({ row }) => (
-        <Badge variant={row.original.quotaExempt ? 'default' : 'secondary'} className="text-xs font-normal">
+        <Badge variant={row.original.quotaExempt ? 'default' : 'secondary'}>
           {row.original.quotaExempt ? 'Unlimited' : row.original.monthlyPageQuota == null ? 'Default' : `${row.original.monthlyPageQuota} pages`}
         </Badge>
       ),
@@ -1176,15 +1121,7 @@ function Users({ preview }: { preview: boolean }) {
     getRowId: user => user.id,
     enableRowSelection: true,
   })
-  return <main className="page users-page grid gap-6">
-    <div className="alt-content-heading">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Directory</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, and access policy groups.</p>
-      </div>
-      <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Directory</strong></nav>
-    </div>
-
+  return <>
     <section className="metrics quota-strip" aria-label="Directory metrics">
       <MetricCard
         label="Total members"
@@ -1262,7 +1199,7 @@ function Users({ preview }: { preview: boolean }) {
               {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
             </Select>}
           </div>
-          <Badge variant="outline" className="text-muted-foreground font-normal">
+          <Badge variant="muted">
             {selectedCount} selected
           </Badge>
         </div>
@@ -1273,12 +1210,11 @@ function Users({ preview }: { preview: boolean }) {
     </DataTableFrame>
 
     <DataTableFrame
-      className="group-directory"
       title="Groups"
       description="Named sets for printer access and shared page quotas."
       actions={<Button size="sm" onClick={() => setGroupOpen(true)}>+ Add group</Button>}
     >
-      <Table className="ui-table group-policy-table">
+      <Table className="group-policy-table">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[180px]">Group</TableHead>
@@ -1301,7 +1237,7 @@ function Users({ preview }: { preview: boolean }) {
                 <TableCell>
                   <div className="flex flex-wrap gap-1.5 items-center">
                     {group.members.length ? group.members.map(member => (
-                      <Badge key={member.id} variant="secondary" className="gap-1 py-0.5 px-2 text-xs font-normal">
+                      <Badge key={member.id} variant="secondary">
                         {member.displayName}
                         {!group.builtIn && (
                           <button
@@ -1318,7 +1254,7 @@ function Users({ preview }: { preview: boolean }) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="font-normal text-xs">
+                  <Badge variant="outline">
                     {group.monthlyPageQuota == null ? 'Default' : `${group.monthlyPageQuota} pages`}
                   </Badge>
                 </TableCell>
@@ -1329,7 +1265,7 @@ function Users({ preview }: { preview: boolean }) {
                         <option value="" disabled>Add member…</option>
                         {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
                       </Select>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => void removeGroup(group)}>
+                      <Button variant="ghost-destructive" size="sm" onClick={() => void removeGroup(group)}>
                         Delete
                       </Button>
                     </div>
@@ -1363,7 +1299,7 @@ function Users({ preview }: { preview: boolean }) {
     {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><button className="quiet" onClick={() => setGroupOpen(false)}>Close</button></div>
       <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><button className="primary">Create group</button></form>
     </Dialog>}
-  </main>
+  </>
 }
 
 const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCost: 3.18, jobs: [
@@ -1372,7 +1308,7 @@ const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCos
   { id: 'r3', completedAt: '2026-08-31T16:00:00Z', user: 'sam@printle.local', printer: 'Warehouse Simplex', printedPages: 6, colorMode: 'MONOCHROME', estimatedCost: .14, rateVersion: 2 },
 ] }
 
-function Reports({ preview }: { preview: boolean }) {
+function ReportsSection({ preview }: { preview: boolean }) {
   const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
   const [range, setRange] = useState('all')
   const [error, setError] = useState('')
@@ -1402,8 +1338,8 @@ function Reports({ preview }: { preview: boolean }) {
       header: 'User',
       cell: ({ row }) => (
         <div className="flex items-center gap-2.5">
-          <Avatar className="size-6 border">
-            <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">
+          <Avatar size="sm" bordered>
+            <AvatarFallback>
               {initials(row.original.user.split('@')[0])}
             </AvatarFallback>
           </Avatar>
@@ -1436,7 +1372,7 @@ function Reports({ preview }: { preview: boolean }) {
       accessorKey: 'colorMode',
       header: 'Mode',
       cell: ({ row }) => (
-        <Badge variant={row.original.colorMode === 'COLOR' ? 'default' : 'secondary'} className="text-[11px] font-medium py-0 px-2">
+        <Badge variant={row.original.colorMode === 'COLOR' ? 'default' : 'secondary'}>
           {row.original.colorMode === 'COLOR' ? 'Color' : 'Mono'}
         </Badge>
       ),
@@ -1460,14 +1396,14 @@ function Reports({ preview }: { preview: boolean }) {
     onPaginationChange: setPagination,
     getRowId: job => job.id,
   })
-  return <main className="page grid gap-6">
+  return <>
+    <Separator className="my-2" />
     <div className="alt-content-heading">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+        <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
         <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
       </div>
       <div className="flex items-center gap-3">
-        <nav aria-label="Breadcrumb"><span>Accounting</span><b>/</b><strong>Reports</strong></nav>
         <Button variant="outline" size="sm" asChild>
           <a href={preview ? '#preview' : '/api/admin/reports/jobs.csv'} download={!preview}>
             <Download aria-hidden="true" className="size-3.5" />
@@ -1541,18 +1477,28 @@ function Reports({ preview }: { preview: boolean }) {
     >
       <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
     </DataTableFrame>
-  </main>
+  </>
 }
 
-function ReportStat({ label, value, hint }: { label: string; value: ReactNode; hint: string }) {
-  return <Card className="gap-2 py-4">
-    <CardContent className="grid gap-1 px-4">
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
-      <strong className="text-2xl font-semibold tracking-tight">{value}</strong>
-      <small className="text-muted-foreground text-xs">{hint}</small>
-    </CardContent>
-  </Card>
+function UsersReports({ preview }: { preview: boolean }) {
+  return (
+    <main className="page users-page grid gap-6">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Users & Reports</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, access policy groups, and print accounting reports.</p>
+        </div>
+        <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Users & Reports</strong></nav>
+      </div>
+
+      <UsersSection preview={preview} />
+
+      <ReportsSection preview={preview} />
+    </main>
+  )
 }
+
+
 
 function filterReportJobs(jobs: ReportJob[], range: string) {
   if (range === 'all') return jobs
@@ -1599,17 +1545,17 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
       <section aria-label="System status" className="metrics quota-strip">
         <MetricCard
           label="Database"
-          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.database}</Badge>}
+          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} mono>{diagnostics.database}</Badge>}
           hint="PostgreSQL connection"
         />
         <MetricCard
           label="Job storage"
-          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.storage}</Badge>}
+          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} mono>{diagnostics.storage}</Badge>}
           hint="Spool file storage"
         />
         <MetricCard
           label="Print node"
-          value={<Badge variant={diagnostics.printNode === 'ok' ? 'success' : 'warning'} className="font-mono text-xs uppercase px-2">{diagnostics.printNode}</Badge>}
+          value={<Badge variant={diagnostics.printNode === 'ok' ? 'success' : 'warning'} mono>{diagnostics.printNode}</Badge>}
           hint="CUPS backend daemon"
         />
         <MetricCard
@@ -1626,25 +1572,23 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
             <CardTitle asChild><h2 className="text-base font-semibold">Typeface</h2></CardTitle>
             <CardDescription className="mt-1">DM Sans is the default. Your selection is saved locally.</CardDescription>
           </div>
-          <Badge variant="outline" className="text-xs font-normal">Appearance</Badge>
+          <Badge variant="outline">Appearance</Badge>
         </div>
       </CardHeader>
       <CardContent>
-        <RadioGroup className="grid gap-3 sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
+        <RadioGroup className="sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
           {TYPES.map(item => (
             <Label
               key={item.id}
               htmlFor={`typeface-${item.id}`}
-              className={cn(
-                "flex flex-row cursor-pointer items-start gap-3.5 rounded-lg border p-3.5 transition-colors hover:bg-accent/40",
-                typeface.value === item.id ? "border-primary bg-primary/5 shadow-xs" : "border-border"
-              )}
+              variant="choice"
+              data-selected={typeface.value === item.id ? 'true' : undefined}
             >
               <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-1" />
               <div className="grid gap-0.5">
                 <div className="flex items-center gap-2">
                   <strong className="text-sm font-semibold tracking-tight">{item.short.replace(/^\d+ /, '')}</strong>
-                  {item.id === 'dmsans' && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Default</Badge>}
+                  {item.id === 'dmsans' && <Badge variant="secondary">Default</Badge>}
                 </div>
                 <small className="text-muted-foreground text-xs leading-relaxed">{item.blurb}</small>
               </div>
@@ -1693,7 +1637,7 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
               <CardTitle asChild><h2 className="text-base font-semibold">Print and retention policy</h2></CardTitle>
               <CardDescription className="mt-1">Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</CardDescription>
             </div>
-            <Badge variant="secondary" className="text-xs font-normal">Instance Policy</Badge>
+            <Badge variant="secondary">Instance Policy</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -1745,14 +1689,6 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
   </main>
 }
 
-function Diagnostic({ label, value }: { label: string; value: string }) {
-  const ok = value === 'ok' || /^\d+$/.test(value)
-  return <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
-    <Badge variant={ok ? 'success' : 'warning'} className="w-fit">{value}</Badge>
-    <strong className="text-sm font-medium">{label}</strong>
-  </div>
-}
-
 function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
   const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
   return <button className="icon-button" title={`Theme: ${theme.value}`} aria-label={`Theme ${theme.value}`} onClick={() => theme.set(next)}>
@@ -1769,12 +1705,6 @@ function QueueDate({ value }: { value: string }) {
   const monthAndYear = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
   const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   return <time className="queue-date" dateTime={value}><span>{day}{suffix} {monthAndYear}</span><small>at {time}</small></time>
-}
-
-function relativeTime(iso: string) {
-  const hours = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3600000))
-  if (hours < 24) return `${Math.max(1, hours)}h ago`
-  return `${Math.round(hours / 24)}d ago`
 }
 
 function parsePreviewHash(hash = typeof location === 'undefined' ? '' : location.hash) {
@@ -1830,20 +1760,19 @@ function useTheme() {
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
 function SunIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> }
 function MoonIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg> }
-function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'settings' | 'logout' }) {
+function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings' | 'logout' }) {
   if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
   if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
   if (name === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-  if (name === 'users') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  if (name === 'users' || name === 'users-reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   if (name === 'reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
   if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', users: 'Users', reports: 'Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports', users: 'Users & Reports', reports: 'Users & Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }
-function yesNo(value: boolean) { return value ? 'Yes' : 'No' }
 function optionalNumber(value: FormDataEntryValue | null) { return value === null || value === '' ? null : Number(value) }
 function formatBytes(value: number) { return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / 1024 / 1024).toFixed(1)} MB` }
 function formatDate(value?: string) { return value ? new Date(value).toLocaleString() : '—' }

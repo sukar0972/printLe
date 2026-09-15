@@ -6,7 +6,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
-import { MetricCard } from './ui'
+import { MetricCard } from '@/components/ui/metric-card'
 import { Check, Copy, Pause, Play, Power, Printer as PrinterIcon, Trash2 } from 'lucide-react'
 
 export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrinters: () => void }) {
@@ -69,14 +69,14 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
       </div>
     </div>
     {preview ? (
-      <Card className="border-dashed">
+      <Card variant="dashed">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle asChild><h2 className="text-base font-semibold">Sign in to use the fake printer</h2></CardTitle>
               <CardDescription className="mt-1">The dashboard preview does not run an IPP endpoint. Sign in as an administrator to receive and inspect actual requests.</CardDescription>
             </div>
-            <Badge variant="secondary" className="text-xs">Preview Mode</Badge>
+            <Badge variant="secondary">Preview Mode</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -115,7 +115,7 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
             <section aria-label="Fake printer status" className="metrics quota-strip">
               <MetricCard
                 label="Listener status"
-                value={<Badge variant={data.enabled ? 'success' : 'secondary'} className="text-xs font-mono uppercase px-2">{data.enabled ? 'Online' : 'Offline'}</Badge>}
+                value={<Badge variant={data.enabled ? 'success' : 'secondary'} mono>{data.enabled ? 'Online' : 'Offline'}</Badge>}
                 hint="Local IPP daemon"
               />
               <MetricCard
@@ -148,7 +148,7 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
                 <div className="grid gap-2">
                   <Label htmlFor="fake-printer-uri">IPP address for this printLe instance</Label>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input id="fake-printer-uri" value={data.localUri} readOnly onFocus={event => event.target.select()} className="font-mono text-xs" />
+                    <Input id="fake-printer-uri" value={data.localUri} readOnly onFocus={event => event.target.select()} variant="mono" />
                     <Button variant="outline" size="sm" onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(data.localUri)
@@ -160,7 +160,7 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
                         setError('Could not copy automatically. Select and copy the address above.')
                       }
                     }}>
-                      {copied ? <Check className="size-3.5 mr-1 text-emerald-500" /> : <Copy className="size-3.5 mr-1" />}
+                      {copied ? <Check className="size-3.5 mr-1 text-success" /> : <Copy className="size-3.5 mr-1" />}
                       Copy address
                     </Button>
                   </div>

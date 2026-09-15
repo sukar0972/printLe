@@ -1,3 +1,4 @@
+import { Children, isValidElement, type ChangeEvent, type ReactElement, type ReactNode, type SelectHTMLAttributes } from 'react'
 import * as React from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -90,3 +91,25 @@ function SelectScrollDownButton({ className, ...props }: React.ComponentProps<ty
 }
 
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator, SelectScrollUpButton, SelectScrollDownButton }
+
+export function OptionSelect({ className, children, value, defaultValue, onChange, name, disabled, required, id, 'aria-label': ariaLabel }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const options = Children.toArray(children).filter(isValidElement) as ReactElement<{ value?: string; disabled?: boolean; children?: ReactNode }>[]
+  const placeholderOption = options.find(option => (option.props.value ?? '') === '')
+  const items = options.filter(option => (option.props.value ?? String(option.props.children)) !== '')
+  const change = (nextValue: string) => onChange?.({ target: { value: nextValue }, currentTarget: { value: nextValue } } as ChangeEvent<HTMLSelectElement>)
+  return <Select
+    value={value == null ? undefined : String(value)}
+    defaultValue={defaultValue == null || defaultValue === '' ? undefined : String(defaultValue)}
+    onValueChange={change} name={name} disabled={disabled} required={required}
+  >
+    <SelectTrigger id={id} aria-label={ariaLabel} className={cn('ui-select', className)}>
+      <SelectValue placeholder={placeholderOption?.props.children ?? 'Select…'} />
+    </SelectTrigger>
+    <SelectContent>
+      {items.map((option, index) => {
+        const itemValue = option.props.value ?? String(option.props.children)
+        return <SelectItem disabled={option.props.disabled} value={itemValue} key={`${itemValue}-${index}`}>{option.props.children}</SelectItem>
+      })}
+    </SelectContent>
+  </Select>
+}
