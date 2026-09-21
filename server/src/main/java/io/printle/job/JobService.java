@@ -37,26 +37,26 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class JobService {
     private final PrintJobRepository jobs; private final AppUserRepository users;
-    private final AuditService audit; private final PrintNodeClient printNode; private final QuotaService quotas;
-    private final QuotaLedgerRepository quotaLedger; private final Path storage; private final String defaultQueue;
+    private final AuditService audit; private final QuotaService quotas;
+    private final QuotaLedgerRepository quotaLedger; private final Path storage;
     private final PrinterRepository printers;
     private final io.printle.ipp.DirectIppClient ipp;
     private final org.springframework.transaction.support.TransactionTemplate transactions;
     private final PrinterAccessService printerAccess;
     private final InstanceSettingsService settings; private final UserGroupRepository groups;
-    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit, PrintNodeClient printNode,
+    public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit,
                       QuotaService quotas, QuotaLedgerRepository quotaLedger, PrinterRepository printers,
                       PrinterAccessService printerAccess, InstanceSettingsService settings, UserGroupRepository groups, PrintleProperties properties, io.printle.ipp.DirectIppClient ipp, org.springframework.transaction.PlatformTransactionManager transactionManager) throws IOException {
         this.ipp = ipp;
         this.transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
-        this.jobs = jobs; this.users = users; this.audit = audit; this.printNode = printNode; this.quotas = quotas; this.quotaLedger = quotaLedger; this.printers = printers; this.printerAccess = printerAccess;
-        this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize(); this.defaultQueue = properties.defaultCupsQueue();
+        this.jobs = jobs; this.users = users; this.audit = audit; this.quotas = quotas; this.quotaLedger = quotaLedger; this.printers = printers; this.printerAccess = printerAccess;
+        this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize();
         this.settings = settings; this.groups = groups;
         Files.createDirectories(storage);
     }
 
     @Transactional
-    public PrintJob create(String email, MultipartFile file, int copies, ColorMode color, DuplexMode duplex) {
+    public PrintJob create(String email, MultipartFile file, int copies, ColorMode color, DuplexMode duplex, String pageRange) {
         if (file.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a PDF to upload");
         var policy = settings.current();
         if (copies < 1 || copies > policy.getMaxCopies()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Copies must be between 1 and " + policy.getMaxCopies());
@@ -65,6 +65,8 @@ public class JobService {
         try { bytes = file.getBytes(); } catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read upload", e); }
         if (bytes.length < 5 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F' || bytes[4] != '-')
             throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only PDF files are supported");
+        try { bytes = PdfSelection.select(bytes, pageRange); }
+        catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF is invalid or encrypted", e); }
         int pages;
         try (var document = Loader.loadPDF(bytes)) { pages = document.getNumberOfPages(); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The PDF is invalid or encrypted", e); }
@@ -79,6 +81,7 @@ public class JobService {
         try { Files.write(storage.resolve(storageKey), bytes, StandardOpenOption.CREATE_NEW); }
         catch (IOException e) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not store upload", e); }
         var job = jobs.save(new PrintJob(owner, originalName, storageKey, bytes.length, pages, copies, color, duplex, Instant.now().plus(Duration.ofHours(policy.getHeldJobTtlHours()))));
+        job.selectPages(pageRange);
         quotas.reserve(job);
         audit.record(owner, "JOB_UPLOADED", "PRINT_JOB", job.getId().toString(), originalName);
         return job;
@@ -93,91 +96,210 @@ public class JobService {
     @Transactional
     public void cancel(String email, UUID id) {
         var job = ownedJob(email, id);
-        if (job.getStatus() == JobStatus.HELD || job.getStatus() == JobStatus.AWAITING_FLIP) {
+        if (job.getStatus() == JobStatus.HELD) {
             job.cancelHeld(); quotas.settle(job, false); deletePayload(job);
             audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
             return;
         }
+        if (job.getStatus() == JobStatus.AWAITING_FLIP) {
+            job.cancelHeld(); quotas.settlePrinted(job, oddImpressions(job)); deletePayload(job);
+            audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), "Odd pages already printed");
+            return;
+        }
+        if (job.getStatus() == JobStatus.SUBMISSION_UNKNOWN) {
+            if (job.getIppJobId() != null && job.getIppUri() != null) ipp.cancel(job.getIppUri(), job.getIppJobId(), email);
+            job.cancelHeld(); quotas.settle(job, false); deletePayload(job);
+            audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), "Unconfirmed delivery abandoned");
+            return;
+        }
         if (Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED).contains(job.getStatus())) {
-            if (job.getIppUri() != null) ipp.cancel(job.getIppUri(), job.getCupsJobId(), email);
-            else printNode.cancel(job.getCupsJobId());
-            audit.record(job.getOwner(), "JOB_CANCEL_REQUESTED", "PRINT_JOB", id.toString(), (job.getIppUri() == null ? "CUPS " : "Direct IPP ") + job.getCupsJobId());
+            if (job.getIppUri() == null || job.getIppJobId() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "This job has no IPP endpoint");
+            ipp.cancel(job.getIppUri(), job.getIppJobId(), email);
+            audit.record(job.getOwner(), "JOB_CANCEL_REQUESTED", "PRINT_JOB", id.toString(), "IPP " + job.getIppJobId());
             return;
         }
         throw new ResponseStatusException(HttpStatus.CONFLICT, "This job can no longer be canceled");
     }
 
     public PrintJob release(String email, UUID id, UUID printerId) {
-        boolean[] sendDocument = {false};
-        var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, sendDocument));
-        // The remote ID is committed before sending bytes. If delivery times out or the
-        // process stops, repeating release cannot create or deliver a duplicate job.
-        if (sendDocument[0]) ipp.send(job.getIppUri(), job.getCupsJobId(), email, storage.resolve(job.getStorageKey()));
-        return job;
-    }
-
-    private PrintJob prepareRelease(String email, UUID id, UUID printerId, boolean[] sendDocument) {
-        var job = ownedJob(email, id);
-        if (job.getCupsJobId() != null) { if (job.getPrinter() != null) job.getPrinter().getName(); return job; }
-        if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be released");
-        Printer printer = printerId == null ? printers.findByCupsQueue(defaultQueue).orElse(null)
-            : printers.findById(printerId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Printer not found"));
-        String queue = printer == null ? defaultQueue : validatePrinter(job, printer);
-        if (printer != null) printerAccess.require(email, printer, PrinterPermission.RELEASE_OWN);
-        if (printer != null) job.assignPrinter(printer);
-        var key = job.ensureSubmissionKey();
-        jobs.flush();
-        if (printer != null && printer.isDirectIpp()) {
-            var remote = ipp.create(printer.getIppUri(), key, email, job.getCopies(), job.getColorMode(), job.getDuplexMode());
-            // Retain the remote ID even when document delivery is ambiguous. A second release
-            // must never send a second copy; polling/canceling uses the original printer + ID.
-            job.useDirectIpp(printer.getIppUri());
-            job.submitted(remote.jobId(), null, cupsState(remote.state()), remote.reasons());
-            jobs.flush();
-            audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "Direct IPP " + remote.jobId());
-            sendDocument[0] = true;
-            return job;
-        }
-        var submission = job.getDuplexMode() == DuplexMode.MANUAL
-            ? printNode.submit(key, queue, storage.resolve(job.getStorageKey()), job.getOriginalFilename() + " (odd pages)", job.getOwner().getEmail(), job.getCopies(), job.getColorMode(), job.getDuplexMode(), "odd")
-            : printNode.submit(key, queue, storage.resolve(job.getStorageKey()), job.getOriginalFilename(), job.getOwner().getEmail(), job.getCopies(), job.getColorMode(), job.getDuplexMode());
-        if (job.getDuplexMode() == DuplexMode.MANUAL) job.submittedManualOdd(submission.jobId(), submission.queue(), cupsState(submission.state()), submission.reasons());
-        else job.submitted(submission.jobId(), submission.queue(), cupsState(submission.state()), submission.reasons());
-        audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
-        if (job.getStatus() == JobStatus.COMPLETED || job.getStatus() == JobStatus.CANCELED || job.getStatus() == JobStatus.ABORTED) {
-            quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
-            if (job.getStatus() != JobStatus.ABORTED) deletePayload(job);
-            priceIfCompleted(job);
-            audit.record(job.getOwner(), "JOB_" + job.getStatus(), "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
+        DirectSubmissionPlan[] plan = {null};
+        var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, plan));
+        if (plan[0] != null) {
+            return executeDirect(plan[0]);
         }
         return job;
     }
 
-    @Transactional
-    public void syncActiveJobs() {
-        var active = Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED);
-        for (var job : jobs.findAllByCupsJobIdIsNotNullAndStatusIn(active)) {
-            try {
-                var state = job.getIppUri() == null ? printNode.status(job.getCupsJobId())
-                    : ipp.status(job.getIppUri(), job.getCupsJobId(), job.getOwner().getEmail());
-                var mapped = cupsState(state.state());
-                job.updateIppState(mapped, state.reasons());
-                if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase())) {
-                    job.awaitingFlip(state.reasons());
-                    audit.record(job.getOwner(), "JOB_AWAITING_FLIP", "PRINT_JOB", job.getId().toString(), "Odd pages complete");
-                    continue;
+    private record DirectSubmissionPlan(UUID jobId, String endpoint, UUID key, String email,
+                                        int copies, ColorMode colorMode, DuplexMode duplexMode,
+                                        int pages, String storageKey, String phase, boolean reverse) {}
+
+    private PrintJob executeDirect(DirectSubmissionPlan plan) {
+        boolean manual = plan.duplexMode() == DuplexMode.MANUAL;
+        boolean even = "EVEN".equals(plan.phase());
+
+        Path payload = storage.resolve(plan.storageKey());
+        boolean temporary = false;
+        boolean attempted = false;
+        try {
+            var prepared = ipp.prepare(plan.endpoint(), plan.key(), plan.email(),
+                manual ? 1 : plan.copies(), plan.colorMode(), manual ? DuplexMode.ONE_SIDED : plan.duplexMode());
+            if (manual) {
+                var bytes = PdfSelection.manualPass(Files.readAllBytes(payload), even, plan.copies(), plan.reverse());
+                payload = Files.createTempFile(storage, "manual-", ".pdf");
+                temporary = true;
+                Files.write(payload, bytes);
+            }
+            attempted = true;
+            if (prepared.staged()) {
+                var submission = ipp.submit(prepared, null);
+                if (submission.colorRejected()) rejectColor(plan, submission);
+                try {
+                    ipp.send(plan.endpoint(), submission.jobId(), plan.email(), payload);
+                } catch (RuntimeException sendError) {
+                    if (cancelRemote(plan.endpoint(), submission.jobId(), plan.email())) restoreSubmission(plan);
+                    else commitSubmission(plan, submission);
+                    throw sendError;
                 }
-                if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
-                    quotas.settle(job, mapped == JobStatus.COMPLETED);
-                    if (mapped != JobStatus.ABORTED) deletePayload(job);
-                    priceIfCompleted(job);
-                    audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), (job.getIppUri() == null ? "CUPS " : "Direct IPP ") + job.getCupsJobId());
-                }
-            } catch (Exception ignored) {
-                // A transient CUPS outage must not invent a job state. Try again on the next poll.
+                return commitSubmission(plan, submission);
+            } else {
+                var remote = ipp.submit(prepared, payload);
+                if (remote.colorRejected()) rejectColor(plan, remote);
+                return commitSubmission(plan, remote);
+            }
+        } catch (IOException | RuntimeException e) {
+            if (!attempted) transactions.execute(tx -> {
+                var current = ownedJob(plan.email(), plan.jobId());
+                if (current.getStatus() == JobStatus.SUBMISSION_UNKNOWN && plan.key().equals(current.getSubmissionKey()))
+                    current.restoreBeforeSubmission(plan.phase());
+                return null;
+            });
+            if (e instanceof RuntimeException runtime) throw runtime;
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not prepare manual duplex pages", e);
+        } finally {
+            if (temporary) {
+                try { Files.deleteIfExists(payload); } catch (IOException ignored) {}
             }
         }
     }
+
+    private void applyRemote(PrintJob job, io.printle.ipp.DirectIppClient.Submission remote, String phase) {
+        if ("ODD".equals(phase)) job.submittedManualOdd(remote.jobId(), ippState(remote.state()), remote.reasons());
+        else if ("EVEN".equals(phase)) job.submittedManualEven(remote.jobId(), ippState(remote.state()), remote.reasons());
+        else job.submitted(remote.jobId(), ippState(remote.state()), remote.reasons());
+        settleTerminal(job);
+        if (job.getPrinter() != null) job.getPrinter().getName();
+    }
+    private PrintJob commitSubmission(DirectSubmissionPlan plan, io.printle.ipp.DirectIppClient.Submission remote) {
+        return transactions.execute(tx -> {
+            var current = ownedJob(plan.email(), plan.jobId());
+            applyRemote(current, remote, plan.phase());
+            return current;
+        });
+    }
+
+    private void restoreSubmission(DirectSubmissionPlan plan) {
+        transactions.execute(tx -> {
+            var current = ownedJob(plan.email(), plan.jobId());
+            if (current.getStatus() == JobStatus.SUBMISSION_UNKNOWN && plan.key().equals(current.getSubmissionKey()))
+                current.restoreBeforeSubmission(plan.phase());
+            return null;
+        });
+    }
+
+    private boolean cancelRemote(String endpoint, int jobId, String email) {
+        try { ipp.cancel(endpoint, jobId, email); return true; }
+        catch (RuntimeException ignored) { return false; }
+    }
+
+    private void rejectColor(DirectSubmissionPlan plan, io.printle.ipp.DirectIppClient.Submission remote) {
+        if (!cancelRemote(plan.endpoint(), remote.jobId(), plan.email())) commitSubmission(plan, remote);
+        else restoreSubmission(plan);
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer did not honor the selected color mode");
+    }
+
+    private void settleTerminal(PrintJob job) {
+        if (!Set.of(JobStatus.COMPLETED, JobStatus.CANCELED, JobStatus.ABORTED).contains(job.getStatus())) return;
+        if (job.getStatus() == JobStatus.ABORTED && "EVEN".equals(job.getManualPhase())) quotas.settlePrinted(job, oddImpressions(job));
+        else quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
+        if (job.getStatus() != JobStatus.ABORTED) deletePayload(job);
+        priceIfCompleted(job);
+    }
+
+    private static int oddImpressions(PrintJob job) { return ((job.getPages() + 1) / 2) * job.getCopies(); }
+
+    private PrintJob prepareRelease(String email, UUID id, UUID printerId, DirectSubmissionPlan[] plan) {
+        var job = ownedJob(email, id);
+        if (job.getIppJobId() != null) { if (job.getPrinter() != null) job.getPrinter().getName(); return job; }
+        if (job.getStatus() == JobStatus.SUBMISSION_UNKNOWN) throw new ResponseStatusException(HttpStatus.CONFLICT, "Delivery is unconfirmed. Check the printer; this job will not be resent automatically");
+        if (job.getStatus() != JobStatus.HELD) throw new ResponseStatusException(HttpStatus.CONFLICT, "Only held jobs can be released");
+        if (printerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose an IPP printer");
+        Printer printer = printers.findById(printerId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Printer not found"));
+        validatePrinter(job, printer);
+        printerAccess.require(email, printer, PrinterPermission.RELEASE_OWN);
+        job.assignPrinter(printer);
+        var key = job.ensureSubmissionKey();
+        jobs.flush();
+        {
+            String phase = (job.getDuplexMode() == DuplexMode.MANUAL && job.getPages() > 1) ? "ODD" : null;
+            job.useDirectIpp(printer.getIppUri());
+            job.beginDirectSubmission(key, phase);
+            audit.record(job.getOwner(), "JOB_RELEASED", "PRINT_JOB", id.toString(), "Direct IPP");
+            plan[0] = new DirectSubmissionPlan(job.getId(), printer.getIppUri(), key, email,
+                job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getPages(),
+                job.getStorageKey(), phase, false);
+            return job;
+        }
+    }
+
+    public void syncActiveJobs() {
+        List<UnknownPoll> unknown = transactions.execute(tx -> jobs.findAllByStatusOrderByCompletedAtDesc(JobStatus.SUBMISSION_UNKNOWN).stream()
+            .filter(job -> job.getIppUri() != null && job.getSubmissionKey() != null)
+            .map(job -> new UnknownPoll(job.getId(), job.getIppUri(), job.getSubmissionKey(), job.getOwner().getEmail(), job.getManualPhase()))
+            .toList());
+        for (var item : unknown == null ? List.<UnknownPoll>of() : unknown) {
+            try {
+                var remote = ipp.findJob(item.uri(), item.key(), item.email());
+                if (remote == null) continue;
+                transactions.execute(tx -> {
+                    var current = jobs.findByIdForUpdate(item.id()).orElse(null);
+                    if (current != null && current.getStatus() == JobStatus.SUBMISSION_UNKNOWN) applyRemote(current, remote, item.phase());
+                    return null;
+                });
+            } catch (Exception ignored) { /* Never guess whether an unacknowledged Print-Job printed. */ }
+        }
+        var active = Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED);
+        List<ActivePoll> polling = transactions.execute(tx -> jobs.findAllByIppJobIdIsNotNullAndStatusIn(active).stream()
+            .filter(job -> job.getIppUri() != null && job.getIppJobId() != null)
+            .map(job -> new ActivePoll(job.getId(), job.getIppUri(), job.getIppJobId(), job.getOwner().getEmail()))
+            .toList());
+        for (var item : polling == null ? List.<ActivePoll>of() : polling) {
+            try {
+                var state = ipp.status(item.uri(), item.jobId(), item.email());
+                transactions.execute(tx -> {
+                    var job = jobs.findByIdForUpdate(item.id()).orElse(null);
+                    if (job == null || !active.contains(job.getStatus()) || job.getIppJobId() == null || job.getIppJobId() != item.jobId()) return null;
+                    var mapped = ippState(state.state());
+                    job.updateIppState(mapped, state.reasons());
+                    if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase()) && job.getPages() > 1) {
+                        job.awaitingFlip(state.reasons());
+                        audit.record(job.getOwner(), "JOB_AWAITING_FLIP", "PRINT_JOB", job.getId().toString(), "Odd pages complete");
+                        return null;
+                    }
+                    if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
+                        settleTerminal(job);
+                        audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), "IPP " + job.getIppJobId());
+                    }
+                    return null;
+                });
+            } catch (Exception ignored) {
+                // A transient printer outage must not invent a job state. Try again on the next poll.
+            }
+        }
+    }
+
+    private record UnknownPoll(UUID id, String uri, UUID key, String email, String phase) {}
+    private record ActivePoll(UUID id, String uri, int jobId, String email) {}
 
     @Transactional
     public PrintJob retry(String email, UUID id) {
@@ -192,21 +314,33 @@ public class JobService {
         return job;
     }
 
-    @Transactional
-    public PrintJob confirmFlip(String email, UUID id) {
+    public PrintJob confirmFlip(String email, UUID id) { return confirmFlip(email, id, false); }
+
+    public PrintJob confirmFlip(String email, UUID id, boolean reverse) {
+        DirectSubmissionPlan[] plan = {null};
+        var job = transactions.execute(transaction -> prepareFlip(email, id, reverse, plan));
+        if (plan[0] != null) {
+            return executeDirect(plan[0]);
+        }
+        return job;
+    }
+
+    private PrintJob prepareFlip(String email, UUID id, boolean reverse, DirectSubmissionPlan[] plan) {
         var job = ownedJob(email, id);
         if (job.getStatus() != JobStatus.AWAITING_FLIP || job.getDuplexMode() != DuplexMode.MANUAL)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This job is not waiting for a paper-stack flip");
         var key = UUID.nameUUIDFromBytes((job.getId() + ":even:" + job.getAttempt()).getBytes(StandardCharsets.UTF_8));
-        var submission = printNode.submit(key, job.getCupsQueue(), storage.resolve(job.getStorageKey()), job.getOriginalFilename() + " (even pages)",
-            job.getOwner().getEmail(), job.getCopies(), job.getColorMode(), DuplexMode.MANUAL, "even");
-        job.submittedManualEven(submission.jobId(), cupsState(submission.state()), submission.reasons());
-        audit.record(job.getOwner(), "JOB_FLIP_CONFIRMED", "PRINT_JOB", id.toString(), "CUPS " + submission.jobId());
-        if (job.getStatus() == JobStatus.COMPLETED) {
-            quotas.settle(job, true); deletePayload(job); priceIfCompleted(job);
-            audit.record(job.getOwner(), "JOB_COMPLETED", "PRINT_JOB", id.toString(), "Manual duplex complete");
+        if (job.getIppUri() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "This historical job has no IPP endpoint");
+        {
+            printerAccess.require(email, job.getPrinter(), PrinterPermission.RELEASE_OWN);
+            validatePrinter(job, job.getPrinter());
+            job.beginDirectSubmission(key, "EVEN");
+            audit.record(job.getOwner(), "JOB_FLIP_CONFIRMED", "PRINT_JOB", id.toString(), "Direct IPP even pages");
+            plan[0] = new DirectSubmissionPlan(job.getId(), job.getIppUri(), key, email,
+                job.getCopies(), job.getColorMode(), job.getDuplexMode(), job.getPages(),
+                job.getStorageKey(), "EVEN", reverse);
+            return job;
         }
-        return job;
     }
 
     @Transactional(readOnly = true)
@@ -220,7 +354,10 @@ public class JobService {
 
     @Transactional
     public void expireHeldJobs() {
-        for (var job : jobs.findAllByStatusAndExpiresAtLessThanEqual(JobStatus.HELD, Instant.now())) {
+        var now = Instant.now();
+        for (var id : jobs.findIdsByStatusAndExpiresAtLessThanEqual(JobStatus.HELD, now)) {
+            var job = jobs.findByIdForUpdate(id).orElse(null);
+            if (job == null || job.getStatus() != JobStatus.HELD || job.getExpiresAt() == null || job.getExpiresAt().isAfter(Instant.now())) continue;
             job.expire(); quotas.settle(job, false); deletePayload(job);
             audit.record(job.getOwner(), "JOB_EXPIRED", "PRINT_JOB", job.getId().toString(), job.getOriginalFilename());
         }
@@ -229,12 +366,15 @@ public class JobService {
     @Transactional
     public void purgeRetainedJobs() {
         var policy = settings.current();
-        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.COMPLETED), Instant.now().minus(Duration.ofHours(policy.getCompletedRetentionHours()))));
-        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.CANCELED, JobStatus.ABORTED, JobStatus.EXPIRED), Instant.now().minus(Duration.ofHours(policy.getFailedRetentionHours()))));
+        var now = Instant.now();
+        purge(Set.of(JobStatus.COMPLETED), now.minus(Duration.ofHours(policy.getCompletedRetentionHours())));
+        purge(Set.of(JobStatus.CANCELED, JobStatus.ABORTED, JobStatus.EXPIRED), now.minus(Duration.ofHours(policy.getFailedRetentionHours())));
     }
 
-    private void purge(List<PrintJob> expired) {
-        for (var job : expired) {
+    private void purge(Set<JobStatus> statuses, Instant cutoff) {
+        for (var id : jobs.findIdsByStatusInAndCompletedAtLessThan(statuses, cutoff)) {
+            var job = jobs.findByIdForUpdate(id).orElse(null);
+            if (job == null || !statuses.contains(job.getStatus()) || job.getCompletedAt() == null || !job.getCompletedAt().isBefore(cutoff)) continue;
             deletePayload(job); quotaLedger.detachJob(job.getId()); jobs.delete(job);
         }
     }
@@ -261,13 +401,10 @@ public class JobService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This printer does not support color");
         if ((job.getDuplexMode() == DuplexMode.TWO_SIDED_LONG_EDGE || job.getDuplexMode() == DuplexMode.TWO_SIDED_SHORT_EDGE) && !printer.isDuplexCapable())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This printer does not support hardware duplex");
-        if (printer.isDirectIpp()) {
-            if (job.getDuplexMode() == DuplexMode.MANUAL) throw new ResponseStatusException(HttpStatus.CONFLICT, "Manual flip requires a CUPS printer; select one-sided or hardware duplex for Direct IPP");
-            return null;
-        }
-        if (printer.getCupsQueue() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Printer has no CUPS queue");
-        return printer.getCupsQueue();
+        if (printer.getIppUri() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Printer has no IPP endpoint; register an IPP printer");
+        return printer.getIppUri();
     }
+
     private void priceIfCompleted(PrintJob job) {
         if (job.getStatus() != JobStatus.COMPLETED || job.getPrinter() == null) return;
         var printer = job.getPrinter();
@@ -285,9 +422,9 @@ public class JobService {
         value = value.replaceAll("[\\p{Cntrl}]", "");
         return value.length() > 255 ? value.substring(value.length() - 255) : value;
     }
-    static JobStatus cupsState(String state) {
+    static JobStatus ippState(String state) {
         try { return JobStatus.valueOf(state.trim().toUpperCase().replace('-', '_')); }
-        catch (Exception e) { throw new IllegalArgumentException("Unknown CUPS job state: " + state, e); }
+        catch (Exception e) { throw new IllegalArgumentException("Unknown IPP job state: " + state, e); }
     }
     public record QuotaView(int limit, int used, int pending, Integer remaining, boolean exempt) {}
 }

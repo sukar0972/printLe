@@ -4,7 +4,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp, Minus } from 'lucide-react'
-import { ButtonHTMLAttributes, ChangeEvent, Children, ComponentProps, HTMLAttributes, InputHTMLAttributes, isValidElement, ReactElement, ReactNode, SelectHTMLAttributes } from 'react'
+import { ButtonHTMLAttributes, ChangeEvent, Children, ComponentProps, CSSProperties, HTMLAttributes, InputHTMLAttributes, isValidElement, ReactElement, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from '../lib/cn'
 
 type ButtonVariant = 'default' | 'outline' | 'ghost' | 'danger'
@@ -80,16 +80,18 @@ export function Dialog({ children, className, label, labelledBy, role = 'dialog'
 }
 
 export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  return <div className="ui-empty"><div className="ui-empty-mark" aria-hidden="true">□</div><h3>{title}</h3><p>{description}</p>{action}</div>
+  return <div className="ui-empty"><div className="ui-empty-mark" aria-hidden="true" /><h3>{title}</h3><p>{description}</p>{action}</div>
 }
 
 export function DataTableFrame({ title, description, actions, filters, children, footer, className }: { title: string; description: string; actions?: ReactNode; filters?: ReactNode; children: ReactNode; footer?: ReactNode; className?: string }) {
-  return <Card className={cn('ui-data-table surface-gradient', className)}>
+  return <div className={cn('ui-data-table surface-gradient', className)}>
+    <Card>
     <header className="ui-data-table-header"><div><h2>{title}</h2><p>{description}</p></div>{actions && <div className="ui-data-table-actions">{actions}</div>}</header>
     {filters && <div className="ui-data-table-filters">{filters}</div>}
     <div className="ui-data-table-scroll">{children}</div>
     {footer && <footer className="ui-data-table-footer">{footer}</footer>}
-  </Card>
+    </Card>
+  </div>
 }
 
 export function MetricCard({ label, value, hint, meter, className }: { label: string; value: ReactNode; hint?: ReactNode; meter?: number; className?: string }) {
@@ -97,7 +99,7 @@ export function MetricCard({ label, value, hint, meter, className }: { label: st
     <span>{label}</span>
     <strong>{value}</strong>
     {hint != null && hint !== false && <small>{hint}</small>}
-    {meter != null && <div className="meter" aria-hidden="true"><i style={{ width: `${meter}%` }} /></div>}
+    {meter != null && <div className="meter" style={{ '--meter': `${meter}%` } as CSSProperties} aria-hidden="true"><i /></div>}
   </article>
 }
 

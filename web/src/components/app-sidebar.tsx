@@ -121,11 +121,10 @@ function NavUser({
             <SidebarMenuButton
               type="button"
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               aria-label="Account menu"
             >
-              <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-[10px] font-bold">
+              <Avatar className="size-8">
+                <AvatarFallback>
                   {initials(user.displayName)}
                 </AvatarFallback>
               </Avatar>
@@ -144,8 +143,8 @@ function NavUser({
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-[10px] font-bold">
+                <Avatar className="size-8">
+                  <AvatarFallback>
                     {initials(user.displayName)}
                   </AvatarFallback>
                 </Avatar>
@@ -196,13 +195,14 @@ export function AppSidebarBody({
             <SidebarMenuButton
               type="button"
               size="lg"
-              className="printle-brand-button"
               onClick={() => onNavigate('queue')}
               aria-label="printLe home"
             >
-              <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
-              <span className="brand-mark" aria-hidden="true">
-                {brandMark}
+              <span className="printle-brand-button">
+                <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
+                <span className="brand-mark" aria-hidden="true">
+                  {brandMark}
+                </span>
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -212,7 +212,7 @@ export function AppSidebarBody({
         <NavMain groups={groups} page={page} onNavigate={onNavigate} renderIcon={renderIcon} />
       </SidebarContent>
       <SidebarFooter>
-        {themeControl ? <div className="printle-sidebar-theme px-2 pb-1">{themeControl}</div> : null}
+        {themeControl ? <div className="px-2 pb-1">{themeControl}</div> : null}
         <NavUser user={user} onProfile={onProfile} onSettings={onSettings} onSignOut={onSignOut} />
       </SidebarFooter>
     </>

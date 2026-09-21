@@ -34,7 +34,7 @@ test('renders a dashboard preview with sample jobs', async () => {
 test('uses the permanent shadcn application layout', async () => {
   window.location.hash = '#preview'
   render(<App />)
-  expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Print queue' })).toBeInTheDocument()
   expect(screen.getByText('printLe preview')).toBeInTheDocument()
   expect(screen.getByText('Pages left')).toBeInTheDocument()
   expect(document.documentElement).toHaveAttribute('data-layout', 'shadcn')
@@ -100,7 +100,7 @@ test('shows manual duplex and retry controls', async () => {
   expect(screen.queryByRole('button', { name: 'Stack flipped' })).not.toBeInTheDocument()
 })
 
-test('searches jobs and shows truthful CUPS job details', async () => {
+test('searches jobs and shows truthful IPP job details', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })
   await userEvent.type(screen.getByRole('searchbox', { name: 'Search print jobs' }), 'onboarding')
@@ -108,7 +108,7 @@ test('searches jobs and shows truthful CUPS job details', async () => {
   expect(screen.queryByRole('button', { name: 'Q3-budget.pdf' })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'onboarding-handbook.pdf' }))
   expect(screen.getByRole('complementary', { name: 'Print job details' })).toBeInTheDocument()
-  expect(screen.getByText('CUPS reported the job as completed.')).toBeInTheDocument()
+  expect(screen.getByText('The printer reported the job as completed.')).toBeInTheDocument()
   expect(screen.getByText('Studio Color')).toBeInTheDocument()
   expect(screen.getByText('$2.80')).toBeInTheDocument()
 })
@@ -124,13 +124,13 @@ test('requires confirmation before canceling a job', async () => {
   expect(within(row).getByText('Canceled')).toBeInTheDocument()
 })
 
-test('identifies the CUPS mock fleet and its scenarios', async () => {
+test('shows IPP endpoints and enrollment instead of transport discovery', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })
   await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
-  expect(await screen.findByRole('heading', { name: 'Mock printing is active' })).toBeInTheDocument()
-  expect(screen.getAllByText('Paper jam').length).toBeGreaterThan(0)
-  expect(screen.getAllByText('Monochrome only').length).toBeGreaterThan(0)
+  expect(await screen.findByText('ipp://preview-success.example/ipp/print')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Add IPP printer' })).toBeInTheDocument()
+  expect(screen.queryByText(/CUPS/)).not.toBeInTheDocument()
 })
 
 test('renders printer, group, report, and diagnostic administration views', async () => {
@@ -148,7 +148,7 @@ test('renders printer, group, report, and diagnostic administration views', asyn
   expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
   expect(screen.getByText('$3.18')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  expect(await screen.findByText('Print node')).toBeInTheDocument()
+  expect(await screen.findByText('Printing protocol')).toBeInTheDocument()
 })
 
 test('paginates the queue when the page size changes', async () => {
@@ -184,7 +184,7 @@ test('collapses the sidebar and opens the account menu', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Account menu' }))
   expect(screen.getByRole('menuitem', { name: 'Profile' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('menuitem', { name: 'Settings' }))
-  expect(await screen.findByText('Print node')).toBeInTheDocument()
+  expect(await screen.findByText('Printing protocol')).toBeInTheDocument()
 })
 
 test('renders an authenticated empty queue', async () => {

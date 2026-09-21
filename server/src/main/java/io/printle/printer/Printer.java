@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import java.math.BigDecimal;
-import io.printle.job.PrintNodeClient;
 
 @Entity
 @Table(name = "printer")
@@ -16,7 +15,6 @@ public class Printer {
     @Enumerated(EnumType.STRING) @Column(nullable = false) private PrinterStatus status;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "updated_at", nullable = false) private Instant updatedAt;
-    @Column(name = "cups_queue", unique = true, length = 127) private String cupsQueue;
     @Column(length = 160) private String location;
     @Column(nullable = false) private boolean enabled;
     @Column(nullable = false) private boolean maintenance;
@@ -26,10 +24,6 @@ public class Printer {
     @Column(name = "state_reasons", length = 1000) private String stateReasons;
     @Enumerated(EnumType.STRING) @Column(name = "error_policy", nullable = false) private PrinterErrorPolicy errorPolicy;
     @Column(name = "transport", length = 30) private String transport;
-    @Column(name = "vendor_id", length = 20) private String vendorId;
-    @Column(name = "product_id", length = 20) private String productId;
-    @Column(name = "device_serial", length = 160) private String deviceSerial;
-    @Column(name = "ieee1284_device_id", length = 500) private String ieee1284DeviceId;
     @Column(name = "last_seen_at") private Instant lastSeenAt;
     @Column(name = "mono_page_rate", precision = 10, scale = 4, nullable = false) private BigDecimal monoPageRate;
     @Column(name = "color_page_rate", precision = 10, scale = 4, nullable = false) private BigDecimal colorPageRate;
@@ -47,7 +41,6 @@ public class Printer {
     public PrinterStatus getStatus() { return status; }
     public String getIppUri() { return ippUri; }
     public boolean isDirectIpp() { return ippUri != null; }
-    public String getCupsQueue() { return cupsQueue; }
     public String getLocation() { return location; }
     public boolean isEnabled() { return enabled; }
     public boolean isMaintenance() { return maintenance; }
@@ -57,10 +50,6 @@ public class Printer {
     public String getStateReasons() { return stateReasons; }
     public PrinterErrorPolicy getErrorPolicy() { return errorPolicy; }
     public String getTransport() { return transport; }
-    public String getVendorId() { return vendorId; }
-    public String getProductId() { return productId; }
-    public String getDeviceSerial() { return deviceSerial; }
-    public String getIeee1284DeviceId() { return ieee1284DeviceId; }
     public Instant getLastSeenAt() { return lastSeenAt; }
     public BigDecimal getMonoPageRate() { return monoPageRate; }
     public BigDecimal getColorPageRate() { return colorPageRate; }
@@ -74,20 +63,6 @@ public class Printer {
         this.monoPageRate = monoRate; this.colorPageRate = colorRate; this.updatedAt = Instant.now();
     }
 
-    public void synchronize(PrintNodeClient.PrinterProfile profile) {
-        boolean firstDiscovery = this.cupsQueue == null;
-        this.cupsQueue = profile.queue();
-        if (firstDiscovery) { this.name = profile.name(); this.location = profile.location(); }
-        this.status = PrinterStatus.valueOf(profile.status());
-        this.colorCapable = profile.color(); this.duplexCapable = profile.duplex();
-        this.mediaSupported = String.join(",", profile.media()); this.stateReasons = String.join(",", profile.reasons());
-        if (profile.device() != null) {
-            this.transport = profile.device().transport(); this.vendorId = profile.device().vendorId();
-            this.productId = profile.device().productId(); this.deviceSerial = profile.device().serial();
-            this.ieee1284DeviceId = profile.device().deviceId();
-        }
-        this.lastSeenAt = Instant.now(); this.updatedAt = lastSeenAt;
-    }
     public void connectIpp(String uri, io.printle.ipp.DirectIppClient.Capabilities caps) {
         this.ippUri = uri; this.transport = "DIRECT_IPP"; this.location = caps.location();
         refreshIpp(caps);
@@ -104,7 +79,4 @@ public class Printer {
     }
     public void markIppUnavailable() { this.status = PrinterStatus.OFFLINE; this.stateReasons = "ipp-unavailable"; this.updatedAt = Instant.now(); }
 
-    public void markMissing() {
-        this.status = PrinterStatus.OFFLINE; this.stateReasons = "not-seen-by-print-node"; this.updatedAt = Instant.now();
-    }
 }

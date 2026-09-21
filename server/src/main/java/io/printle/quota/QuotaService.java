@@ -20,15 +20,26 @@ public class QuotaService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This job would exceed the monthly page allowance");
     }
 
-    public void reserve(PrintJob job) { addOnce(job, QuotaEntryType.RESERVE, "Job uploaded"); }
+    public void reserve(PrintJob job) { addOnce(job, QuotaEntryType.RESERVE, reservedPages(job), "Job uploaded"); }
     public void settle(PrintJob job, boolean printed) {
-        if (printed) addOnce(job, QuotaEntryType.DEBIT, "CUPS completed");
-        addOnce(job, QuotaEntryType.RELEASE, printed ? "Reservation settled" : "Reservation released");
+        int reserved = reservedPages(job);
+        if (printed) addOnce(job, QuotaEntryType.DEBIT, reserved, "IPP completed");
+        addOnce(job, QuotaEntryType.RELEASE, reserved, printed ? "Reservation settled" : "Reservation released");
     }
 
-    private void addOnce(PrintJob job, QuotaEntryType type, String note) {
+    /** Release the reservation and debit only the pages already known to have printed. */
+    public void settlePrinted(PrintJob job, int printedPages) {
+        int reserved = reservedPages(job);
+        int printed = Math.max(0, Math.min(printedPages, reserved));
+        if (printed > 0) addOnce(job, QuotaEntryType.DEBIT, printed, "Pages already printed");
+        addOnce(job, QuotaEntryType.RELEASE, reserved, "Reservation released");
+    }
+
+    private static int reservedPages(PrintJob job) { return job.getPages() * job.getCopies(); }
+
+    private void addOnce(PrintJob job, QuotaEntryType type, int pages, String note) {
         if (!ledger.existsByJobIdAndEntryTypeAndAttempt(job.getId(), type, job.getAttempt()))
-            ledger.save(new QuotaLedgerEntry(job.getOwner(), job, job.getPages() * job.getCopies(), type, note));
+            ledger.save(new QuotaLedgerEntry(job.getOwner(), job, pages, type, note));
     }
 
     public Usage usage(AppUser user, Instant monthStart) {

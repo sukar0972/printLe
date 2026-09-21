@@ -1,7 +1,7 @@
 package io.printle.config;
 
 import io.printle.audit.AuditService;
-import io.printle.job.PrintNodeClient;
+import io.printle.printer.PrinterRepository;
 import io.printle.user.AppUserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -19,10 +19,10 @@ import java.util.Map;
 @RequestMapping("/api/admin/system")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminSystemController {
-    private final InstanceSettingsService service; private final PrintNodeClient node; private final PrintleProperties properties;
+    private final InstanceSettingsService service; private final PrinterRepository printers; private final PrintleProperties properties;
     private final AppUserRepository users; private final AuditService audit;
-    public AdminSystemController(InstanceSettingsService service, PrintNodeClient node, PrintleProperties properties, AppUserRepository users, AuditService audit) {
-        this.service = service; this.node = node; this.properties = properties; this.users = users; this.audit = audit;
+    public AdminSystemController(InstanceSettingsService service, PrinterRepository printers, PrintleProperties properties, AppUserRepository users, AuditService audit) {
+        this.service = service; this.printers = printers; this.properties = properties; this.users = users; this.audit = audit;
     }
     @GetMapping("/settings") @Transactional public SettingsView settings() { return SettingsView.from(service.current()); }
     @PutMapping("/settings") @Transactional public SettingsView update(@Valid @RequestBody UpdateSettings request, Authentication auth) {
@@ -33,8 +33,10 @@ public class AdminSystemController {
     }
     @GetMapping("/diagnostics") public Map<String, Object> diagnostics() {
         boolean storageWritable = Files.isWritable(Path.of(properties.storagePath()).toAbsolutePath().normalize());
-        try { var printers = node.printers(); return Map.of("database", "ok", "storage", storageWritable ? "ok" : "not-writable", "printNode", "ok", "discoveredPrinters", printers.size()); }
-        catch (Exception e) { return Map.of("database", "ok", "storage", storageWritable ? "ok" : "not-writable", "printNode", "unavailable", "discoveredPrinters", 0); }
+        long registered = printers.countByIppUriIsNotNull();
+        return Map.of("database", "ok", "storage", storageWritable ? "ok" : "not-writable",
+            "printing", "IPP", "registeredPrinters", registered);
+
     }
     public record UpdateSettings(@Min(1) @Max(1000000) int defaultMonthlyPageQuota, @NotBlank String quotaTimezone,
         @Min(1) @Max(8760) int heldJobTtlHours, @Min(1) @Max(87600) int completedRetentionHours,

@@ -104,28 +104,23 @@ As an administrator, open **Printers → Add IPP printer**, enter a name and an
 choose **Check and add printer**. Use the exact endpoint published by the printer;
 its path may differ. The backend must be able to reach the printer over the LAN.
 
-The connection check requires native PDF support and the IPP Create-Job,
-Send-Document, Get-Job-Attributes, and Cancel-Job operations. Copies, color, and
-hardware duplex are checked against the printer's capabilities. Manual flip and
-printers that need document conversion still use CUPS. Printer authentication is
-not yet supported. IPPS uses normal certificate verification; configure a trusted
-certificate rather than disabling TLS verification.
+The connection check requires native PDF support and either Print-Job or
+Create-Job plus Send-Document, along with Get-Job-Attributes and Cancel-Job.
+Copies, color, hardware duplex, and manual flip are checked against the printer.
+Print-Job is used when the printer supports it, so the PDF and the job id travel
+together. If a printer only supports Create-Job, a failed document send cancels
+that empty job and returns the printLe job to the held queue. Printer
+authentication is not yet supported. IPPS uses normal certificate verification;
+configure a trusted certificate rather than disabling TLS verification.
 
-Direct printers use the same access rules, held queue, quotas, and pricing as
-CUPS printers. An empty ACL permits all users, as with existing CUPS queues; edit
-the printer's policy to restrict access. Remote job IDs are stored together with
-the printer URL, so devices can reuse the same numeric IDs without mixing jobs.
-The remote ID is committed before sending the PDF. If delivery fails or the
-backend stops during delivery, release will not resend the document. Check the
-printer's state or cancel the existing job before uploading a replacement.
-
-For a deployment that starts no CUPS or print-node containers:
+An empty access list permits every signed-in user. Add rules to restrict a
+printer. View-only rules do not allow release. Submit, release, and manage rules
+allow someone to release their own jobs; printLe does not release another
+person's job. Remote job IDs are stored with the printer URL, so devices can
+reuse the same numeric IDs without mixing jobs.
 
 ```bash
-docker compose -f compose.yaml -f compose.ipp.yaml up -d --build
+docker compose -f compose.yaml up -d --build
 ```
 
-This override requires Compose support for `!override`. Use it
-with the production Compose file. The backend joins the outbound network so it
-can contact LAN printers. The normal deployment continues to support CUPS and
-Direct IPP together.
+The API container must be able to reach printers on the LAN.

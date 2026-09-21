@@ -3,12 +3,12 @@ import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { ChevronDown, Download, MoreHorizontal, X } from 'lucide-react'
+import { BarChart3, Download, FileText, List, LogOut, Moon, MoreHorizontal, Printer as PrinterIcon, Settings as SettingsIcon, Sun, Upload, UserRound, Users as UsersIcon, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
-import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
+import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
 import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +18,6 @@ import { Input as TextField } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Select as SelectMenu, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -28,10 +27,10 @@ type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
 
 const TYPES = [
-  { id: 'geist', short: '1 Geist', blurb: 'printLe’s original geometric sans' },
-  { id: 'dmsans', short: '2 DM Sans', blurb: 'more Code’s default UI sans' },
-  { id: 'fira', short: '3 Fira Code', blurb: 'more Code’s mono setting' },
-  { id: 'jetbrains', short: '4 JetBrains Mono', blurb: 'more Code’s code stack' },
+  { id: 'geist', short: 'Geist', blurb: 'Geometric sans' },
+  { id: 'dmsans', short: 'DM Sans', blurb: 'Default interface sans' },
+  { id: 'fira', short: 'Fira Code', blurb: 'Monospace' },
+  { id: 'jetbrains', short: 'JetBrains Mono', blurb: 'Monospace' },
 ] as const
 type TypeId = typeof TYPES[number]['id']
 
@@ -39,20 +38,20 @@ const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', d
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
 const previewJobs: Job[] = [
   { id: '1', filename: 'Q3-budget.pdf', sizeBytes: 2400000, pages: 12, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_LONG_EDGE', status: 'HELD', createdAt: '2026-09-01T14:20:00Z', expiresAt: '2026-09-04T14:20:00Z', attempt: 1 },
-  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', submittedAt: '2026-09-01T13:06:00Z', cupsJobId: 202, oddCupsJobId: 202, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD' },
+  { id: '2', filename: 'visitor-pass.pdf', sizeBytes: 180000, pages: 2, copies: 4, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', status: 'AWAITING_FLIP', createdAt: '2026-09-01T13:04:00Z', submittedAt: '2026-09-01T13:06:00Z', ippJobId: 202, oddIppJobId: 202, ippUri: 'ipp://preview-success.example/ipp/print', attempt: 1, printerName: 'Studio Color', manualPhase: 'ODD' },
   { id: '3', filename: 'lab-safety-poster.pdf', sizeBytes: 920000, pages: 1, copies: 8, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-09-01T11:40:00Z', expiresAt: '2026-09-04T11:40:00Z', attempt: 1 },
-  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', submittedAt: '2026-09-01T10:16:00Z', completedAt: '2026-09-01T10:17:00Z', cupsJobId: 204, cupsQueue: 'mock-jam', printerName: 'Jammed Printer', attempt: 1, ippStateReasons: 'media-jam' },
+  { id: '4', filename: 'meeting-agenda.pdf', sizeBytes: 240000, pages: 3, copies: 12, colorMode: 'MONOCHROME', duplexMode: 'TWO_SIDED_SHORT_EDGE', status: 'ABORTED', createdAt: '2026-09-01T10:15:00Z', submittedAt: '2026-09-01T10:16:00Z', completedAt: '2026-09-01T10:17:00Z', ippJobId: 204, ippUri: 'ipp://preview-jam.example/ipp/print', printerName: 'Jammed Printer', attempt: 1, ippStateReasons: 'media-jam' },
   { id: '5', filename: 'floor-plan-east.pdf', sizeBytes: 6400000, pages: 6, copies: 2, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'HELD', createdAt: '2026-08-31T16:02:00Z', expiresAt: '2026-09-03T16:02:00Z', attempt: 1 },
-  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', submittedAt: '2026-08-31T09:14:00Z', completedAt: '2026-08-31T09:16:00Z', cupsJobId: 206, cupsQueue: 'mock-success', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8, costRateVersion: 1, pricedAt: '2026-08-31T09:16:00Z' },
+  { id: '6', filename: 'onboarding-handbook.pdf', sizeBytes: 5100000, pages: 28, copies: 1, colorMode: 'COLOR', duplexMode: 'ONE_SIDED', status: 'COMPLETED', createdAt: '2026-08-31T09:12:00Z', submittedAt: '2026-08-31T09:14:00Z', completedAt: '2026-08-31T09:16:00Z', ippJobId: 206, ippUri: 'ipp://preview-success.example/ipp/print', attempt: 1, printerName: 'Studio Color', estimatedCost: 2.8, costRateVersion: 1, pricedAt: '2026-08-31T09:16:00Z' },
   { id: '7', filename: 'invoice-2044.pdf', sizeBytes: 310000, pages: 2, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: 'CANCELED', createdAt: '2026-08-30T15:44:00Z', completedAt: '2026-08-30T15:47:00Z', attempt: 1 },
 ]
 
 const previewPrinters: Printer[] = [
-  { id: 'p1', name: 'Studio Color', description: 'Full-capability mock printer', status: 'ONLINE', cupsQueue: 'mock-success', location: 'Studio', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4,LETTER', stateReasons: 'none', errorPolicy: 'WARN', transport: 'usb', vendorId: '1209', productId: '0001', deviceSerial: 'MOCK-001', lastSeenAt: new Date().toISOString(), monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p2', name: 'Reception Mono', status: 'ONLINE', cupsQueue: 'mock-mono', location: 'Reception', enabled: true, maintenance: false, colorCapable: false, duplexCapable: true, mediaSupported: 'A4,LETTER', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p3', name: 'Warehouse Simplex', status: 'ONLINE', cupsQueue: 'mock-simple', location: 'Warehouse', enabled: true, maintenance: false, colorCapable: false, duplexCapable: false, mediaSupported: 'A4', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p4', name: 'Jammed Printer', status: 'ERROR', cupsQueue: 'mock-jam', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'media-jam', errorPolicy: 'BLOCK', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
-  { id: 'p5', name: 'Offline Printer', status: 'OFFLINE', cupsQueue: 'mock-offline', enabled: false, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'offline', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p1', name: 'Studio Color', description: 'Full-capability mock printer', status: 'ONLINE', ippUri: 'ipp://preview-success.example/ipp/print', location: 'Studio', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4,LETTER', stateReasons: 'none', errorPolicy: 'WARN', transport: 'DIRECT_IPP', lastSeenAt: new Date().toISOString(), monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p2', name: 'Reception Mono', status: 'ONLINE', ippUri: 'ipp://preview-mono.example/ipp/print', location: 'Reception', enabled: true, maintenance: false, colorCapable: false, duplexCapable: true, mediaSupported: 'A4,LETTER', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p3', name: 'Warehouse Simplex', status: 'ONLINE', ippUri: 'ipp://preview-simple.example/ipp/print', location: 'Warehouse', enabled: true, maintenance: false, colorCapable: false, duplexCapable: false, mediaSupported: 'A4', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p4', name: 'Jammed Printer', status: 'ERROR', ippUri: 'ipp://preview-jam.example/ipp/print', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'media-jam', errorPolicy: 'BLOCK', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
+  { id: 'p5', name: 'Offline Printer', status: 'OFFLINE', ippUri: 'ipp://preview-offline.example/ipp/print', enabled: false, maintenance: false, colorCapable: true, duplexCapable: true, mediaSupported: 'A4', stateReasons: 'offline', errorPolicy: 'WARN', monoPageRate: .02, colorPageRate: .1, rateVersion: 1 },
 ]
 
 export default function App() {
@@ -116,7 +115,7 @@ export default function App() {
       </>}
       notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
+          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} onPasswordChanged={() => setUser(current => current ? { ...current, passwordChangeRequired: false } : current)} />}
     </AppShell>
 }
 
@@ -128,8 +127,8 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
     try { await api.login(String(data.get('email')), String(data.get('password'))); await onLogin() }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in') } finally { setBusy(false) }
   }
-  return <main className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-    <section className="bg-[image:var(--pass-gradient)] relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+  return <main className="grid min-h-dvh lg:grid-cols-2">
+    <section className="login-hero relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
       <img src="/printle-logo.svg" alt="printLe" className="h-10 w-auto" />
       <div className="max-w-lg space-y-4">
         <h1 className="text-3xl font-semibold leading-tight tracking-tight">Print what you need.<br />Pick it up when you&rsquo;re ready.</h1>
@@ -139,9 +138,9 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
     </section>
     <section className="flex items-center justify-center p-6">
       <Card className="w-full max-w-sm">
-        <CardHeader className="gap-2">
+        <CardHeader>
           <img src="/printle-logo.svg" alt="printLe" className="h-8 w-auto lg:hidden" />
-          <CardDescription className="text-xs font-medium tracking-[0.14em] uppercase">Welcome back</CardDescription>
+          <CardDescription><span className="text-xs font-medium uppercase tracking-widest">Welcome back</span></CardDescription>
           <CardTitle asChild><h2 className="text-xl tracking-tight">Sign in to printLe</h2></CardTitle>
           <CardDescription>Use the account provided by your administrator.</CardDescription>
         </CardHeader>
@@ -159,9 +158,11 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
             <Button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-between text-sm text-muted-foreground">
+        <CardFooter className="justify-between">
+          <div className="flex w-full items-center justify-between text-sm text-muted-foreground">
           <a href="#preview" className="hover:text-foreground underline-offset-4 hover:underline">Open dashboard preview</a>
           <ThemeButton theme={theme} />
+          </div>
         </CardFooter>
       </Card>
     </section>
@@ -191,6 +192,7 @@ type QueueModel = {
   usedPct: number
   busy: boolean
   error: string
+  loadError: string
   printers: Printer[]
   upload: (event: FormEvent<HTMLFormElement>) => void
   cancel: (id: string) => void
@@ -235,26 +237,26 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   function release(id: string) { setReleaseJob(jobs.find(job => job.id === id)) }
   async function confirmRelease(printer: Printer) {
     if (!releaseJob) return
-    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', cupsJobId: Number(job.id), cupsQueue: printer.cupsQueue, printerId: printer.id, printerName: printer.name, submittedAt: new Date().toISOString() } : job)); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); return }
+    if (preview) { setJobs(current => current.map(job => job.id === releaseJob.id ? { ...job, status: 'PROCESSING', ippJobId: Number(job.id), ippUri: printer.ippUri, printerId: printer.id, printerName: printer.name, submittedAt: new Date().toISOString() } : job)); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); return }
     setError(''); setLoadError(''); try { await api.release(releaseJob.id, printer.id); setReleaseJob(undefined); setNotice(`Job released to ${printer.name}.`); await load() } catch (e) { setError(message(e)) }
   }
   async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
   async function flip(id: string) { const target = jobs.find(job => job.id === id); if (target) setConfirmFlip(target) }
-  async function confirmManualFlip() {
+  async function confirmManualFlip(reverse: boolean) {
     if (!confirmFlip) return
     const id = confirmFlip.id
     setConfirmFlip(undefined)
-    if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenCupsJobId: 203, cupsJobId: 203 } : j)); setNotice('Even pages submitted to CUPS.'); return }
-    setError(''); setLoadError(''); try { await api.flip(id); setNotice('Even pages submitted to CUPS.'); await load() } catch (e) { setError(message(e)) }
+    if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenIppJobId: 203, ippJobId: 203 } : j)); setNotice('Even pages submitted to the printer.'); return }
+    setError(''); setLoadError(''); try { await api.flip(id, reverse); setNotice('Even pages submitted to the printer.'); await load() } catch (e) { setError(message(e)) }
   }
   useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
-  const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
+  const pendingPages = quota?.pending ?? held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error: error || loadError, printers, upload, cancel, release, retry, flip }
+  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, loadError, printers, upload, cancel, release, retry, flip }
   const selectedJob = jobs.find(job => job.id === selectedJobId)
   return <>
     <LayoutLedger model={model} onInspect={job => setSelectedJobId(job.id)} />
@@ -266,8 +268,8 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   </>
 }
 
-function Heading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
-  return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{copy}</p></div></div>
+function PageHeader({ eyebrow, title, copy, actions }: { eyebrow?: string; title: string; copy?: string; actions?: ReactNode }) {
+  return <div className="page-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{copy && <p>{copy}</p>}</div>{actions}</div>
 }
 
 function Metrics({ model }: { model: QueueModel }) {
@@ -284,79 +286,20 @@ function Metrics({ model }: { model: QueueModel }) {
 function DropBox({ model }: { model: QueueModel }) {
   return <form className="upload-zone" onSubmit={model.upload}>
     <label className="zone-target">
-      <span className="upload-icon" aria-hidden="true">↑</span>
+      <span className="upload-icon" aria-hidden="true"><Upload /></span>
       <strong>Drop PDF here</strong>
       <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
       <label className="zone-field">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
+      <label className="zone-field pages-field">Pages<Input name="pages" placeholder="All" aria-label="Pages" /></label>
       <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
       <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
-      <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
+      <Button type="submit" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
     </div>
-    {model.error && <p className="error" role="alert">{model.error}</p>}
+    {model.error && <Alert variant="destructive"><AlertDescription>{model.error}</AlertDescription></Alert>}
   </form>
-}
-
-function Compose({ model, variant = 'row' }: { model: QueueModel; variant?: 'row' | 'hero' | 'slim' }) {
-  return <section className={variant === 'hero' ? 'panel compose-panel compose-hero' : variant === 'slim' ? 'compose-plain' : 'panel compose-panel'}>
-    <form className={variant === 'hero' ? 'compose-form compose-stack' : 'compose-form'} onSubmit={model.upload}>
-      <label className="file-drop">
-        <span className="upload-icon">↑</span>
-        <strong>{variant === 'hero' ? 'Drop a PDF' : 'Choose a PDF'}</strong>
-        <span>Max 25 MB</span>
-        <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
-      </label>
-      {variant !== 'slim' && <>
-        <label className="field-copies">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
-        <label className="field-color">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
-        <label className="field-sides">Sides<Select name="duplexMode" defaultValue="ONE_SIDED">
-          <option value="ONE_SIDED">One-sided</option>
-          <option value="TWO_SIDED_LONG_EDGE">Hardware · long edge</option>
-          <option value="TWO_SIDED_SHORT_EDGE">Hardware · short edge</option>
-          <option value="MANUAL">Manual flip</option>
-        </Select></label>
-      </>}
-      <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
-    </form>
-    {model.error && <p className="error" role="alert">{model.error}</p>}
-  </section>
-}
-
-function Printers() {
-  return <section className="panel printers-panel">
-    <div className="panel-title"><h2>Printers</h2><span>0 online</span></div>
-    <div className="printer-list">
-      <div className="printer-row"><div><strong>Reception</strong><small>USB · not connected</small></div><span className="chip"><i className="dot warn" /> Offline</span></div>
-      <div className="printer-row"><div><strong>Warehouse</strong><small>USB · not connected</small></div><span className="chip"><i className="dot" /> Offline</span></div>
-    </div>
-  </section>
-}
-
-function JobLine({ job, onCancel, onRelease, onRetry, onFlip, onInspect, wide = false }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void; onInspect?: (job: Job) => void; wide?: boolean }) {
-  const color = job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'
-  if (wide) {
-    return <article className="job job-wide">
-      <QueueDate value={job.createdAt} />
-      <div className="doc-icon">PDF</div>
-      {onInspect ? <button type="button" className="job-name job-link" onClick={() => onInspect(job)}>{job.filename}</button> : <strong className="job-name">{job.filename}</strong>}
-      <span>{job.pages}</span>
-      <span>{job.copies}</span>
-      <span className="print-settings"><span>{color}</span><small>{duplexLabel(job.duplexMode)}</small></span>
-      <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-    </article>
-  }
-  return <article className="job">
-    <div className="doc-icon">PDF</div>
-    <div className="job-main">
-      <strong>{job.filename}</strong>
-      <span>{job.pages} page{job.pages === 1 ? '' : 's'} · {job.copies} cop{job.copies === 1 ? 'y' : 'ies'} · {color}</span>
-    </div>
-    <span className="meta-duplex">{duplexLabel(job.duplexMode)}</span>
-    <time dateTime={job.createdAt}>{relativeTime(job.createdAt)}</time>
-    <JobState job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-  </article>
 }
 
 function JobStatus({ job }: { job: Job }) {
@@ -368,19 +311,12 @@ function JobStatus({ job }: { job: Job }) {
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
   const held = job.status === 'HELD'
-  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'HELD_FOR_AUTHENTICATION', 'STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'HELD_FOR_AUTHENTICATION', 'STOPPED', 'AWAITING_FLIP', 'SUBMISSION_UNKNOWN'].includes(job.status)
   if (held) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   if (job.status === 'AWAITING_FLIP' && onFlip) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onFlip(job.id)}>Stack flipped</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   if (job.status === 'ABORTED' && onRetry) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
   if (active) return <span className="job-actions"><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
   return <span className="job-actions" />
-}
-
-function JobState({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
-  return <>
-    <JobStatus job={job} />
-    <JobActions job={job} onCancel={onCancel} onRelease={onRelease} onRetry={onRetry} onFlip={onFlip} />
-  </>
 }
 
 function statusLabel(status: string) {
@@ -394,7 +330,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
   const visibleJobs = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
-    return model.jobs.filter(job => (statusFilter === 'all' || job.status === statusFilter) && (!needle || [job.filename, job.id, job.printerName, job.cupsQueue, job.ippStateReasons].some(value => value?.toLocaleLowerCase().includes(needle))))
+    return model.jobs.filter(job => (statusFilter === 'all' || job.status === statusFilter) && (!needle || [job.filename, job.id, job.printerName, job.ippUri, job.ippStateReasons].some(value => value?.toLocaleLowerCase().includes(needle))))
   }, [model.jobs, statusFilter, query])
   const columns = useMemo<ColumnDef<AppTableFeatures, Job>[]>(() => [
     { id: 'added', accessorFn: job => new Date(job.createdAt).getTime(), header: 'Added', cell: ({ row }) => <QueueDate value={row.original.createdAt} /> },
@@ -416,11 +352,10 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
     getRowId: job => job.id,
   })
   const states = [...new Set(model.jobs.map(job => job.status))]
-  return <main className="page ledger-page">
-    {model.organized && <div className="quota-block">
-      <div className="alt-content-heading"><div><h1>Print dashboard</h1><p>Queue activity and print service health</p></div><nav aria-label="Breadcrumb"><span>Home</span><b>/</b><strong>Dashboard</strong></nav></div>
-      <Metrics model={model} />
-    </div>}
+  return <main className="page ledger-page imported-admin">
+    <PageHeader eyebrow="Workspace" title="Print queue" copy="Upload a PDF, then release it when you are at the printer." />
+    {model.loadError && <Alert variant="destructive"><AlertDescription>{model.loadError}</AlertDescription></Alert>}
+    {model.organized && <Metrics model={model} />}
     <DropBox model={model} />
     <DataTableFrame className="queue-table" title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
@@ -438,30 +373,30 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="drawer-backdrop" />
       <DialogPrimitive.Content role="complementary" className="detail-drawer" aria-label="Print job details" aria-describedby={undefined}>
-        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><Button type="button" variant="outline" size="sm" onClick={onClose}>Close</Button></div>
       <section className="drawer-section current-state">
         <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
         <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
         {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical printer reason</summary><code>{job.ippStateReasons}</code></details>}
       </section>
       <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
-        <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
+        <div><dt>Pages</dt><dd>{job.pages}{job.pageRange ? ` · ${job.pageRange}` : ''}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
         <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
         <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
         <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
       </dl></section>
       <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
         <TimelineItem label="Created and held" time={job.createdAt} complete />
-        <TimelineItem label={job.cupsJobId ? `Submitted to ${job.ippUri ? 'printer' : 'CUPS'} · job ${job.cupsJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
-        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenCupsJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddCupsJobId || 'pending'}`} complete={Boolean(job.oddCupsJobId)} />}
+        <TimelineItem label={job.ippJobId ? `Submitted to ${'printer'} · job ${job.ippJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
+        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenIppJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddIppJobId || 'pending'}`} complete={Boolean(job.oddIppJobId)} />}
         <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
       </ol></section>
-      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>{job.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</dt><dd>{job.ippUri || job.cupsQueue || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
+      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>{'IPP URL'}</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
-        {job.status === 'HELD' && <button className="primary" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</button>}
-        {job.status === 'AWAITING_FLIP' && <button className="primary" onClick={() => onFlip(job.id)}>Stack flipped—continue</button>}
-        {job.status === 'ABORTED' && <button className="primary" onClick={() => onRetry(job.id)}>Retry job</button>}
-        {!terminal && <button className="danger-outline" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</button>}
+        {job.status === 'HELD' && <Button type="button" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
+        {job.status === 'AWAITING_FLIP' && <Button type="button" onClick={() => { onClose(); onFlip(job.id) }}>Stack flipped—continue</Button>}
+        {job.status === 'ABORTED' && <Button type="button" onClick={() => onRetry(job.id)}>Retry job</Button>}
+        {!terminal && <Button type="button" variant="destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
       </div>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
@@ -473,16 +408,18 @@ function TimelineItem({ label, time, complete = false, active = false }: { label
 }
 
 function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Keep job</button><button className={danger ? 'danger-button' : 'primary'} onClick={onConfirm}>{confirm}</button></div></Dialog>
+  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button type="button" variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button type="button" variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></Dialog>
 }
 
-function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: () => void }) {
+function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: (reverse: boolean) => void }) {
+  const [reverse, setReverse] = useState(false)
   return <Dialog className="modal flip-modal" labelledBy="flip-title" onClose={onClose}>
     <p className="eyebrow">Manual duplex · step 2 of 2</p><h2 id="flip-title">Reload the printed stack</h2>
     <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
+    <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Pages came out face down. Reverse the even-page order.</label>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
-    <div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Not ready</button><button className="primary" onClick={onConfirm}>Continue printing</button></div>
+    <div className="confirm-actions"><Button type="button" variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button type="button" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
   </Dialog>
 }
 
@@ -496,27 +433,32 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   </ToastPrimitive.Provider>
 }
 
+function releaseBlockReason(job: Job, printer: Printer) {
+  if (!printer.enabled || printer.status === 'OFFLINE' || printer.status === 'UNCONFIGURED') return 'Unavailable'
+  if (printer.maintenance) return 'Maintenance'
+  if (printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK') return humanizeReason(printer.stateReasons || 'error')
+  if (job.colorMode === 'COLOR' && !printer.colorCapable) return 'No color'
+  if ((job.duplexMode === 'TWO_SIDED_LONG_EDGE' || job.duplexMode === 'TWO_SIDED_SHORT_EDGE') && !printer.duplexCapable) return 'No duplex'
+  return ''
+}
+
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
-  const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
-    && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
-    && !(job.duplexMode === 'MANUAL' && printer.ippUri)
-    && (job.colorMode !== 'COLOR' || printer.colorCapable)
-    && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
   return <Dialog className="modal release-modal" label="Choose a printer" onClose={onClose}>
-      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button type="button" variant="outline" onClick={onClose}>Close</Button></div>
       <div className="release-printers">
         {printers.map(printer => {
-          const ready = compatible(printer)
-          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.duplexMode === 'MANUAL' && printer.ippUri ? 'Manual flip requires CUPS' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || printer.cupsQueue || 'Printer'} · ready`
-          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
+          const blocked = releaseBlockReason(job, printer)
+          const ready = !blocked
+          const detail = blocked || (printer.stateReasons && printer.stateReasons !== 'none' ? humanizeReason(printer.stateReasons) : `${printer.location || 'Ready'}`)
+          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{detail}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
         })}
-        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer or sync CUPS.</p>}
+        {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer.</p>}
       </div>
   </Dialog>
 }
 
 function Empty() {
-  return <div className="empty"><Mark/><h3>Your queue is empty</h3><p>PDFs you upload will wait here until you release or cancel them.</p></div>
+  return <EmptyState title="Your queue is empty" description="PDFs you upload will wait here until you release or cancel them." />
 }
 
 const previewUsers: ManagedUser[] = [
@@ -540,18 +482,15 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
   const usedPct = quota && !quota.exempt && quota.limit > 0 ? Math.min(100, Math.round(((quota.used + (quota.pending ?? 0)) / quota.limit) * 100)) : 0
   const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
   return <main className="page grid gap-6">
-    <div>
-      <p className="text-muted-foreground text-xs font-medium">Account</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">My profile</h1>
-      <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
-    </div>
+    <PageHeader eyebrow="Account" title="My profile" copy="Your identity, role, and current print allowance." />
     {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
     <Card>
       <CardHeader>
         <CardTitle asChild><h2 className="text-base">My print pass</h2></CardTitle>
         <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
+      <CardContent>
+        <div className="pass-layout">
         <div className="lg:pr-10">
           <div className="print-pass">
             <PassFlourish />
@@ -580,6 +519,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             <Progress value={usedPct} aria-label="Quota used" />
           </div>
           <div><Button variant="outline" onClick={onManage}>Manage profile settings</Button></div>
+        </div>
         </div>
       </CardContent>
     </Card>
@@ -649,24 +589,17 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   }
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
-    const matchesQuery = !needle || [printer.name, printer.location, printer.cupsQueue, printer.ippUri, printer.deviceSerial].some(value => value?.toLocaleLowerCase().includes(needle))
+    const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
     const effectiveStatus = printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED'
     const matchesStatus = statusFilter === 'ALL' || effectiveStatus === statusFilter
     const matchesCapability = capabilityFilter === 'ALL' || (capabilityFilter === 'COLOR' ? printer.colorCapable : capabilityFilter === 'DUPLEX' ? printer.duplexCapable : !printer.colorCapable)
     return matchesQuery && matchesStatus && matchesCapability
   }), [printers, query, statusFilter, capabilityFilter])
   const columns = useMemo<ColumnDef<AppTableFeatures, Printer>[]>(() => [
-    {
-      id: 'select',
-      header: ({ table }) => <Checkbox aria-label="Select all printers" checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? 'indeterminate' : false} onCheckedChange={value => table.toggleAllPageRowsSelected(Boolean(value))} />,
-      cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.name}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
-      enableSorting: false,
-    },
-    { id: 'connection', accessorFn: printer => printer.ippUri || printer.cupsQueue || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'Direct IPP' : 'CUPS'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || row.original.cupsQueue || 'unassigned'}</code></span> },
-    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.deviceSerial || 'No location'}</small></span> },
+    { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'Direct IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
+    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || 'No location'}</small></span> },
     {
       id: 'state',
       accessorFn: printer => printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED',
@@ -711,56 +644,49 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     features: dataTableFeatures,
     data: visiblePrinters,
     columns,
-    state: { sorting, pagination, rowSelection },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    onRowSelectionChange: setRowSelection,
     getRowId: printer => printer.id,
-    enableRowSelection: true,
   })
-  return <main className="page">
-    <div className="page-heading"><div><p className="eyebrow">Printer fleet</p><h1>Printers</h1><p>Discovered queues, hardware identity, capabilities, policy, and pricing.</p></div><div className="actions"><button className="quiet" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</button><button className="primary compact" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</button></div></div>
+  const printerStatuses = [['ALL', 'All'], ['ONLINE', 'Online'], ['OFFLINE', 'Offline'], ['ERROR', 'Error'], ['MAINTENANCE', 'Maintenance'], ['DISABLED', 'Disabled']] as const
+  return <main className="page imported-admin">
+    <PageHeader eyebrow="Printer fleet" title="Printers" copy="IPP printers, capabilities, and page pricing." actions={<div className="actions"><Button type="button" variant="outline" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</Button><Button type="button" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</Button></div>} />
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
-      <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
-      <p>Connect directly to a network printer without CUPS. The printer must accept PDFs. One-sided and hardware duplex printing are supported; manual flip uses CUPS.</p>
+      <div className="modal-title"><h2>Add IPP printer</h2><Button type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></div>
+      <p>Enter the printer address. It must accept PDF. One-sided, hardware duplex, and manual flip are supported here.</p>
       <form onSubmit={addIpp}>
         <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
         <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
         <p className="muted">Use ipp:// or ipps://. Secure connections require a trusted certificate. Printers requiring a login are not supported yet.</p>
-        {ippError && <p className="error" role="alert">{ippError}</p>}
-        <button className="primary" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</button>
+        {ippError && <Alert variant="destructive"><AlertDescription>{ippError}</AlertDescription></Alert>}
+        <Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button>
       </form>
     </Dialog>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {printers.some(printer => printer.cupsQueue?.startsWith('mock-')) && <section className="panel mock-panel surface-gradient">
-      <div><p className="eyebrow">Development fleet</p><h2>Mock printing is active</h2><p>Release a held job to a scenario queue to exercise the real CUPS lifecycle without using paper.</p></div>
-      <div className="mock-scenarios">{printers.filter(printer => printer.cupsQueue?.startsWith('mock-')).map(printer => <button type="button" key={printer.id} onClick={() => edit(printer)}><span className={`status ${printer.status === 'ONLINE' ? 'active' : 'suspended'}`}>{printer.status.toLowerCase()}</span><strong>{mockScenario(printer)}</strong><small>{printer.cupsQueue}</small></button>)}</div>
-    </section>}
-    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor direct IPP printers and CUPS queues, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor IPP printers, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
           <label className="sr-only" htmlFor="printer-search">Search printers</label><Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-          <Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Status</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="ERROR">Error</option><option value="MAINTENANCE">Maintenance</option><option value="DISABLED">Disabled</option></Select>
-          <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">☰ Capability</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></Select>
-        </div>} footer={<TablePagination table={table} noun="printers" />}>
+          <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">All capabilities</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></Select>
+        </div>} filters={<div className="filter-pills">{printerStatuses.map(([id, label]) => <button key={id} type="button" className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); setPagination(current => ({ ...current, pageIndex: 0 })) }}>{label}</button>)}</div>} footer={<TablePagination table={table} noun="printers" />}>
       <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
-      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
-      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{selected.ippUri ? 'Direct IPP URL' : 'CUPS queue'}</span><strong>{selected.ippUri || selected.cupsQueue || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
-      {selected.cupsQueue?.startsWith('mock-') && <p className="mock-callout"><strong>Mock scenario: {mockScenario(selected)}</strong><span>This queue runs through CUPS and the print node, but writes mock output instead of sending pages to hardware.</span></p>}
+      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setSelected(undefined)}>Close</Button></div>
+      <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
       <form onSubmit={save}>
         <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
         <label>Description<input name="description" defaultValue={selected.description} /></label>
         <label>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy}><option value="ALLOW">Allow</option><option value="WARN">Warn</option><option value="BLOCK">Block</option></Select></label>
         <div className="check-row"><label><input name="enabled" type="checkbox" defaultChecked={selected.enabled} />Enabled</label><label><input name="maintenance" type="checkbox" defaultChecked={selected.maintenance} />Maintenance mode</label></div>
-        <div className="rule-heading"><strong>Access rules</strong><button type="button" className="quiet" onClick={addRule}>Add rule</button></div>
-        <p className="muted">No rules means all authenticated users can view and release to this printer.</p>
+        <div className="rule-heading"><strong>Access rules</strong><Button type="button" variant="outline" size="sm" onClick={addRule}>Add rule</Button></div>
+        <p className="muted">No rules means every signed-in person can view and release to this printer. Submit, release, and manage also allow releasing that person's own jobs. View does not.</p>
         {rules.map((rule, index) => <div className="acl-row" key={`${index}-${rule.principalId}`}>
           <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: e.target.value as AclRule['principalType'], principalId: e.target.value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))}><option value="USER">User</option><option value="GROUP">Group</option></Select>
           <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: e.target.value } : r))}>{(rule.principalType === 'USER' ? users : groups).map(item => <option key={item.id} value={item.id}>{'displayName' in item ? item.displayName : item.name}</option>)}</Select>
-          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}>{['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => <option key={p}>{p}</option>)}</Select>
+          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}><option value="VIEW">View</option><option value="SUBMIT">Submit and release</option><option value="RELEASE_OWN">Release</option><option value="RELEASE_ANY">Release (own jobs)</option><option value="MANAGE">Manage and release</option></Select>
           <button type="button" className="danger-text" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</button>
         </div>)}
-        <button className="primary">Save printer</button>
+        <Button type="submit">Save printer</Button>
       </form>
     </Dialog>}
   </main>
@@ -777,12 +703,25 @@ function Users({ preview }: { preview: boolean }) {
   const [roleFilter, setRoleFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [groupFilter, setGroupFilter] = useState('ALL')
-  const [open, setOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
+  const [open, setOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [accountFocus, setAccountFocus] = useState<'account' | 'quota' | 'password'>('account'); const [error, setError] = useState('')
   const load = useCallback(async () => {
     if (preview) { setUsers(previewUsers); setGroups(previewGroups); return }
     try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
   }, [preview])
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!selected) return
+    document.getElementById(`account-${accountFocus}`)?.scrollIntoView({ block: 'center' })
+  }, [selected, accountFocus])
+  async function setAccountStatus(user: ManagedUser) {
+    const status = user.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
+    const body = { email: user.email, displayName: user.displayName, role: user.role, status, monthlyPageQuota: user.monthlyPageQuota, quotaExempt: user.quotaExempt }
+    try {
+      if (preview) setUsers(current => current.map(item => item.id === user.id ? { ...item, status } : item))
+      else { await api.updateUser(user.id, body); await load() }
+      setError('')
+    } catch (e) { setError(message(e)) }
+  }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) { setOpen(false); return }
     const data = Object.fromEntries(new FormData(event.currentTarget))
@@ -893,12 +832,75 @@ function Users({ preview }: { preview: boolean }) {
       cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.displayName}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
       enableSorting: false,
     },
-    { accessorKey: 'displayName', header: 'User', cell: ({ row }) => <span className="directory-user"><i>{initials(row.original.displayName)}</i><span><strong>{row.original.displayName}</strong><small>{row.original.email}</small></span></span> },
-    { accessorKey: 'role', header: 'Role', cell: ({ row }) => <span className="user-role"><strong>{statusLabel(row.original.role)}</strong><small>{row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'OPERATOR' ? 'Print operations' : row.original.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}</small></span> },
-    { id: 'groups', accessorFn: user => userGroups(groups, user.id).map(group => group.name).join(', '), header: 'Groups', cell: ({ row }) => <span className="user-group-chips">{userGroups(groups, row.original.id).map(group => <i key={group.id}>{group.name}</i>)}</span> },
-    { id: 'allowance', accessorFn: user => user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`, header: 'Page allowance', cell: ({ row }) => <span className="allowance-badge">{row.original.quotaExempt ? 'Unlimited' : row.original.monthlyPageQuota == null ? 'Default' : `${row.original.monthlyPageQuota} pages`}</span> },
-    { accessorKey: 'status', header: 'Status', cell: ({ row }) => <span className={`directory-status ${row.original.status.toLowerCase()}`}><i className={`directory-status-dot ${row.original.status.toLowerCase()}`} />{statusLabel(row.original.status)}</span> },
-    { id: 'joinedDate', accessorFn: user => new Date(user.createdAt).getTime(), header: 'Joined date', cell: ({ row }) => <time dateTime={row.original.createdAt}>{new Date(row.original.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</time> },
+    {
+      accessorKey: 'displayName',
+      header: 'User',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="size-8">
+            <AvatarFallback>
+              {initials(row.original.displayName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="grid gap-0.5 leading-none">
+            <span className="font-semibold text-sm text-foreground">{row.original.displayName}</span>
+            <span className="text-xs text-muted-foreground">{row.original.email}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'role',
+      header: 'Role',
+      cell: ({ row }) => (
+        <div className="grid gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <Badge variant={row.original.role === 'ADMIN' ? 'default' : 'secondary'}>
+              {statusLabel(row.original.role)}
+            </Badge>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'MANAGER' ? 'Reports' : 'Standard printing'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'groups',
+      accessorFn: user => userGroups(groups, user.id).map(group => group.name).join(', '),
+      header: 'Groups',
+      cell: ({ row }) => {
+        const gList = userGroups(groups, row.original.id)
+        return <div className="flex flex-wrap gap-1">
+          {gList.map(group => (
+            <Badge key={group.id} variant="outline">
+              {group.name}
+            </Badge>
+          ))}
+        </div>
+      },
+    },
+    {
+      id: 'allowance',
+      accessorFn: user => user.quotaExempt ? 'Unlimited' : user.monthlyPageQuota == null ? 'Default' : `${user.monthlyPageQuota} pages`,
+      header: 'Page allowance',
+      cell: ({ row }) => (
+        <Badge variant={row.original.quotaExempt ? 'default' : 'secondary'}>
+          {row.original.quotaExempt ? 'Unlimited' : row.original.monthlyPageQuota == null ? 'Default' : `${row.original.monthlyPageQuota} pages`}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => <span className={`directory-status ${row.original.status.toLowerCase()}`}><i className={`directory-status-dot ${row.original.status.toLowerCase()}`} />{statusLabel(row.original.status)}</span>,
+    },
+    {
+      id: 'joinedDate',
+      accessorFn: user => new Date(user.createdAt).getTime(),
+      header: 'Joined date',
+      cell: ({ row }) => <time dateTime={row.original.createdAt} className="text-xs text-muted-foreground">{new Date(row.original.createdAt).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</time>,
+    },
     {
       id: 'actions',
       header: () => <span className="table-actions-head">Actions</span>,
@@ -906,15 +908,15 @@ function Users({ preview }: { preview: boolean }) {
       cell: ({ row }) => <DropdownMenu>
         <DropdownMenuTrigger className="row-menu-trigger" aria-label={`Manage ${row.original.displayName}`}><MoreHorizontal /></DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Edit account</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Adjust quota</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Reset password</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('account'); setSelected(row.original) }}>Edit account</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('quota'); setSelected(row.original) }}>Adjust quota</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('password'); setSelected(row.original) }}>Reset password</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem danger onSelect={() => setSelected(row.original)}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
+          <DropdownMenuItem danger onSelect={() => { void setAccountStatus(row.original) }}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
     },
-  ], [groups])
+  ], [groups, setAccountStatus])
   const table = useTable({
     features: dataTableFeatures,
     data: visibleUsers,
@@ -926,53 +928,182 @@ function Users({ preview }: { preview: boolean }) {
     getRowId: user => user.id,
     enableRowSelection: true,
   })
-  return <main className="page users-page">
-    {error && <p className="error" role="alert">{error}</p>}
-    <DataTableFrame className="user-directory" title="Users" description="Manage organization members and their printing access." actions={<><label className="user-search"><span className="sr-only">Search users</span><Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} /></label><button className="primary compact" onClick={() => setOpen(true)}>+ Add user</button></>} filters={<div className="user-filter-row"><div><Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Role: All</option><option value="ADMIN">Admin</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="USER">User</option></Select><Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Status: All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select><Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">Group: All</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>{selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}><option value="" disabled>Add selected to group…</option>{groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>}</div><span>{selectedCount} selected</span></div>} footer={<TablePagination table={table} noun="users" />}>
+  return <main className="page users-page imported-admin grid gap-6">
+    <PageHeader eyebrow="Manage" title="Users" copy="Organization members, printing allowances, and access groups." />
+
+    <section className="metrics quota-strip" aria-label="Directory metrics">
+      <MetricCard
+        label="Total members"
+        value={users.length}
+        hint={`${users.filter(u => u.status === 'ACTIVE').length} active accounts`}
+        meter={users.length > 0 ? Math.round((users.filter(u => u.status === 'ACTIVE').length / users.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Administrators"
+        value={users.filter(u => u.role === 'ADMIN').length}
+        hint="full administration"
+      />
+      <MetricCard
+        label="Access groups"
+        value={groups.length}
+        hint={`${groups.filter(g => !g.builtIn).length} custom policy groups`}
+      />
+      <MetricCard
+        label="Quota exempt"
+        value={users.filter(u => u.quotaExempt).length}
+        hint="unlimited page allowance"
+      />
+    </section>
+
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    <DataTableFrame
+      className="user-directory"
+      title="Accounts"
+      description="Manage organization members and their printing access."
+      actions={<div className="flex items-center gap-2">
+        <label className="user-search">
+          <span className="sr-only">Search users</span>
+          <Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
+        </label>
+        <Button size="sm" onClick={() => setOpen(true)}>+ Add user</Button>
+      </div>}
+      filters={<div className="space-y-3">
+        <div className="filter-pills">
+          {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => {
+            const count = status === 'ALL' ? users.length : users.filter(u => u.status === status).length
+            return (
+              <button
+                key={status}
+                type="button"
+                className={statusFilter === status ? 'active' : ''}
+                onClick={() => { setStatusFilter(status); table.setPageIndex(0) }}
+              >
+                {status === 'ALL' ? 'All accounts' : statusLabel(status)}
+                <small>{count}</small>
+              </button>
+            )
+          })}
+        </div>
+        <div className="user-filter-row">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+              <option value="ALL">Role: All</option>
+              <option value="ADMIN">Admin</option>
+              <option value="MANAGER">Manager</option>
+              <option value="OPERATOR">Operator</option>
+              <option value="USER">User</option>
+            </Select>
+            <Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+              <option value="ALL">Group: All</option>
+              {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </Select>
+            {selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}>
+              <option value="" disabled>Add selected to group…</option>
+              {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </Select>}
+          </div>
+          <Badge variant="outline">
+            {selectedCount} selected
+          </Badge>
+        </div>
+      </div>}
+      footer={<TablePagination table={table} noun="users" />}
+    >
       <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />
     </DataTableFrame>
-    <DataTableFrame className="group-directory" title="Groups" description="Named sets for printer access and shared page quotas." actions={<button className="primary compact" onClick={() => setGroupOpen(true)}>+ Add group</button>}>
-      <Table className="ui-table group-policy-table">
-        <TableHeader><TableRow><TableHead>Group</TableHead><TableHead>Members</TableHead><TableHead>Page allowance</TableHead><TableHead /></TableRow></TableHeader>
+
+    <DataTableFrame
+
+      title="Groups"
+      description="Named sets for printer access and shared page quotas."
+      actions={<Button size="sm" onClick={() => setGroupOpen(true)}>+ Add group</Button>}
+    >
+      <div className="ui-table group-policy-table"><Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-45">Group</TableHead>
+            <TableHead>Members</TableHead>
+            <TableHead className="w-40">Page allowance</TableHead>
+            <TableHead className="w-55 text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
         <TableBody>
           {groups.map(group => {
             const available = users.filter(user => !group.members.some(member => member.id === user.id))
-            return <TableRow key={group.id}>
-              <TableCell><span className="group-name-cell"><strong>{group.name}</strong><small>{group.builtIn ? 'Built in' : 'Custom'}</small></span></TableCell>
-              <TableCell>
-                <span className="user-group-chips">{group.members.length ? group.members.map(member => <i key={member.id}>{member.displayName}{!group.builtIn && <button type="button" aria-label={`Remove ${member.displayName} from ${group.name}`} onClick={() => void dropMember(group, member.id)}>×</button>}</i>) : <span className="muted">No members</span>}</span>
-              </TableCell>
-              <TableCell>{group.monthlyPageQuota == null ? 'Default' : `${group.monthlyPageQuota} pages`}</TableCell>
-              <TableCell className="table-row-actions">{!group.builtIn && <>
-                <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}><option value="" disabled>Add member…</option>{available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}</Select>
-                <button type="button" className="danger-text" onClick={() => void removeGroup(group)}>Delete</button>
-              </>}</TableCell>
-            </TableRow>
+            return (
+              <TableRow key={group.id}>
+                <TableCell>
+                  <div className="grid gap-0.5">
+                    <strong className="font-semibold text-sm">{group.name}</strong>
+                    <span className="text-xs text-muted-foreground">{group.builtIn ? 'Built in' : 'Custom'}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {group.members.length ? group.members.map(member => (
+                      <Badge key={member.id} variant="secondary">
+                        {member.displayName}
+                        {!group.builtIn && (
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground ml-0.5 rounded-full size-3.5 inline-flex items-center justify-center text-xs hover:bg-muted"
+                            aria-label={`Remove ${member.displayName} from ${group.name}`}
+                            onClick={() => void dropMember(group, member.id)}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </Badge>
+                    )) : <span className="text-xs text-muted-foreground">No members</span>}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">
+                    {group.monthlyPageQuota == null ? 'Default' : `${group.monthlyPageQuota} pages`}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  {!group.builtIn && (
+                    <div className="flex items-center justify-end gap-2">
+                      <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}>
+                        <option value="" disabled>Add member…</option>
+                        {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+                      </Select>
+                      <Button variant="destructive" size="sm" onClick={() => void removeGroup(group)}>
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            )
           })}
         </TableBody>
       </Table>
+      </div>
     </DataTableFrame>
     {open && <Dialog className="modal" label="Add a user" onClose={() => setOpen(false)}>
-        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><button className="quiet" onClick={() => setOpen(false)}>Close</button></div>
+        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Close</Button></div>
         <form onSubmit={create}>
           <label>Name<input name="displayName" required maxLength={120}/></label>
           <label>Email<input name="email" type="email" required/></label>
           <label>Temporary password<input name="password" type="password" minLength={12} required/></label>
           <label>Role<Select name="role" defaultValue="USER"><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label>
-          <button className="primary">Create user</button>
+          <Button type="submit">Create user</Button>
         </form>
     </Dialog>}
-    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
-      <form onSubmit={updateUser}><div className="form-grid"><label>Name<input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
+    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button type="button" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
+      <form id="account-account" onSubmit={updateUser}><div className="form-grid"><label>Name<input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
         <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <label key={group.id}><input type="checkbox" name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn} />{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</label>)}</fieldset>
-        <button className="primary compact">Save account</button></form>
+        <Button type="submit" size="sm">Save account</Button></form>
       <div className="modal-divider" />
-      <form onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<input name="reason" required maxLength={255} /></label></div><button className="quiet">Record adjustment</button></form>
+      <form id="account-quota" onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<input name="reason" required maxLength={255} /></label></div><Button type="submit" variant="outline">Record adjustment</Button></form>
       <div className="modal-divider" />
-      <form onSubmit={resetPassword}><label>Temporary password<input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><button className="quiet">Reset password</button></form>
+      <form id="account-password" onSubmit={resetPassword}><label>Temporary password<input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><Button type="submit" variant="outline">Reset password</Button></form>
     </Dialog>}
-    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><button className="quiet" onClick={() => setGroupOpen(false)}>Close</button></div>
-      <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><button className="primary">Create group</button></form>
+    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setGroupOpen(false)}>Close</Button></div>
+      <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><Button type="submit">Create group</Button></form>
     </Dialog>}
   </main>
 }
@@ -998,12 +1129,69 @@ function Reports({ preview }: { preview: boolean }) {
     colorJobs: jobs.filter(job => job.colorMode === 'COLOR').length,
   }), [jobs])
   const columns = useMemo<ColumnDef<AppTableFeatures, ReportJob>[]>(() => [
-    { id: 'completedAt', accessorFn: job => new Date(job.completedAt).getTime(), header: 'Completed', cell: ({ row }) => <time dateTime={row.original.completedAt}>{new Date(row.original.completedAt).toLocaleString()}</time> },
-    { accessorKey: 'user', header: 'User' },
-    { accessorKey: 'printer', header: 'Printer', cell: ({ row }) => row.original.printer || 'Unknown' },
-    { accessorKey: 'printedPages', header: 'Pages' },
-    { accessorKey: 'colorMode', header: 'Mode', cell: ({ row }) => row.original.colorMode === 'COLOR' ? 'Color' : 'Mono' },
-    { accessorKey: 'estimatedCost', header: 'Cost', cell: ({ row }) => <strong>{money(row.original.estimatedCost)}</strong> },
+    {
+      id: 'completedAt',
+      accessorFn: job => new Date(job.completedAt).getTime(),
+      header: 'Completed',
+      cell: ({ row }) => (
+        <time dateTime={row.original.completedAt} className="text-xs text-muted-foreground">
+          {new Date(row.original.completedAt).toLocaleString()}
+        </time>
+      ),
+    },
+    {
+      accessorKey: 'user',
+      header: 'User',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="size-6">
+            <AvatarFallback>
+              {initials(row.original.user.split('@')[0])}
+            </AvatarFallback>
+          </Avatar>
+          <span className="font-medium text-sm text-foreground">{row.original.user}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'printer',
+      header: 'Printer',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5">
+          <PrinterIcon className="size-3.5 text-muted-foreground" />
+          <span className="text-sm font-medium">{row.original.printer || 'Unknown'}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'printedPages',
+      header: 'Pages',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <FileText className="size-3.5 text-muted-foreground" />
+          <span className="font-medium text-sm">{row.original.printedPages}</span>
+          <span className="text-xs text-muted-foreground">pgs</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'colorMode',
+      header: 'Mode',
+      cell: ({ row }) => (
+        <Badge variant={row.original.colorMode === 'COLOR' ? 'default' : 'secondary'}>
+          {row.original.colorMode === 'COLOR' ? 'Color' : 'Mono'}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'estimatedCost',
+      header: 'Cost',
+      cell: ({ row }) => (
+        <strong className="font-semibold text-sm text-foreground">
+          {money(row.original.estimatedCost)}
+        </strong>
+      ),
+    },
   ], [])
   const table = useTable({
     features: dataTableFeatures,
@@ -1014,44 +1202,75 @@ function Reports({ preview }: { preview: boolean }) {
     onPaginationChange: setPagination,
     getRowId: job => job.id,
   })
-  return <main className="page grid gap-6">
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p className="text-muted-foreground text-xs font-medium">Accounting</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Reports</h1>
-        <p className="text-muted-foreground mt-1 max-w-2xl text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
-      </div>
-      {!preview && <Button variant="outline" asChild><a href="/api/admin/reports/jobs.csv"><Download aria-hidden="true" />Export CSV</a></Button>}
-    </div>
-    {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
-    <section aria-label="Usage" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <ReportStat label="Completed jobs" value={totals.completedJobs} hint={range === 'all' ? 'all retained history' : 'in the selected range'} />
-      <ReportStat label="Printed pages" value={totals.printedPages} hint="copies included" />
-      <ReportStat label="Estimated cost" value={money(totals.estimatedCost)} hint="at the recorded rate" />
-      <ReportStat label="Color jobs" value={totals.colorJobs} hint="of completed jobs" />
+  return <main className="page imported-admin grid gap-6">
+    <PageHeader eyebrow="Accounting" title="Reports" copy="Completed print volume and estimated cost. Pricing is informational; there are no balances or credits." actions={<Button type="button" variant="outline" size="sm" onClick={() => downloadReport(jobs)}><Download aria-hidden="true" className="size-3.5" />Export CSV</Button>} />
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <section aria-label="Usage" className="metrics quota-strip">
+      <MetricCard
+        label="Completed jobs"
+        value={totals.completedJobs}
+        hint={range === 'all' ? 'all retained history' : 'in selected range'}
+        meter={report.jobs.length > 0 ? Math.round((totals.completedJobs / report.jobs.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Printed pages"
+        value={totals.printedPages}
+        hint="copies included"
+      />
+      <MetricCard
+        label="Estimated cost"
+        value={money(totals.estimatedCost)}
+        hint="at the recorded rate"
+      />
+      <MetricCard
+        label="Color jobs"
+        value={totals.colorJobs}
+        hint={totals.completedJobs > 0 ? `${Math.round((totals.colorJobs / totals.completedJobs) * 100)}% of completed` : '0% of completed'}
+        meter={totals.completedJobs > 0 ? Math.round((totals.colorJobs / totals.completedJobs) * 100) : 0}
+      />
     </section>
-    <DataTableFrame className="report-table" title="Completed jobs" description="Volume and estimated cost by user and printer." actions={<SelectMenu value={range} onValueChange={value => { setRange(value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-          <SelectTrigger className="w-44" aria-label="Report date range"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All time</SelectItem>
-            <SelectItem value="month">This month</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="7">Last 7 days</SelectItem>
-          </SelectContent>
-        </SelectMenu>} footer={<TablePagination table={table} noun="jobs" />}>
+    <DataTableFrame
+      className="report-table"
+      title="Completed jobs"
+      description="Volume and estimated cost by user and printer."
+      filters={<div className="space-y-3">
+        <div className="filter-pills">
+          {([
+            { id: 'all', label: 'All time' },
+            { id: 'month', label: 'This month' },
+            { id: '30', label: 'Last 30 days' },
+            { id: '7', label: 'Last 7 days' },
+          ] as const).map(item => {
+            const count = filterReportJobs(report.jobs, item.id).length
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={range === item.id ? 'active' : ''}
+                onClick={() => { setRange(item.id); setPagination(current => ({ ...current, pageIndex: 0 })) }}
+              >
+                {item.label}
+                <small>{count}</small>
+              </button>
+            )
+          })}
+        </div>
+      </div>}
+      footer={<TablePagination table={table} noun="jobs" />}
+    >
       <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
     </DataTableFrame>
   </main>
 }
 
-function ReportStat({ label, value, hint }: { label: string; value: ReactNode; hint: string }) {
-  return <Card className="gap-2 py-4">
-    <CardContent className="grid gap-1 px-4">
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
-      <strong className="text-2xl font-semibold tracking-tight">{value}</strong>
-      <small className="text-muted-foreground text-xs">{hint}</small>
-    </CardContent>
-  </Card>
+function downloadReport(jobs: ReportJob[]) {
+  const lines = ['job_id,completed_at,user,printer,pages,color_mode,estimated_cost,rate_version', ...jobs.map(job => [job.id, job.completedAt, job.user, job.printer || '', job.printedPages, job.colorMode, job.estimatedCost, job.rateVersion ?? ''].map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))]
+  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'printle-jobs.csv'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function filterReportJobs(jobs: ReportJob[], range: string) {
@@ -1067,9 +1286,9 @@ function filterReportJobs(jobs: ReportJob[], range: string) {
 
 const previewSettings: InstanceSettings = { defaultMonthlyPageQuota: 200, quotaTimezone: 'UTC', heldJobTtlHours: 24, completedRetentionHours: 720, failedRetentionHours: 168, maxCopies: 100, maxPagesPerJob: 1000, colorPrintingAllowed: true, updatedAt: new Date().toISOString() }
 
-function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean }) {
+function Settings({ typeface, user, preview, onPasswordChanged }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean; onPasswordChanged: () => void }) {
   const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
-  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printNode: 'ok', discoveredPrinters: 5 } : { database: 'checking', storage: 'checking', printNode: 'checking', discoveredPrinters: 0 })
+  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : { database: 'checking', storage: 'checking', printing: 'checking', registeredPrinters: 0 })
   const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
   const [notice, setNotice] = useState(''); const [error, setError] = useState('')
   useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
@@ -1081,14 +1300,10 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form)
     if (data.get('newPassword') !== data.get('confirmPassword')) { setError('New passwords do not match'); return }
-    try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
+    try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); onPasswordChanged(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
   }
   return <main className="page grid gap-6">
-    <div>
-      <p className="text-muted-foreground text-xs font-medium">Management</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="text-muted-foreground mt-1 text-sm">Personal appearance, account security, and instance print policy.</p>
-    </div>
+    <PageHeader eyebrow="Management" title="Settings" copy="Personal appearance, account security, and instance print policy." />
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
     <Card>
@@ -1097,11 +1312,11 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
         <CardDescription>DM Sans is the default. Your selection is saved locally.</CardDescription>
       </CardHeader>
       <CardContent>
-        <RadioGroup className="grid gap-3 sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
-          {TYPES.map(item => <Label key={item.id} htmlFor={`typeface-${item.id}`} className="has-[button[data-state=checked]]:border-foreground flex flex-row cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-accent">
+        <RadioGroup className="grid sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
+          {TYPES.map(item => <div key={item.id} className="typeface-option">
             <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-0.5" />
-            <span className="grid gap-0.5"><strong className="text-sm font-medium">{item.short.replace(/^\d+ /, '')}</strong><small className="text-muted-foreground text-xs">{item.blurb}</small></span>
-          </Label>)}
+            <Label htmlFor={`typeface-${item.id}`}><span className="grid gap-0.5"><strong className="text-sm font-medium">{item.short.replace(/^\d+ /, '')}</strong><small className="text-muted-foreground text-xs">{item.blurb}</small></span></Label>
+          </div>)}
         </RadioGroup>
       </CardContent>
     </Card>
@@ -1151,11 +1366,12 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
           <CardTitle asChild><h2 className="text-base">Diagnostics</h2></CardTitle>
           <CardDescription>Live dependency checks; no document contents are inspected.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Diagnostic label="Database" value={diagnostics.database} />
           <Diagnostic label="Job storage" value={diagnostics.storage} />
-          <Diagnostic label="Print node" value={diagnostics.printNode} />
-          <Diagnostic label="Printers discovered" value={String(diagnostics.discoveredPrinters)} />
+          <Diagnostic label="Printing protocol" value={diagnostics.printing} />
+          <Diagnostic label="Registered printers" value={String(diagnostics.registeredPrinters)} />
+        </div>
         </CardContent>
       </Card>
     </>}
@@ -1163,9 +1379,9 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
 }
 
 function Diagnostic({ label, value }: { label: string; value: string }) {
-  const ok = value === 'ok' || /^\d+$/.test(value)
+  const ok = value === 'ok' || value === 'IPP' || /^\d+$/.test(value)
   return <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
-    <Badge variant={ok ? 'success' : 'warning'} className="w-fit">{value}</Badge>
+    <Badge variant={ok ? 'success' : 'warning'}>{value}</Badge>
     <strong className="text-sm font-medium">{label}</strong>
   </div>
 }
@@ -1173,7 +1389,7 @@ function Diagnostic({ label, value }: { label: string; value: string }) {
 function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
   const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
   return <button className="icon-button" title={`Theme: ${theme.value}`} aria-label={`Theme ${theme.value}`} onClick={() => theme.set(next)}>
-    {theme.resolved === 'dark' ? <MoonIcon /> : <SunIcon />}
+    {theme.resolved === 'dark' ? <Moon /> : <Sun />}
   </button>
 }
 
@@ -1186,12 +1402,6 @@ function QueueDate({ value }: { value: string }) {
   const monthAndYear = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
   const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   return <time className="queue-date" dateTime={value}><span>{day}{suffix} {monthAndYear}</span><small>at {time}</small></time>
-}
-
-function relativeTime(iso: string) {
-  const hours = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3600000))
-  if (hours < 24) return `${Math.max(1, hours)}h ago`
-  return `${Math.round(hours / 24)}d ago`
 }
 
 function parsePreviewHash(hash = typeof location === 'undefined' ? '' : location.hash) {
@@ -1245,22 +1455,14 @@ function useTheme() {
 }
 
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
-function SunIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> }
-function MoonIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg> }
 function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'settings' | 'logout' }) {
-  if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
-  if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
-  if (name === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-  if (name === 'users') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-  if (name === 'reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-  if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+  const Icon = { queue: List, profile: UserRound, printer: PrinterIcon, users: UsersIcon, reports: BarChart3, settings: SettingsIcon, logout: LogOut }[name]
+  return <Icon aria-hidden="true" />
 }
 function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', users: 'Users', reports: 'Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }
-function yesNo(value: boolean) { return value ? 'Yes' : 'No' }
 function optionalNumber(value: FormDataEntryValue | null) { return value === null || value === '' ? null : Number(value) }
 function formatBytes(value: number) { return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / 1024 / 1024).toFixed(1)} MB` }
 function formatDate(value?: string) { return value ? new Date(value).toLocaleString() : '—' }
@@ -1269,28 +1471,16 @@ function jobStatusCopy(status: string) {
   return ({
     HELD: 'Waiting for you to choose a printer.',
     EXPIRED: 'The held job expired before it was released.',
-    PENDING: 'CUPS accepted the job and is waiting to print it.',
-    PENDING_HELD: 'CUPS is holding the submitted job.',
-    PROCESSING: 'CUPS is currently processing this job.',
+    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Cancel it after you check the printer, or wait for printLe to find the job.',
+    PENDING: 'The printer accepted the job and is waiting to print it.',
+    PENDING_HELD: 'The printer is holding the submitted job.',
+    PROCESSING: 'The printer is currently processing this job.',
     PROCESSING_STOPPED: 'Printing stopped. Check the printer reason below.',
     AWAITING_FLIP: 'The odd pages are complete. Reload the stack before continuing.',
     CANCELED: 'The job was canceled.',
-    ABORTED: 'CUPS could not complete the job.',
-    COMPLETED: 'CUPS reported the job as completed.',
-  } as Record<string, string>)[status] || 'The job state was reported by CUPS.'
-}
-function mockScenario(printer: Printer) {
-  const queue = printer.cupsQueue || ''
-  if (queue.includes('jam')) return 'Paper jam'
-  if (queue.includes('offline')) return 'Offline printer'
-  if (queue.includes('delay') || queue.includes('slow')) return 'Delayed completion'
-  if (queue.includes('abort')) return 'Aborted job'
-  if (queue.includes('cancel')) return 'Cancellation'
-  if (queue.includes('hold')) return 'Held job'
-  if (queue.includes('stop')) return 'Stopped processing'
-  if (queue.includes('mono')) return 'Monochrome only'
-  if (queue.includes('simple')) return 'Simplex only'
-  return 'Successful print'
+    ABORTED: 'The printer could not complete the job.',
+    COMPLETED: 'The printer reported the job as completed.',
+  } as Record<string, string>)[status] || 'The job state was reported by the printer.'
 }
 function duplexLabel(mode: string) {
   return ({ ONE_SIDED: 'One-sided', TWO_SIDED_LONG_EDGE: 'Hardware · long', TWO_SIDED_SHORT_EDGE: 'Hardware · short', MANUAL: 'Manual flip' } as Record<string, string>)[mode] ?? mode

@@ -5,8 +5,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-import { cn } from '../lib/cn'
-
 export function AppShell({
   banner,
   sidebar,
@@ -27,27 +25,28 @@ export function AppShell({
   return (
     <>
       {banner}
+      <div className="shell">
       <SidebarProvider
         open={open}
         onOpenChange={onOpenChange}
-        className={cn('shell', !open && 'shell-collapsed')}
         style={{
           '--sidebar-width': '16rem',
           '--sidebar-width-icon': '3rem',
         } as CSSProperties}
       >
-        <Sidebar collapsible="icon" className="printle-sidebar">
+        <Sidebar collapsible="icon">
           {sidebar}
         </Sidebar>
-        <SidebarInset className="workspace">
+        <SidebarInset>
           <header className="topbar">
-            <SidebarTrigger className="icon-button sidebar-toggle" aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'} />
+            <SidebarTrigger aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'} />
             {header}
           </header>
           {notice}
           {children}
         </SidebarInset>
       </SidebarProvider>
+      </div>
     </>
   )
 }
