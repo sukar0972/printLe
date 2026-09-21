@@ -4,13 +4,16 @@ import io.printle.audit.AuditService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,10 +27,24 @@ public class AdminUserController {
     private final PasswordEncoder passwords; private final AuditService audit;
     private final QuotaService quotas;
     private final org.springframework.security.core.session.SessionRegistry sessions;
-    public AdminUserController(AppUserRepository users, UserGroupRepository groups, PasswordEncoder passwords, AuditService audit, QuotaService quotas, org.springframework.security.core.session.SessionRegistry sessions) {
-        this.users = users; this.groups = groups; this.passwords = passwords; this.audit = audit; this.quotas = quotas; this.sessions = sessions;
+    private final UserImportService userImportService;
+    public AdminUserController(AppUserRepository users, UserGroupRepository groups, PasswordEncoder passwords, AuditService audit, QuotaService quotas, org.springframework.security.core.session.SessionRegistry sessions, UserImportService userImportService) {
+        this.users = users; this.groups = groups; this.passwords = passwords; this.audit = audit; this.quotas = quotas; this.sessions = sessions; this.userImportService = userImportService;
     }
     @GetMapping public List<UserView> list() { return users.findAll().stream().map(UserView::from).toList(); }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public UserImportService.ImportSummary importUsers(
+        @RequestParam("file") MultipartFile file,
+        @RequestParam(value = "dryRun", defaultValue = "false") boolean dryRun,
+        Authentication auth) {
+        if (file.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+        try {
+            return userImportService.importUsers(file.getInputStream(), dryRun, actor(auth));
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file", e);
+        }
+    }
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED) @Transactional
     public UserView create(@Valid @RequestBody CreateUser request, Authentication auth) {

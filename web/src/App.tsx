@@ -1,14 +1,23 @@
+import { useQueueRefresh } from './hooks/use-queue-refresh'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { BarChart3, Download, FileText, List, LogOut, Moon, MoreHorizontal, Printer as PrinterIcon, Settings as SettingsIcon, Sun, Upload, UserRound, Users as UsersIcon, X } from 'lucide-react'
+import { BarChart3, List, LogOut, Moon, Settings as SettingsIcon, Sun, Upload, UserRound, Users as UsersIcon, CheckCircle2, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
+import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
-import { Checkbox, DataTableFrame, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, MetricCard, Select } from './components/ui'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DataTableFrame } from '@/components/ui/data-table-frame'
+import { Dialog } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
+import { MetricCard } from '@/components/ui/metric-card'
+import { OptionSelect as Select } from '@/components/ui/select'
 import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -21,8 +30,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Separator } from '@/components/ui/separator'
 
-type Page = 'queue' | 'profile' | 'printers' | 'users' | 'reports' | 'settings'
+type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
 type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
 
@@ -77,18 +87,18 @@ export default function App() {
       items: [
         { page: 'queue', title: 'Print queue', icon: 'queue' },
         { page: 'profile', title: 'My profile', icon: 'profile' },
-        ...(user.role === 'MANAGER' || user.role === 'ADMIN' || preview.on
-          ? [{ page: 'reports', title: 'Reports', icon: 'reports' } as const]
-          : []),
         { page: 'settings', title: 'Settings', icon: 'settings' },
       ],
     },
-    ...((user.role === 'ADMIN' || preview.on)
+    ...((user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on)
       ? [{
           label: 'Manage',
           items: [
-            { page: 'printers', title: 'Printers', icon: 'printer' },
-            { page: 'users', title: 'Users', icon: 'users' },
+            ...((user.role === 'ADMIN' || preview.on) ? [
+              { page: 'printers' as const, title: 'Printers', icon: 'printer' as const },
+              { page: 'fake-printer' as const, title: 'Fake Printer', icon: 'printer' as const },
+            ] : []),
+            { page: 'users-reports' as const, title: 'Users & Reports', icon: 'users' as const },
           ],
         } satisfies SidebarNavGroup]
       : []),
@@ -115,7 +125,7 @@ export default function App() {
       </>}
       notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'users' ? <Users preview={preview.on} /> : page === 'reports' ? <Reports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} onPasswordChanged={() => setUser(current => current ? { ...current, passwordChangeRequired: false } : current)} />}
+          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : (page === 'users-reports' || page === 'users' || page === 'reports') ? <UsersReports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} onPasswordChanged={() => setUser(current => current ? { ...current, passwordChangeRequired: false } : current)} />}
     </AppShell>
 }
 
@@ -140,7 +150,7 @@ function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: Return
       <Card className="w-full max-w-sm">
         <CardHeader>
           <img src="/printle-logo.svg" alt="printLe" className="h-8 w-auto lg:hidden" />
-          <CardDescription><span className="text-xs font-medium uppercase tracking-widest">Welcome back</span></CardDescription>
+          <CardDescription className="text-xs font-medium tracking-widest uppercase">Welcome back</CardDescription>
           <CardTitle asChild><h2 className="text-xl tracking-tight">Sign in to printLe</h2></CardTitle>
           <CardDescription>Use the account provided by your administrator.</CardDescription>
         </CardHeader>
@@ -211,12 +221,22 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const [confirmFlip, setConfirmFlip] = useState<Job>()
   const [notice, setNotice] = useState('')
   const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
-  const load = useCallback(async () => {
-    if (preview) { setJobs(previewJobs); setQuota(previewQuota); return }
-    try { const [j, q, p] = await Promise.all([api.jobs(), api.quota(), api.printers()]); setJobs(j); setQuota(q); setPrinters(p); setLoadError('') }
-    catch (e) { setLoadError(message(e)) }
-  }, [preview])
-  useEffect(() => { void load() }, [load])
+  const fetchQueue = useCallback(async () => {
+    // Wait for every request, including failures, before allowing another batch.
+    const results = await Promise.allSettled([api.jobs(), api.quota(), api.printers()])
+    const [j, q, p] = results
+    const failure = results.find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') {
+      setLoadError(message(failure.reason))
+      return false
+    }
+    if (j.status === 'fulfilled' && q.status === 'fulfilled' && p.status === 'fulfilled') {
+      setJobs(j.value); setQuota(q.value); setPrinters(p.value); setLoadError('')
+      return j.value.some(job => ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'SUBMISSION_UNKNOWN'].includes(job.status))
+    }
+    return false
+  }, [])
+  const load = useQueueRefresh(fetchQueue, !preview)
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
     setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
@@ -249,7 +269,6 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'PROCESSING', manualPhase: 'EVEN', evenIppJobId: 203, ippJobId: 203 } : j)); setNotice('Even pages submitted to the printer.'); return }
     setError(''); setLoadError(''); try { await api.flip(id, reverse); setNotice('Even pages submitted to the printer.'); await load() } catch (e) { setError(message(e)) }
   }
-  useEffect(() => { if (preview) return; const timer = window.setInterval(() => void load(), 2500); return () => window.clearInterval(timer) }, [load, preview])
   const held = jobs.filter(job => job.status === 'HELD')
   const pendingPages = quota?.pending ?? held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
@@ -292,8 +311,8 @@ function DropBox({ model }: { model: QueueModel }) {
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
+      <label className="zone-field zone-pages">Pages<input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
       <label className="zone-field">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
-      <label className="zone-field pages-field">Pages<Input name="pages" placeholder="All" aria-label="Pages" /></label>
       <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
       <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
       <Button type="submit" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
@@ -352,14 +371,14 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
     getRowId: job => job.id,
   })
   const states = [...new Set(model.jobs.map(job => job.status))]
-  return <main className="page ledger-page imported-admin">
+  return <main className="page ledger-page">
     <PageHeader eyebrow="Workspace" title="Print queue" copy="Upload a PDF, then release it when you are at the printer." />
     {model.loadError && <Alert variant="destructive"><AlertDescription>{model.loadError}</AlertDescription></Alert>}
     {model.organized && <Metrics model={model} />}
     <DropBox model={model} />
-    <DataTableFrame className="queue-table" title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
-            <button key={id} type="button" className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
+            <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>} footer={<TablePagination table={table} noun="jobs" />}>
       {model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
@@ -387,11 +406,11 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </dl></section>
       <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
         <TimelineItem label="Created and held" time={job.createdAt} complete />
-        <TimelineItem label={job.ippJobId ? `Submitted to ${'printer'} · job ${job.ippJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
+        <TimelineItem label={job.ippJobId ? `Submitted to printer · job ${job.ippJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
         {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenIppJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddIppJobId || 'pending'}`} complete={Boolean(job.oddIppJobId)} />}
         <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
       </ol></section>
-      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>{'IPP URL'}</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
+      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>IPP URL</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
         {job.status === 'HELD' && <Button type="button" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
         {job.status === 'AWAITING_FLIP' && <Button type="button" onClick={() => { onClose(); onFlip(job.id) }}>Stack flipped—continue</Button>}
@@ -479,18 +498,53 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
     if (preview) return
     api.quota().then(setQuota).catch(e => setError(message(e)))
   }, [preview])
+  const limit = quota?.limit ?? 100
+  const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - (quota?.used ?? 0) - (quota?.pending ?? 0))
   const usedPct = quota && !quota.exempt && quota.limit > 0 ? Math.min(100, Math.round(((quota.used + (quota.pending ?? 0)) / quota.limit) * 100)) : 0
   const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
   return <main className="page grid gap-6">
     <PageHeader eyebrow="Account" title="My profile" copy="Your identity, role, and current print allowance." />
-    {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+    {quota && <section className="metrics quota-strip" aria-label="Allowance overview">
+      <MetricCard
+        label="Pages left"
+        value={quota.exempt ? '∞' : remaining}
+        hint={quota.exempt ? 'Unlimited quota' : `of ${limit} monthly allowance`}
+        meter={quota.exempt ? undefined : usedPct}
+      />
+      <MetricCard
+        label="Printed this month"
+        value={quota.used}
+        hint="pages processed"
+      />
+      <MetricCard
+        label="Reserved in queue"
+        value={quota.pending ?? 0}
+        hint="pages awaiting release"
+      />
+      <MetricCard
+        label="Account role"
+        value={statusLabel(user.role)}
+        hint={user.role === 'ADMIN' ? 'Full administrative access' : 'Standard printing access'}
+      />
+    </section>}
+
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">My print pass</h2></CardTitle>
-        <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">My print pass</h2></CardTitle>
+            <CardDescription>Your pass, membership, and this month&rsquo;s usage.</CardDescription>
+          </div>
+          <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'}>
+            <Shield className="size-3.5" />
+            {statusLabel(user.role)}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="pass-layout">
+        <div className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
         <div className="lg:pr-10">
           <div className="print-pass">
             <PassFlourish />
@@ -513,8 +567,8 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           </dl>
           <div className="grid max-w-xl gap-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Quota used</span>
-              <span className="font-medium">{quota ? quota.used : 0}{quota && !quota.exempt ? ` / ${quota.limit}` : ''}</span>
+              <span className="text-muted-foreground font-medium">Quota used</span>
+              <span className="font-semibold">{quota ? quota.used : 0}{quota && !quota.exempt ? ` / ${quota.limit}` : ''} ({usedPct}%)</span>
             </div>
             <Progress value={usedPct} aria-label="Quota used" />
           </div>
@@ -523,6 +577,68 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
         </div>
       </CardContent>
     </Card>
+
+    <div className="grid gap-6 md:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Key className="size-4 text-primary" /> Role permissions</h3></CardTitle>
+          <CardDescription>Capabilities granted to your account role.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Direct document release</p>
+              <p className="text-muted-foreground text-xs">Submit and release print jobs directly to any enabled printer.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">{user.role === 'ADMIN' ? 'Full printer & fleet management' : 'Personal queue tracking'}</p>
+              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Configure IPP printers, manage error policies, and inspect fake printer actions.' : 'Monitor status, cancel held jobs, and flip double-sided jobs.'}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">{user.role === 'ADMIN' ? 'User directory & group quotas' : 'Automatic allowance renewal'}</p>
+              <p className="text-muted-foreground text-xs">{user.role === 'ADMIN' ? 'Add users, adjust monthly quotas, assign groups, and inspect accounting reports.' : 'Your monthly allowance resets automatically on the first of each month.'}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle asChild><h3 className="text-sm font-semibold flex items-center gap-2"><Shield className="size-4 text-primary" /> Print pass security</h3></CardTitle>
+          <CardDescription>Credential security and audit protections.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Virtual identifier</p>
+              <p className="text-muted-foreground text-xs">Pass PL {identifier} is bound to your account for hardware badge verification.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Encrypted transport</p>
+              <p className="text-muted-foreground text-xs">Jobs sent via IPP use TLS and secure session headers.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Audit record logging</p>
+              <p className="text-muted-foreground text-xs">Page counts and timestamps are preserved in accounting reports for quota fidelity.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   </main>
 }
 
@@ -591,14 +707,14 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
-    const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
+    const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
     const effectiveStatus = printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED'
     const matchesStatus = statusFilter === 'ALL' || effectiveStatus === statusFilter
     const matchesCapability = capabilityFilter === 'ALL' || (capabilityFilter === 'COLOR' ? printer.colorCapable : capabilityFilter === 'DUPLEX' ? printer.duplexCapable : !printer.colorCapable)
     return matchesQuery && matchesStatus && matchesCapability
   }), [printers, query, statusFilter, capabilityFilter])
   const columns = useMemo<ColumnDef<AppTableFeatures, Printer>[]>(() => [
-    { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'Direct IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
+    { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
     { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || 'No location'}</small></span> },
     {
       id: 'state',
@@ -649,12 +765,38 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     onPaginationChange: setPagination,
     getRowId: printer => printer.id,
   })
-  const printerStatuses = [['ALL', 'All'], ['ONLINE', 'Online'], ['OFFLINE', 'Offline'], ['ERROR', 'Error'], ['MAINTENANCE', 'Maintenance'], ['DISABLED', 'Disabled']] as const
-  return <main className="page imported-admin">
-    <PageHeader eyebrow="Printer fleet" title="Printers" copy="IPP printers, capabilities, and page pricing." actions={<div className="actions"><Button type="button" variant="outline" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</Button><Button type="button" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</Button></div>} />
+  const statuses = ['ALL', 'ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE', 'DISABLED'] as const
+
+  return <main className="page grid gap-6">
+    <PageHeader eyebrow="Printer fleet" title="Printers" copy="IPP printers, capabilities, and page pricing." actions={<div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</Button><Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</Button></div>} />
+
+    <section className="metrics quota-strip" aria-label="Fleet metrics">
+      <MetricCard
+        label="Active fleet"
+        value={printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length}
+        hint={`of ${printers.length} registered printers`}
+        meter={printers.length > 0 ? Math.round((printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length / printers.length) * 100) : 0}
+      />
+      <MetricCard
+        label="Color capable"
+        value={printers.filter(p => p.colorCapable).length}
+        hint="support full-spectrum color"
+      />
+      <MetricCard
+        label="Duplex hardware"
+        value={printers.filter(p => p.duplexCapable).length}
+        hint="two-sided printing enabled"
+      />
+      <MetricCard
+        label="Fleet volume"
+        value={`${usage.printedPages} pages`}
+        hint={`${usage.completedJobs} completed jobs`}
+      />
+    </section>
+
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
-      <div className="modal-title"><h2>Add IPP printer</h2><Button type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></div>
-      <p>Enter the printer address. It must accept PDF. One-sided, hardware duplex, and manual flip are supported here.</p>
+      <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
+      <p>Connect to a printer that accepts PDFs over IPP. One-sided, hardware duplex, and manual flip printing are supported.</p>
       <form onSubmit={addIpp}>
         <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
         <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
@@ -664,14 +806,45 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       </form>
     </Dialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <DataTableFrame className="printer-table" title="Printer fleet" description="Monitor IPP printers, capabilities, health, and page pricing." actions={<div className="printer-table-controls">
-          <label className="sr-only" htmlFor="printer-search">Search printers</label><Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-          <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}><option value="ALL">All capabilities</option><option value="COLOR">Color</option><option value="MONO">Mono</option><option value="DUPLEX">Duplex</option></Select>
-        </div>} filters={<div className="filter-pills">{printerStatuses.map(([id, label]) => <button key={id} type="button" className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); setPagination(current => ({ ...current, pageIndex: 0 })) }}>{label}</button>)}</div>} footer={<TablePagination table={table} noun="printers" />}>
+
+    <DataTableFrame
+      className="printer-table"
+      title="Printer fleet"
+      description="Monitor IPP printers, capabilities, health, and page pricing."
+      actions={<div className="printer-table-controls">
+        <label className="sr-only" htmlFor="printer-search">Search printers</label>
+        <Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
+        <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+          <option value="ALL">All capabilities</option>
+          <option value="COLOR">Color</option>
+          <option value="MONO">Mono</option>
+          <option value="DUPLEX">Duplex</option>
+        </Select>
+      </div>}
+      filters={<div className="filter-pills">
+        {statuses.map(status => {
+          const count = status === 'ALL'
+            ? printers.length
+            : printers.filter(p => (p.maintenance ? 'MAINTENANCE' : p.enabled ? p.status : 'DISABLED') === status).length
+          return (
+            <button
+              key={status}
+              type="button"
+              className={statusFilter === status ? 'active' : ''}
+              onClick={() => { setStatusFilter(status); table.setPageIndex(0) }}
+            >
+              {status === 'ALL' ? 'All' : statusLabel(status)}
+              <small>{count}</small>
+            </button>
+          )
+        })}
+      </div>}
+      footer={<TablePagination table={table} noun="printers" />}
+    >
       <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
-      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setSelected(undefined)}>Close</Button></div>
+      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
       <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
       <form onSubmit={save}>
         <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
@@ -696,7 +869,7 @@ function userGroups(groups: Group[], userId: string) {
   return groups.filter(group => group.members.some(member => member.id === userId))
 }
 
-function Users({ preview }: { preview: boolean }) {
+function UsersSection({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
   const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
   const [query, setQuery] = useState('')
@@ -837,7 +1010,7 @@ function Users({ preview }: { preview: boolean }) {
       header: 'User',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <Avatar className="size-8">
+          <Avatar bordered>
             <AvatarFallback>
               {initials(row.original.displayName)}
             </AvatarFallback>
@@ -928,9 +1101,7 @@ function Users({ preview }: { preview: boolean }) {
     getRowId: user => user.id,
     enableRowSelection: true,
   })
-  return <main className="page users-page imported-admin grid gap-6">
-    <PageHeader eyebrow="Manage" title="Users" copy="Organization members, printing allowances, and access groups." />
-
+  return <>
     <section className="metrics quota-strip" aria-label="Directory metrics">
       <MetricCard
         label="Total members"
@@ -959,7 +1130,7 @@ function Users({ preview }: { preview: boolean }) {
 
     <DataTableFrame
       className="user-directory"
-      title="Accounts"
+      title="Users"
       description="Manage organization members and their printing access."
       actions={<div className="flex items-center gap-2">
         <label className="user-search">
@@ -1003,7 +1174,7 @@ function Users({ preview }: { preview: boolean }) {
               {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
             </Select>}
           </div>
-          <Badge variant="outline">
+          <Badge variant="muted">
             {selectedCount} selected
           </Badge>
         </div>
@@ -1014,18 +1185,17 @@ function Users({ preview }: { preview: boolean }) {
     </DataTableFrame>
 
     <DataTableFrame
-
       title="Groups"
       description="Named sets for printer access and shared page quotas."
       actions={<Button size="sm" onClick={() => setGroupOpen(true)}>+ Add group</Button>}
     >
-      <div className="ui-table group-policy-table"><Table>
+      <Table className="group-policy-table">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-45">Group</TableHead>
+            <TableHead className="w-[180px]">Group</TableHead>
             <TableHead>Members</TableHead>
-            <TableHead className="w-40">Page allowance</TableHead>
-            <TableHead className="w-55 text-right">Actions</TableHead>
+            <TableHead className="w-[160px]">Page allowance</TableHead>
+            <TableHead className="w-[220px] text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1070,7 +1240,7 @@ function Users({ preview }: { preview: boolean }) {
                         <option value="" disabled>Add member…</option>
                         {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
                       </Select>
-                      <Button variant="destructive" size="sm" onClick={() => void removeGroup(group)}>
+                      <Button variant="ghost-destructive" size="sm" onClick={() => void removeGroup(group)}>
                         Delete
                       </Button>
                     </div>
@@ -1081,7 +1251,6 @@ function Users({ preview }: { preview: boolean }) {
           })}
         </TableBody>
       </Table>
-      </div>
     </DataTableFrame>
     {open && <Dialog className="modal" label="Add a user" onClose={() => setOpen(false)}>
         <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Close</Button></div>
@@ -1105,7 +1274,7 @@ function Users({ preview }: { preview: boolean }) {
     {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setGroupOpen(false)}>Close</Button></div>
       <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><Button type="submit">Create group</Button></form>
     </Dialog>}
-  </main>
+  </>
 }
 
 const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCost: 3.18, jobs: [
@@ -1114,7 +1283,7 @@ const previewReport: Report = { completedJobs: 3, printedPages: 46, estimatedCos
   { id: 'r3', completedAt: '2026-08-31T16:00:00Z', user: 'sam@printle.local', printer: 'Warehouse Simplex', printedPages: 6, colorMode: 'MONOCHROME', estimatedCost: .14, rateVersion: 2 },
 ] }
 
-function Reports({ preview }: { preview: boolean }) {
+function ReportsSection({ preview }: { preview: boolean }) {
   const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
   const [range, setRange] = useState('all')
   const [error, setError] = useState('')
@@ -1144,7 +1313,7 @@ function Reports({ preview }: { preview: boolean }) {
       header: 'User',
       cell: ({ row }) => (
         <div className="flex items-center gap-2.5">
-          <Avatar className="size-6">
+          <Avatar size="sm" bordered>
             <AvatarFallback>
               {initials(row.original.user.split('@')[0])}
             </AvatarFallback>
@@ -1202,8 +1371,17 @@ function Reports({ preview }: { preview: boolean }) {
     onPaginationChange: setPagination,
     getRowId: job => job.id,
   })
-  return <main className="page imported-admin grid gap-6">
-    <PageHeader eyebrow="Accounting" title="Reports" copy="Completed print volume and estimated cost. Pricing is informational; there are no balances or credits." actions={<Button type="button" variant="outline" size="sm" onClick={() => downloadReport(jobs)}><Download aria-hidden="true" className="size-3.5" />Export CSV</Button>} />
+  return <>
+    <Separator className="my-2" />
+    <div className="alt-content-heading">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
+        <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="button" variant="outline" size="sm" onClick={() => downloadReport(jobs)}><Download aria-hidden="true" className="size-3.5" />Export CSV</Button>
+      </div>
+    </div>
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <section aria-label="Usage" className="metrics quota-strip">
       <MetricCard
@@ -1260,7 +1438,7 @@ function Reports({ preview }: { preview: boolean }) {
     >
       <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
     </DataTableFrame>
-  </main>
+  </>
 }
 
 function downloadReport(jobs: ReportJob[]) {
@@ -1272,6 +1450,20 @@ function downloadReport(jobs: ReportJob[]) {
   link.click()
   URL.revokeObjectURL(url)
 }
+
+function UsersReports({ preview }: { preview: boolean }) {
+  return (
+    <main className="page users-page grid gap-6">
+      <PageHeader eyebrow="Manage" title="Users & Reports" copy="Organization members, printing allowances, access policy groups, and print accounting reports." />
+
+      <UsersSection preview={preview} />
+
+      <ReportsSection preview={preview} />
+    </main>
+  )
+}
+
+
 
 function filterReportJobs(jobs: ReportJob[], range: string) {
   if (range === 'all') return jobs
@@ -1306,84 +1498,152 @@ function Settings({ typeface, user, preview, onPasswordChanged }: { typeface: Re
     <PageHeader eyebrow="Management" title="Settings" copy="Personal appearance, account security, and instance print policy." />
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
+    {user.role === 'ADMIN' && (
+      <section aria-label="System status" className="metrics quota-strip">
+        <MetricCard
+          label="Database"
+          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} mono>{diagnostics.database}</Badge>}
+          hint="PostgreSQL connection"
+        />
+        <MetricCard
+          label="Job storage"
+          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} mono>{diagnostics.storage}</Badge>}
+          hint="Spool file storage"
+        />
+        <MetricCard
+          label="Printing protocol"
+          value={<Badge variant={diagnostics.printing === 'IPP' ? 'success' : 'warning'} mono>{diagnostics.printing}</Badge>}
+          hint="Direct printer connection"
+        />
+        <MetricCard
+          label="Registered printers"
+          value={diagnostics.registeredPrinters}
+          hint="Configured IPP endpoints"
+        />
+      </section>
+    )}
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">Typeface</h2></CardTitle>
-        <CardDescription>DM Sans is the default. Your selection is saved locally.</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">Typeface</h2></CardTitle>
+            <CardDescription className="mt-1">DM Sans is the default. Your selection is saved locally.</CardDescription>
+          </div>
+          <Badge variant="outline">Appearance</Badge>
+        </div>
       </CardHeader>
       <CardContent>
-        <RadioGroup className="grid sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
-          {TYPES.map(item => <div key={item.id} className="typeface-option">
-            <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-0.5" />
-            <Label htmlFor={`typeface-${item.id}`}><span className="grid gap-0.5"><strong className="text-sm font-medium">{item.short.replace(/^\d+ /, '')}</strong><small className="text-muted-foreground text-xs">{item.blurb}</small></span></Label>
-          </div>)}
+        <RadioGroup className="sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
+          {TYPES.map(item => (
+            <Label
+              key={item.id}
+              htmlFor={`typeface-${item.id}`}
+              variant="choice"
+              data-selected={typeface.value === item.id ? 'true' : undefined}
+            >
+              <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-1" />
+              <div className="grid gap-0.5">
+                <div className="flex items-center gap-2">
+                  <strong className="text-sm font-semibold tracking-tight">{item.short.replace(/^\d+ /, '')}</strong>
+                  {item.id === 'dmsans' && <Badge variant="secondary">Default</Badge>}
+                </div>
+                <small className="text-muted-foreground text-xs leading-relaxed">{item.blurb}</small>
+              </div>
+            </Label>
+          ))}
         </RadioGroup>
       </CardContent>
     </Card>
     <Card>
       <CardHeader>
-        <CardTitle asChild><h2 className="text-base">Password</h2></CardTitle>
-        <CardDescription>Use at least 12 characters.</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle asChild><h2 className="text-base font-semibold">Password</h2></CardTitle>
+            <CardDescription className="mt-1">Use at least 12 characters.</CardDescription>
+          </div>
+          <Lock className="size-4 text-muted-foreground" />
+        </div>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={changePassword}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2"><Label htmlFor="current-password">Current password</Label><TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required /></div>
-            <div className="grid gap-2"><Label htmlFor="new-password">New password</Label><TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></div>
-            <div className="grid gap-2"><Label htmlFor="confirm-password">Confirm new password</Label><TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></div>
+            <div className="grid gap-2">
+              <Label htmlFor="current-password">Current password</Label>
+              <TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-password">New password</Label>
+              <TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="confirm-password">Confirm new password</Label>
+              <TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
           </div>
-          <div><Button type="submit" size="sm">Change password</Button></div>
+          <div className="flex justify-end pt-1">
+            <Button type="submit" size="sm">Change password</Button>
+          </div>
         </form>
       </CardContent>
     </Card>
-    {user.role === 'ADMIN' && <>
+    {user.role === 'ADMIN' && (
       <Card key={settings.updatedAt}>
         <CardHeader>
-          <CardTitle asChild><h2 className="text-base">Print and retention policy</h2></CardTitle>
-          <CardDescription>Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle asChild><h2 className="text-base font-semibold">Print and retention policy</h2></CardTitle>
+              <CardDescription className="mt-1">Restrictions are enforced before quota is reserved. Retention changes apply during cleanup.</CardDescription>
+            </div>
+            <Badge variant="secondary">Instance Policy</Badge>
+          </div>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4" onSubmit={savePolicy}>
+          <form className="grid gap-5" onSubmit={savePolicy}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="grid gap-2"><Label htmlFor="policy-quota">Default monthly pages</Label><TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-timezone">Quota timezone</Label><TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-ttl">Held job lifetime (hours)</Label><TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-completed">Completed retention (hours)</Label><TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-failed">Failed retention (hours)</Label><TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-copies">Maximum copies</Label><TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required /></div>
-              <div className="grid gap-2"><Label htmlFor="policy-pages">Maximum pages per job</Label><TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required /></div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-quota">Default monthly pages</Label>
+                <TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-timezone">Quota timezone</Label>
+                <TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-ttl">Held job lifetime (hours)</Label>
+                <TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-completed">Completed retention (hours)</Label>
+                <TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-failed">Failed retention (hours)</Label>
+                <TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-copies">Maximum copies</Label>
+                <TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="policy-pages">Maximum pages per job</Label>
+                <TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 sm:max-w-md">
-              <div className="grid gap-0.5"><strong className="text-sm font-medium">Allow color printing</strong><small className="text-muted-foreground text-xs">Users may submit jobs in color.</small></div>
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3.5 sm:max-w-md bg-muted/20">
+              <div className="grid gap-0.5">
+                <strong className="text-sm font-medium">Allow color printing</strong>
+                <small className="text-muted-foreground text-xs">Users may submit jobs in color across the fleet.</small>
+              </div>
               <Switch checked={colorAllowed} onCheckedChange={setColorAllowed} aria-label="Allow color printing" />
             </div>
-            <div><Button type="submit" size="sm">Save instance policy</Button></div>
+            <div className="flex justify-end pt-1">
+              <Button type="submit" size="sm">Save instance policy</Button>
+            </div>
           </form>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle asChild><h2 className="text-base">Diagnostics</h2></CardTitle>
-          <CardDescription>Live dependency checks; no document contents are inspected.</CardDescription>
-        </CardHeader>
-        <CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Diagnostic label="Database" value={diagnostics.database} />
-          <Diagnostic label="Job storage" value={diagnostics.storage} />
-          <Diagnostic label="Printing protocol" value={diagnostics.printing} />
-          <Diagnostic label="Registered printers" value={String(diagnostics.registeredPrinters)} />
-        </div>
-        </CardContent>
-      </Card>
-    </>}
+    )}
   </main>
-}
-
-function Diagnostic({ label, value }: { label: string; value: string }) {
-  const ok = value === 'ok' || value === 'IPP' || /^\d+$/.test(value)
-  return <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
-    <Badge variant={ok ? 'success' : 'warning'}>{value}</Badge>
-    <strong className="text-sm font-medium">{label}</strong>
-  </div>
 }
 
 function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
@@ -1455,11 +1715,11 @@ function useTheme() {
 }
 
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
-function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'settings' | 'logout' }) {
-  const Icon = { queue: List, profile: UserRound, printer: PrinterIcon, users: UsersIcon, reports: BarChart3, settings: SettingsIcon, logout: LogOut }[name]
+function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings' | 'logout' }) {
+  const Icon = { queue: List, profile: UserRound, printer: PrinterIcon, users: UsersIcon, reports: BarChart3, 'users-reports': UsersIcon, settings: SettingsIcon, logout: LogOut }[name]
   return <Icon aria-hidden="true" />
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', users: 'Users', reports: 'Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports', users: 'Users & Reports', reports: 'Users & Reports', settings: 'Settings' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }

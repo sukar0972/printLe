@@ -2,7 +2,7 @@ export type CurrentUser = { id: string; email: string; displayName: string; role
 export type Job = { id: string; filename: string; sizeBytes: number; pages: number; copies: number; colorMode: string; duplexMode: string; status: string; createdAt: string; ippJobId?: number; ippUri?: string; ippStateReasons?: string; submittedAt?: string; completedAt?: string; expiresAt?: string; printerId?: string; printerName?: string; estimatedCost?: number; costRateVersion?: number; pricedAt?: string; attempt: number; manualPhase?: string; pageRange?: string; oddIppJobId?: number; evenIppJobId?: number }
 export type Quota = { limit: number; used: number; pending: number; remaining: number | null; exempt: boolean }
 export type ManagedUser = { id: string; email: string; displayName: string; role: CurrentUser['role']; status: 'ACTIVE' | 'SUSPENDED'; monthlyPageQuota: number | null; quotaExempt: boolean; createdAt: string; lastSignedInAt?: string; passwordChangeRequired?: boolean }
-export type Printer = { id: string; name: string; description?: string; status: 'ONLINE' | 'OFFLINE' | 'ERROR' | 'UNCONFIGURED'; ippUri?: string; location?: string; enabled: boolean; maintenance: boolean; colorCapable: boolean; duplexCapable: boolean; mediaSupported?: string; stateReasons?: string; errorPolicy: 'ALLOW' | 'WARN' | 'BLOCK'; transport?: string; lastSeenAt?: string; monoPageRate: number; colorPageRate: number; rateVersion: number }
+export type Printer = { id: string; name: string; description?: string; status: 'UNCONFIGURED' | 'ONLINE' | 'OFFLINE' | 'ERROR'; ippUri?: string; location?: string; enabled: boolean; maintenance: boolean; colorCapable: boolean; duplexCapable: boolean; mediaSupported?: string; stateReasons?: string; errorPolicy: 'ALLOW' | 'WARN' | 'BLOCK'; transport?: string; lastSeenAt?: string; monoPageRate: number; colorPageRate: number; rateVersion: number }
 export type GroupMember = { id: string; email: string; displayName: string }
 export type Group = { id: string; name: string; monthlyPageQuota: number | null; builtIn: boolean; members: GroupMember[] }
 export type AclRule = { id?: string; principalType: 'USER' | 'GROUP'; principalId: string; permission: 'VIEW' | 'SUBMIT' | 'RELEASE_OWN' | 'RELEASE_ANY' | 'MANAGE' }
@@ -34,7 +34,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json()
 }
 
+export type FakePrinterAttribute = { group: number; tag: string; name: string; value: unknown }
+export type FakePrinterDocument = { bytes: number; pages: number; sha256: string }
+export type FakePrinterJob = { id: number; name: string; user: string; state: string; stateCode: number; reason: string; createdAt: string; attributes: FakePrinterAttribute[]; document: FakePrinterDocument | null }
+export type FakePrinterEvent = { id: number; time: string; operation: string; requestId: number; status: string; message: string; jobId: number | null; request: FakePrinterAttribute[]; response: FakePrinterAttribute[]; document: FakePrinterDocument | null }
+export type FakePrinterSnapshot = { enabled: boolean; localUri: string; path: string; jobs: FakePrinterJob[]; events: FakePrinterEvent[] }
+
 export const api = {
+  fakePrinter: () => request<FakePrinterSnapshot>('/api/admin/fake-printer'),
+  enableFakePrinter: (enabled: boolean) => request<void>('/api/admin/fake-printer', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }),
+  fakePrinterJobState: (id: number, state: string) => request<void>(`/api/admin/fake-printer/jobs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) }),
+  clearFakePrinterEvents: () => request<void>('/api/admin/fake-printer/events', { method: 'DELETE' }),
   me: () => request<CurrentUser>('/api/auth/me'),
   login: async (email: string, password: string) => {
     const body = new URLSearchParams({ email, password })
@@ -50,7 +60,7 @@ export const api = {
   cancel: (id: string) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   release: (id: string, printerId?: string) => request<Job>(`/api/jobs/${id}/release${printerId ? `?printerId=${encodeURIComponent(printerId)}` : ''}`, { method: 'POST' }),
   retry: (id: string) => request<Job>(`/api/jobs/${id}/retry`, { method: 'POST' }),
-  flip: (id: string, reverse = false) => request<Job>(`/api/jobs/${id}/flip?reverse=${reverse ? 'true' : 'false'}`, { method: 'POST' }),
+  flip: (id: string, reverse = false) => request<Job>(`/api/jobs/${id}/flip?reverse=${reverse}`, { method: 'POST' }),
   printers: () => request<Printer[]>('/api/printers'),
   addIppPrinter: (name: string, uri: string) => request<Printer>('/api/printers/ipp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, uri }) }),
   syncPrinters: () => request<Printer[]>('/api/printers/sync', { method: 'POST' }),

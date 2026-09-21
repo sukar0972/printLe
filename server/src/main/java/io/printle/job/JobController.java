@@ -1,6 +1,8 @@
 package io.printle.job;
 
 import io.printle.config.PrintleProperties;
+import io.printle.ratelimit.RateLimitExceededException;
+import io.printle.ratelimit.RateLimitService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +17,10 @@ import java.util.UUID;
 @RequestMapping("/api/jobs")
 public class JobController {
     private final JobService service; private final PrintleProperties properties;
-    public JobController(JobService service, PrintleProperties properties) { this.service = service; this.properties = properties; }
+    private final RateLimitService rateLimitService;
+    public JobController(JobService service, PrintleProperties properties, RateLimitService rateLimitService) {
+        this.service = service; this.properties = properties; this.rateLimitService = rateLimitService;
+    }
 
     @GetMapping @Transactional(readOnly = true)
     public List<JobView> list(Authentication auth) { return service.list(auth.getName()).stream().map(JobView::from).toList(); }
@@ -26,6 +31,10 @@ public class JobController {
                           @RequestParam(defaultValue = "MONOCHROME") ColorMode colorMode,
                           @RequestParam(defaultValue = "ONE_SIDED") DuplexMode duplexMode,
                           @RequestParam(defaultValue = "") String pages) {
+        var limit = rateLimitService.tryUpload(auth.getName());
+        if (!limit.allowed()) {
+            throw new RateLimitExceededException("Too many upload requests. Please try again later.", limit.retryAfterSeconds());
+        }
         return JobView.from(service.create(auth.getName(), file, copies, colorMode, duplexMode, pages));
     }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)

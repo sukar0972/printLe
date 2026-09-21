@@ -15,8 +15,8 @@ The current build includes:
 - `ADMIN`, `OPERATOR`, `MANAGER`, and `USER` roles
 - User and group administration, suspension, password resets, quota overrides, and adjustments
 - PDF validation, page counting, held-job storage, cancellation, retry, and expiry
-- CUPS-native job states, idempotent delivery, hardware duplex, and two-stage manual duplex
-- CUPS printer discovery, capability-aware release, maintenance/error policy, and printer ACLs
+- IPP job states, idempotent delivery, hardware duplex, and two-stage manual duplex
+- Direct IPP printer registration, capability-aware release, maintenance/error policy, and printer ACLs
 - Monthly page allowances with individual/group/default precedence and transactional accounting
 - Immutable per-job price estimates with versioned monochrome and color printer rates
 - Usage reports and CSV export
@@ -24,9 +24,7 @@ The current build includes:
 - PostgreSQL migrations with Flyway
 - A responsive React interface with light/dark/system themes and selectable local fonts
 - Configurable print/retention policy and dependency diagnostics
-- Development CUPS queues for success, delay, cancellation, failure, hold, stop, capability, jam, and offline scenarios
-- An internal token-protected print-node service and optional USB device mapping
-- Application-consistent backup tooling for PostgreSQL, job files, and CUPS state
+- Application-consistent backup tooling for PostgreSQL and job files
 - Backend and frontend integration tests
 - Production and development Docker Compose definitions with health checks and persistent service volumes
 
@@ -60,12 +58,26 @@ npm install
 npm run dev
 ```
 
-Run backend tests with the included Maven wrapper:
+Run backend tests with Java 21, a running Docker daemon, and the included Maven wrapper:
 
 ```bash
 cd server
 ./mvnw test
 ```
+
+Backend integration tests use Testcontainers to start disposable PostgreSQL 17
+databases. They run the production Flyway migrations and validate the schema with
+Hibernate. The suite also tests upgrading existing job and quota data. No running
+Compose stack or manually created test database is needed; the first run downloads
+the PostgreSQL and Testcontainers helper images. Tests fail if Docker is unavailable.
+
+Spring manages each test database for the lifetime of its application context and
+removes it when that context closes. Maven limits the context cache to two entries
+to bound container usage. Run these commands on the Docker host; running them inside
+the application container requires separate access to a Docker daemon and its
+published container ports. CI runs the same tests on the GitHub-hosted Ubuntu runner.
+New Spring integration tests should import `PostgresTestConfiguration` to receive
+the managed database connection.
 
 Run the frontend checks:
 
@@ -75,17 +87,39 @@ npm test
 npm run build
 ```
 
-### Mock printing with CUPS
+## Fake Printer
 
-The development Compose overlay includes a real CUPS scheduler with controllable virtual printers for successful, delayed, canceled, aborted, held, stopped, jammed, offline, color, monochrome, duplex, and simplex behavior. It captures documents and submitted options without sending anything to physical hardware.
+Administrators can open **Manage → Fake Printer** to run a mock IPP printer inside
+the backend. Enable it, copy its IPP address, then use **Printers → Add IPP printer**
+to register it. The address uses the backend's loopback interface, so it also works
+when the backend runs in Docker. No additional container or physical printer is
+required.
 
-See [`cups/mock/README.md`](cups/mock/README.md) for startup, submission, and inspection commands.
+Upload a PDF in **Print queue** and release it to that printer. Return to
+**Fake Printer** to see discovery, Create-Job, Send-Document, status polls, and
+cancellation, including decoded request/response attributes and IPP status codes.
+The received-job view shows the submitted options, PDF page count, byte count,
+and SHA-256 checksum. PDF contents are discarded after inspection.
+
+Jobs remain processing until you choose **Complete**, **Fail**, **Stop**, or
+**Cancel at printer**. You can also cancel through Print queue to verify the
+outgoing Cancel-Job operation. printLe observes the new state on its next backend
+poll; refresh the queue view to see it. The mock also supports Print-Job,
+Validate-Job, and Get-Jobs. It simulates IPP delivery and job states, not physical
+rendering, paper handling, or full printer conformance.
+
+The simulator starts disabled. Controls and logs require an administrator session;
+IPP requests use an unguessable address without a browser login. It retains the
+last 200 actions and up to 100 jobs in memory, evicting finished jobs as needed.
+Clearing the log leaves jobs intact. Restarting the backend disables the simulator,
+clears its history, and changes its address; finish test jobs first and register
+the new address after restarting.
 
 ## Data
 
 Compose stores PostgreSQL data and uploaded PDFs in named volumes. Uploaded files are accepted only when they have a PDF header and can be parsed by PDFBox. The default upload limit is 25 MB.
 
-Back up the database, job files, and CUPS state together. See [`docs/backup-and-restore.md`](docs/backup-and-restore.md).
+Back up the database and job files together. See [`docs/backup-and-restore.md`](docs/backup-and-restore.md).
 
 ## Security notes
 
@@ -97,21 +131,19 @@ Back up the database, job files, and CUPS state together. See [`docs/backup-and-
 
 The project license is still undecided. Do not accept outside contributions until the community and commercial licensing model is settled.
 
-### Direct IPP printers (without CUPS)
+### IPP printers
 
-As an administrator, open **Printers → Add IPP printer**, enter a name and an
-`ipp://printer-address/ipp/print` or `ipps://printer-address/ipp/print` URL, then
-choose **Check and add printer**. Use the exact endpoint published by the printer;
-its path may differ. The backend must be able to reach the printer over the LAN.
+In Printers, choose Add IPP printer and enter the printer's `ipp://` or `ipps://`
+endpoint. The printer must accept PDF documents. The backend connects directly;
+CUPS, USB passthrough, and the Python print-node are no longer part of the stack.
 
 The connection check requires native PDF support and either Print-Job or
 Create-Job plus Send-Document, along with Get-Job-Attributes and Cancel-Job.
 Copies, color, hardware duplex, and manual flip are checked against the printer.
 Print-Job is used when the printer supports it, so the PDF and the job id travel
-together. If a printer only supports Create-Job, a failed document send cancels
-that empty job and returns the printLe job to the held queue. Printer
-authentication is not yet supported. IPPS uses normal certificate verification;
-configure a trusted certificate rather than disabling TLS verification.
+together. If a printer only supports Create-Job, a failed document send attempts to cancel
+that job and returns it to the held queue when cancellation succeeds. If
+cancellation fails, printLe retains the remote job ID for reconciliation.
 
 An empty access list permits every signed-in user. Add rules to restrict a
 printer. View-only rules do not allow release. Submit, release, and manage rules
@@ -119,8 +151,18 @@ allow someone to release their own jobs; printLe does not release another
 person's job. Remote job IDs are stored with the printer URL, so devices can
 reuse the same numeric IDs without mixing jobs.
 
-```bash
-docker compose -f compose.yaml up -d --build
-```
-
 The API container must be able to reach printers on the LAN.
+
+The upload form accepts page ranges such as `1-3, 5`; leave Pages blank to print
+all pages. Quotas count the selected pages multiplied by the number of copies.
+Manual duplex prints odd pages first, waits for you to reload the stack, then
+prints even pages. The confirmation offers reverse order for printers that need it.
+
+IPPS verifies certificates. Printer authentication and document conversion are
+not supported. An empty printer ACL permits all users; configure the policy to
+restrict access. Unconfirmed submissions are not automatically sent again.
+
+Run `docker compose up -d --build` for the IPP-only stack. When upgrading,
+previously registered CUPS-only printers are disabled and need IPP registration.
+Historical job IDs are retained. Active legacy jobs are marked unconfirmed and
+must be checked on their original printer.

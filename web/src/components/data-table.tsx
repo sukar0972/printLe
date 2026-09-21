@@ -1,7 +1,7 @@
 import { flexRender } from '@tanstack/react-table'
 import { ReactNode } from 'react'
-import { cn } from '../lib/cn'
-import { Select } from './ui'
+import { cn } from '@/lib/utils'
+import { OptionSelect as Select } from '@/components/ui/select'
 
 type AnyTable = {
   getHeaderGroups: () => any[]

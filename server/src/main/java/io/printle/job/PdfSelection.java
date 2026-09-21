@@ -21,7 +21,7 @@ public final class PdfSelection {
         }
     }
     static List<Integer> indices(String range, int count) {
-        var pages = new ArrayList<Integer>();
+        var pages = new LinkedHashSet<Integer>();
         for (String piece : range.split(",", -1)) {
             String part = piece.trim();
             if (!part.matches("[0-9]+(?:\\s*-\\s*[0-9]+)?")) throw invalid("Use page ranges such as 1-3, 5");

@@ -16,6 +16,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@utility login-hero {
+  background-image: var(--pass-gradient);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -184,6 +188,46 @@ html.dark {
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
+:root {
+  caret-color: var(--primary);
+}
+::selection {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--foreground);
+}
+
+/* Fluid, sleek browser scrollbars per pbakaus/impeccable */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--subtle) 22%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--subtle) 22%, transparent);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--subtle) 40%, transparent);
+}
+
+/* Tabular number clarity on metrics, timestamps, and data tables */
+.tabular-nums,
+table td,
+.metric strong,
+time,
+.job time,
+.mono-id,
+.pass-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -205,19 +249,26 @@ body {
   color: var(--primary-text); font-weight: 600; transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 .ui-button:hover { opacity: .9; }
-.ui-button:active { transform: translateY(1px); }
-.ui-button:focus-visible, .ui-input:focus-visible, .ui-select:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 25%, transparent); outline-offset: 1px; }
+.ui-button:active { transform: scale(0.98); }
+.ui-button:focus-visible, .ui-input:focus-visible, .ui-select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .ui-button:disabled { pointer-events: none; opacity: .5; }
 .ui-button-outline { border-color: var(--border); background: var(--background); color: var(--foreground); }
 .ui-button-ghost { background: transparent; color: var(--foreground); }
 .ui-button-danger { background: var(--destructive); color: var(--destructive-foreground); }
 .ui-button-sm { min-height: var(--control-sm); padding: 0 11px; font-size: 12px; }
 .ui-button-icon { width: var(--control-md); padding: 0; }
-.ui-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--card-foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 4%); }
+.ui-card {
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 94%, var(--background));
+  color: var(--card-foreground);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 2%), 0 6px 16px -8px rgb(0 0 0 / 3%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
 .surface-gradient, .metric-gradient {
   background-color: var(--card);
   background-image: var(--card-gradient);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
 .ui-badge { display: inline-flex; align-items: center; width: fit-content; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; font-weight: 600; }
@@ -1304,21 +1355,75 @@ html.dark[data-skill="oklch"] {
   border-radius: 0 8px 0 0;
 }
 .drop-sheet .drop-target:hover .drop-paper { border-color: var(--ink); }
-.filter-pills { display: flex; gap: 4px; }
-.filter-pills button {
-  border: 1px solid var(--line); background: transparent; border-radius: 999px;
-  padding: 4px 10px; font-size: 12px; font-weight: 600;
+.filter-pills {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 999px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.filter-pills { overflow-x: auto; padding: 2px; scrollbar-width: thin; }
-.filter-pills button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.filter-pills button small { min-width: 18px; padding: 1px 5px; border-radius: 999px; background: var(--muted); color: var(--subtle); font-size: 9px; }
-.filter-pills button.active small { background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; }
+.filter-pills::-webkit-scrollbar { display: none; }
+.filter-pills button {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: all 140ms var(--ease-out);
+}
+.filter-pills button:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+}
+.filter-pills button:active {
+  transform: scale(0.97);
+}
+.filter-pills button.active {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  font-weight: 600;
+}
+.filter-pills button small {
+  min-width: 17px;
+  height: 16px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 90%, transparent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: all 140ms ease;
+}
+.filter-pills button.active small {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
 .queue-search { flex: 1 1 220px; margin-left: auto; }
 .queue-search input { height: 34px; min-height: 34px; }
 .job-link { min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font-weight: 500; text-align: left; }
 .job-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.filter-pills button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
 .focus-page { max-width: 720px; text-align: center; }
 .paper {
@@ -1827,26 +1932,35 @@ html :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), se
 html :is(button, .ui-button) { font-size: var(--text-sm); }
 html :is(.primary, .quiet, .danger-outline, .danger-button, .button-link) { min-height: var(--control-md); padding: 8px 14px; border-radius: var(--radius); font-size: var(--text-sm); font-weight: 600; }
 html :is(.primary, .quiet, .danger-outline, .danger-button, .button-link).compact { min-height: var(--control-sm); padding: 6px 12px; font-size: var(--text-xs); }
-html :is(.primary, .quiet, .danger-outline, .danger-button, .button-link):focus-visible, html button:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 28%, transparent); outline-offset: 2px; }
-html .ui-data-table-header { min-height: 84px; padding: var(--space-4) var(--space-5); }
-html .ui-data-table-header h2 { font-size: 16px; line-height: 16px; font-weight: 500; }
-html .ui-data-table-header p { font-size: var(--text-sm); line-height: 20px; }
+html :is(.primary, .quiet, .danger-outline, .danger-button, .button-link):focus-visible, html button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+html .ui-data-table-header {
+  min-height: 68px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+html .ui-data-table-header h2 { font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--foreground); }
+html .ui-data-table-header p { font-size: var(--text-sm); line-height: 20px; color: var(--muted-foreground); margin-top: 1px; }
 html .ui-data-table-header .primary { white-space: nowrap; }
 html .user-directory .ui-data-table-header .primary { min-width: 90px; height: 34px; min-height: 34px; font-size: var(--text-sm); }
-html .ui-data-table-filters { padding: var(--space-4) var(--space-5); }
-html .ui-data-table-footer { padding: var(--space-3) var(--space-5); font-size: var(--text-sm); }
-html .user-filter-row { min-height: 72px; padding: 0; border: 0; font-size: var(--text-sm); }
+html .ui-data-table-filters { padding: 12px 20px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); background: color-mix(in srgb, var(--muted) 25%, transparent); }
+html .ui-data-table-footer { padding: 10px 20px; min-height: 56px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--muted) 15%, transparent); font-size: var(--text-sm); }
+html .user-filter-row { min-height: 60px; padding: 0; border: 0; font-size: var(--text-sm); }
 html .user-filter-row select { font-size: var(--text-sm); }
-html .user-directory-head, html .printer-table-head { min-height: 48px; padding: 0 var(--space-5); font-size: var(--text-sm); line-height: 20px; font-weight: 500; }
-html .user-directory-row, html .ui-table tbody tr { min-height: 63px; height: 63px; font-size: var(--text-sm); }
-html .printer-table-row { min-height: 63px; padding: 0 var(--space-5); font-size: var(--text-sm); }
-html .ui-table th { height: 44px; font-size: var(--text-sm); line-height: 20px; font-weight: 500; }
+html .user-directory-head, html .printer-table-head { min-height: 44px; padding: 0 var(--space-5); font-size: 12px; line-height: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-foreground); background: color-mix(in srgb, var(--muted) 35%, transparent); }
+html .user-directory-row, html .ui-table tbody tr { min-height: 58px; height: 58px; font-size: var(--text-sm); border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); transition: background-color 140ms var(--ease-out); }
+html .printer-table-row { min-height: 58px; padding: 0 var(--space-5); font-size: var(--text-sm); border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); transition: background-color 140ms var(--ease-out); }
+html .ui-table tbody tr:hover, html .printer-table-row:hover { background-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+html .ui-table th { height: 40px; padding: 0 16px; font-size: 11px; line-height: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--muted) 35%, transparent); }
 html .directory-user strong, html .user-role strong, html .printer-name-cell strong, html .price-cell strong { font-size: var(--text-sm); font-weight: 500; }
 html .directory-user small, html .user-role small, html .printer-name-cell small, html .price-cell small, html .printer-table-row code { font-size: var(--text-xs); }
 html .allowance-badge, html .capability-pills i, html .health-meter.print-share small { font-size: var(--text-xs); }
 html .user-directory-row time { font-size: var(--text-sm); }
 html .table-row, html .job-wide { min-height: 56px; font-size: var(--text-sm); }
-html .job-head-wide, html .report-head { min-height: 44px; font-size: var(--text-sm) !important; line-height: 20px; }
+html .job-head-wide, html .report-head { min-height: 40px; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.05em; line-height: 20px; color: var(--muted-foreground); background: color-mix(in srgb, var(--muted) 35%, transparent); }
 html .job-main strong, html .job-link { font-size: var(--text-sm); }
 html .job-main span, html .job time, html .meta-duplex { font-size: var(--text-xs); }
 html .status, html .chip, html .role-badge { font-size: var(--text-xs); }
@@ -1872,134 +1986,9 @@ html .admin-card, html .mock-panel, html .settings-panel, html .report-table { b
   html .quota-strip { gap: 8px 20px; }
 }
 
-/* Upload (Drop PDF) zone */
-.upload-zone { position: relative; display: grid; gap: 14px; padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: 12px; background: color-mix(in srgb, var(--muted) 28%, var(--surface)); transition: border-color 140ms ease; }
-.upload-zone:hover, .upload-zone:focus-within { border-color: var(--ink); }
-.upload-zone .zone-target { position: relative; display: grid; place-items: center; gap: 5px; padding: 38px 16px; border-radius: 10px; text-align: center; cursor: pointer; transition: background 140ms ease; }
-.upload-zone .zone-target:hover { background: var(--muted); }
-.upload-zone .zone-target input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.upload-zone .zone-target .upload-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 4px; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--ink); font-size: 20px; }
-.upload-zone .zone-target:hover .upload-icon { border-color: var(--ink); }
-.upload-zone .zone-target strong { font-size: 16px; letter-spacing: -.01em; }
-.upload-zone .zone-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
-.upload-zone .zone-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--subtle); }
-.upload-zone .zone-field input { width: 76px; min-height: 36px; }
-.upload-zone .zone-field .ui-select { width: auto; min-width: 132px; min-height: 36px; }
-.upload-zone .zone-row .primary { margin-left: auto; }
-.upload-zone .error { margin: 0; }
-
-/* Layout for the restored shadcn sidebar; its gap owns the sidebar width. */
-html .shell { display: contents; }
-html .shell [data-slot="sidebar-wrapper"] { display: flex; min-height: 100svh; }
-html .shell [data-slot="sidebar-inset"] { flex: 1; min-width: 0; margin-left: 0; }
-html .shell [data-slot="sidebar-trigger"] { display: inline-flex; }
-.printle-brand-button .brand-mark { display: none; }
-[data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-mark { display: inline-flex; }
-[data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-logo { display: none; }
-.printle-nav-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-[data-mobile="true"] .brand-logo { display: block; }
-.queue-data-table .job-name, .queue-data-table .job-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.preview-banner + .shell [data-slot="sidebar-container"] { top: 40px; height: calc(100svh - 40px); }
-
-/* Users, Reports, and PDF upload styles from ui-improvements. */
-
-.imported-admin .tabular-nums,
-.imported-admin table td,
-.imported-admin .metric strong,
-.imported-admin time,
-.imported-admin .job time,
-.imported-admin .mono-id,
-.imported-admin .pass-number {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-.imported-admin .surface-gradient, .imported-admin .metric-gradient {
-  background-color: var(--card);
-  background-image: var(--card-gradient);
-}
-.imported-admin .filter-pills {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 3px;
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  border-radius: 999px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.imported-admin .filter-pills::-webkit-scrollbar { display: none; }
-.imported-admin .filter-pills button {
-  min-height: 28px;
-  height: 28px;
-  padding: 0 11px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  transition: all 140ms var(--ease-out);
-}
-.imported-admin .filter-pills button:hover {
-  color: var(--foreground);
-  background: color-mix(in srgb, var(--card) 60%, transparent);
-}
-.imported-admin .filter-pills button:active {
-  transform: scale(0.97);
-}
-.imported-admin .filter-pills button.active {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: color-mix(in srgb, var(--border) 70%, transparent);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
-  font-weight: 600;
-}
-.imported-admin .filter-pills button small {
-  min-width: 17px;
-  height: 16px;
-  padding: 0 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 90%, transparent);
-  color: var(--muted-foreground);
-  font-size: 10px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  transition: all 140ms ease;
-}
-.imported-admin .filter-pills button.active small {
-  background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  color: var(--foreground);
-}
-html .imported-admin .ui-data-table-header {
-  min-height: 68px;
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-}
-html .imported-admin .ui-data-table-header h2 { font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--foreground); }
-html .imported-admin .ui-data-table-header p { font-size: var(--text-sm); line-height: 20px; color: var(--muted-foreground); margin-top: 1px; }
-html .imported-admin .ui-data-table-filters { padding: 12px 20px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); background: color-mix(in srgb, var(--muted) 25%, transparent); }
-html .imported-admin .ui-data-table-footer { padding: 10px 20px; min-height: 56px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--muted) 15%, transparent); font-size: var(--text-sm); }
-html .imported-admin .user-filter-row { min-height: 60px; padding: 0; border: 0; font-size: var(--text-sm); }
-html .imported-admin .user-directory-row, html .imported-admin .ui-table tbody tr { min-height: 58px; height: 58px; font-size: var(--text-sm); border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); transition: background-color 140ms var(--ease-out); }
-html .imported-admin .ui-table tbody tr:hover, html .imported-admin .printer-table-row:hover { background-color: color-mix(in srgb, var(--muted) 50%, transparent); }
-html .imported-admin .ui-table th { height: 40px; padding: 0 16px; font-size: 11px; line-height: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--muted) 35%, transparent); }
-
+/* Upload (Drop PDF) zone - Fluid modern surface */
 .upload-zone {
+  margin-bottom: var(--space-6);
   position: relative;
   display: grid;
   gap: 14px;
@@ -2032,6 +2021,12 @@ html .imported-admin .ui-table th { height: 40px; padding: 0 16px; font-size: 11
 .upload-zone .zone-target:hover {
   background: color-mix(in srgb, var(--muted) 65%, transparent);
   border-color: var(--primary);
+}
+.upload-zone .zone-target input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 .upload-zone .zone-target .upload-icon {
   display: grid;
@@ -2089,8 +2084,7 @@ html .imported-admin .ui-table th { height: 40px; padding: 0 16px; font-size: 11
   height: 38px;
   border-radius: 8px;
 }
-.upload-zone .zone-row .primary,
-.upload-zone .zone-row > button {
+.upload-zone .zone-row .primary {
   margin-left: auto;
   min-height: 38px;
   height: 38px;
@@ -2098,14 +2092,22 @@ html .imported-admin .ui-table th { height: 40px; padding: 0 16px; font-size: 11
   border-radius: 8px;
   font-weight: 600;
 }
-.login-hero { background-image: var(--pass-gradient); }
-.typeface-option { display: flex; align-items: flex-start; gap: 0.75rem; border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; cursor: pointer; }
-.typeface-option:hover { background: var(--accent); }
-.typeface-option:has([data-state="checked"]) { border-color: var(--foreground); }
-.pass-layout { display: grid; gap: 2rem; }
-@media (min-width: 64rem) {
-  .pass-layout { grid-template-columns: 400px 1fr; gap: 0; }
+.upload-zone .error {
+  margin: 0;
 }
+
+/* Layout for the restored shadcn sidebar; its gap owns the sidebar width. */
+html .shell[data-slot="sidebar-wrapper"] { display: flex; min-height: 100svh; }
+html .shell > .workspace { flex: 1; min-width: 0; margin-left: 0; }
+html .shell .sidebar-toggle { display: inline-flex; }
+.printle-brand-button .brand-mark { display: none; }
+[data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-mark { display: inline-flex; }
+[data-slot="sidebar"][data-state="collapsed"] .printle-brand-button .brand-logo { display: none; }
+.printle-nav-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+[data-mobile="true"] .brand-logo { display: block; }
+.queue-data-table .job-name, .queue-data-table .job-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.preview-banner + .shell [data-slot="sidebar-container"] { top: 36px; height: calc(100svh - 36px); }
+
 .upload-zone .pages-field input { width: 148px; }
 .page-heading .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
@@ -2236,3 +2238,51 @@ html .modal .check-row label {
   gap: 8px;
   font-weight: 400;
 }
+
+/* Graphite primary actions with a raised matte finish. */
+:root {
+  --button-fill: #62666c;
+  --button-ink: #f8f9fa;
+  --button-edge: #484c52;
+}
+html :is(button.primary, button.release-text, .ui-button-default, [data-slot="button"][data-variant="default"]) {
+  background-color: var(--button-fill);
+  background-image: linear-gradient(180deg, #ffffff0a, transparent);
+  color: var(--button-ink);
+  border: 1px solid var(--button-edge);
+  box-shadow: inset 0 1px 0 #ffffff30, 0 3px 0 var(--button-edge), 0 4px 5px #00000018;
+}
+html :is(button.primary, button.release-text, .ui-button-default, [data-slot="button"][data-variant="default"]):hover:not(:disabled) { filter: brightness(.96); opacity: 1; }
+
+html :is(button.primary, button.release-text, .ui-button-default, [data-slot="button"][data-variant="default"]):active:not(:disabled) { box-shadow: inset 0 2px 3px #00000025; transform: translateY(1px); }
+
+/* Queue selection uses a flat highlight. */
+html .filter-pills button.active {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+  border-color: transparent;
+  box-shadow: none;
+}
+html .filter-pills button:active { transform: none; }
+html .filter-pills button.active small { background: transparent; color: inherit; }
+
+/* Fill each segment to the edge of the shared filter track. */
+html .filter-pills { padding: 0; gap: 0; overflow: hidden; }
+html .filter-pills.filter-pills button { height: 34px; min-height: 34px; border-radius: 0; border: 0; }
+
+/* A small press movement for actions, matching the reference interaction. */
+@media (prefers-reduced-motion: no-preference) {
+  html :is([data-slot="button"], button.primary, button.release-text, button.quiet, button.danger-button, button.danger-outline, button.danger-text, button.icon-button):not([aria-haspopup]) {
+    transition: transform 120ms ease-out, background-color 120ms ease-out, opacity 120ms ease-out, box-shadow 120ms ease-out;
+  }
+  html :is([data-slot="button"], button.primary, button.release-text, button.quiet, button.danger-button, button.danger-outline, button.danger-text, button.icon-button):not([aria-haspopup]):not(:disabled):not([aria-disabled="true"]):active {
+    transform: translateY(1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html :is([data-slot="button"], button.primary, button.release-text, button.quiet, button.danger-button, button.danger-outline, button.danger-text, button.icon-button):active {
+    transform: none;
+  }
+}
+
+.upload-zone .zone-pages input { width: 150px; }

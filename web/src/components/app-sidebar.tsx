@@ -13,18 +13,11 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
-export type PrintlePage = 'queue' | 'profile' | 'printers' | 'users' | 'reports' | 'settings'
+export type PrintlePage = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
 
-export type NavIconName = 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'settings'
+export type NavIconName = 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings'
 
 export type SidebarNavItem = {
   page: PrintlePage
@@ -123,8 +116,8 @@ function NavUser({
               size="lg"
               aria-label="Account menu"
             >
-              <Avatar className="size-8">
-                <AvatarFallback>
+              <Avatar shape="square">
+                <AvatarFallback tone="brand" shape="square">
                   {initials(user.displayName)}
                 </AvatarFallback>
               </Avatar>
@@ -143,8 +136,8 @@ function NavUser({
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="size-8">
-                  <AvatarFallback>
+                <Avatar shape="square">
+                  <AvatarFallback tone="brand" shape="square">
                     {initials(user.displayName)}
                   </AvatarFallback>
                 </Avatar>
@@ -195,14 +188,13 @@ export function AppSidebarBody({
             <SidebarMenuButton
               type="button"
               size="lg"
+              className="printle-brand-button"
               onClick={() => onNavigate('queue')}
               aria-label="printLe home"
             >
-              <span className="printle-brand-button">
-                <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
-                <span className="brand-mark" aria-hidden="true">
-                  {brandMark}
-                </span>
+              <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
+              <span className="brand-mark" aria-hidden="true">
+                {brandMark}
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>

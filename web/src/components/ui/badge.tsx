@@ -14,15 +14,19 @@ const badgeVariants = cva(
         outline: 'text-foreground border-border',
         success: 'border-transparent bg-[var(--ok-bg)] text-[var(--ok)]',
         warning: 'border-transparent bg-[var(--warn-bg)] text-[var(--warn)]',
+        muted: 'border-transparent bg-transparent text-muted-foreground font-normal',
+      },
+      mono: {
+        true: 'font-mono uppercase tracking-wide',
       },
     },
     defaultVariants: { variant: 'default' },
   },
 )
 
-function Badge({ className, variant, asChild = false, ...props }: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+function Badge({ className, variant, mono, asChild = false, ...props }: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
   const Comp = asChild ? Slot : 'span'
-  return <Comp data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />
+  return <Comp data-slot="badge" className={cn(badgeVariants({ variant, mono }), className)} {...props} />
 }
 
 export { Badge, badgeVariants }

@@ -21,10 +21,23 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@org.springframework.context.annotation.Import(io.printle.PostgresTestConfiguration.class)
 @AutoConfigureMockMvc
 class JobIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean DirectIppClient ipp;
+
+    @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
+    void selectedPagesDetermineQuotaReservation() throws Exception {
+        var result = mvc.perform(multipart("/api/jobs")
+            .file(new MockMultipartFile("file", "selected.pdf", "application/pdf", pdf(5)))
+            .param("pages", "1-2, 5").param("copies", "2").with(csrf()))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.pages").value(3))
+            .andExpect(jsonPath("$.pageRange").value("1-2, 5")).andReturn();
+        mvc.perform(get("/api/jobs/quota")).andExpect(jsonPath("$.pending").value(6));
+        String id = com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id");
+        mvc.perform(delete("/api/jobs/{id}", id).with(csrf())).andExpect(status().isNoContent());
+    }
 
     @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
     void uploadsAndListsPdfJob() throws Exception {

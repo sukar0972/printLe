@@ -13,7 +13,7 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     working_dir: /workspace
     volumes: [./web:/workspace, web_node_modules:/workspace/node_modules]
-    ports: ["5173:5173"]
+    ports: !override ["5173:5173"]
     environment:
       VITE_API_PROXY_TARGET: http://server:8080
     healthcheck:
