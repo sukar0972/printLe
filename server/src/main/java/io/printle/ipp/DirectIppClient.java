@@ -106,7 +106,9 @@ public class DirectIppClient {
         var jobAttrs = new ArrayList<Attribute<?>>();
         if (caps.maxCopies() > 1) jobAttrs.add(Types.copies.of(copies));
         if (!caps.sides().isEmpty()) jobAttrs.add(Types.sides.of(sides));
-        if (!caps.colorModes().isEmpty() && caps.colorModes().contains(mode)) jobAttrs.add(Types.printColorMode.of(mode));
+        // A color-capable printer must receive an explicit mode even when it omits
+        // the supported-mode list; attribute fidelity requires it to honor or reject it.
+        if (caps.color() || !caps.colorModes().isEmpty()) jobAttrs.add(Types.printColorMode.of(mode));
 
         AttributeGroup jobGroup = jobAttrs.isEmpty() ? null : AttributeGroup.groupOf(Tag.jobAttributes, jobAttrs);
         var request = packet(staged ? Operation.createJob : Operation.printJob, endpoint, user, opAttrs, jobGroup);
@@ -254,10 +256,10 @@ public class DirectIppClient {
         return "color".equals(mode) || "process-color".equals(mode) || "highlight".equals(mode);
     }
     private static boolean isMonoMode(String mode) {
-        return "monochrome".equals(mode) || "process-monochrome".equals(mode) || "auto".equals(mode) || "bi-level".equals(mode);
+        return "monochrome".equals(mode) || "process-monochrome".equals(mode) || "bi-level".equals(mode);
     }
     private static String preferredColorMode(List<String> modes, boolean color) {
-        for (String candidate : color ? List.of("color", "process-color", "highlight") : List.of("monochrome", "process-monochrome", "auto", "bi-level"))
+        for (String candidate : color ? List.of("color", "process-color", "highlight") : List.of("monochrome", "process-monochrome", "bi-level"))
             if (modes.contains(candidate)) return candidate;
         return color ? "color" : "monochrome";
     }
