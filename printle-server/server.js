@@ -5,6 +5,7 @@ const fs = require('fs');
 const cors = require('cors');
 const { PDFDocument } = require('pdf-lib');
 const path = require('path');
+const { sniffDocumentFormat } = require('./filetype');
 
 const PORT = 3001;
 const uploadDir = path.join(__dirname, 'uploads');
@@ -13,7 +14,36 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const upload = multer({ dest: uploadDir });
+// Upload size limit (issue #9). The UI has always claimed "up to 10MB" but
+// nothing enforced it on the server, and nginx's client_max_body_size only
+// covers the proxied path — direct hits to :3001 were unbounded. Operators
+// can raise/lower it with PRINTLE_MAX_UPLOAD_BYTES.
+const MAX_UPLOAD_BYTES = (() => {
+    const parsed = Number(process.env.PRINTLE_MAX_UPLOAD_BYTES);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 1024 * 1024;
+})();
+
+const upload = multer({
+    dest: uploadDir,
+    // Note: busboy/multer trip the size limit AT the bound (a file of exactly
+    // fileSize bytes is rejected), so the streaming guard uses MAX + 1 and
+    // the handler enforces the exact byte limit on the stored file.
+    limits: { fileSize: MAX_UPLOAD_BYTES + 1, files: 1 }
+});
+
+// Run multer and translate its errors into JSON responses (the default
+// Express handler returns an HTML 500 page, which API clients can't use).
+function uploadSingleFile(req, res, next) {
+    upload.single('file')(req, res, (err) => {
+        if (!err) return next();
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(413).json({
+                error: `File too large: uploads are limited to ${MAX_UPLOAD_BYTES} bytes.`
+            });
+        }
+        return res.status(400).json({ error: `Upload failed: ${err.message}` });
+    });
+}
 
 function isSuccessfulIppStatus(statusCode) {
     return statusCode === 'successful-ok' ||
@@ -71,8 +101,11 @@ function getPageIndices(rangeStr, totalPages) {
     return Array.from(indices).sort((a, b) => a - b);
 }
 
-function buildPrintJob(file, fileBuffer, grayscale, duplexType) {
-    const docFormat = file.mimetype === 'application/pdf' ? 'application/pdf' : 'application/octet-stream';
+function buildPrintJob(file, fileBuffer, grayscale, duplexType, documentFormat) {
+    // Prefer the server-sniffed format; the mimetype fallback only serves
+    // legacy callers/tests that never sniffed (endpoint always passes one).
+    const docFormat = documentFormat
+        || (file.mimetype === 'application/pdf' ? 'application/pdf' : 'application/octet-stream');
     const jobAttributes = {};
 
     if (grayscale) {
@@ -178,7 +211,7 @@ function createApp(options = {}) {
         }
     });
 
-    app.post('/api/print', upload.single('file'), async (req, res) => {
+    app.post('/api/print', uploadSingleFile, async (req, res) => {
         console.log('\n--- /api/print POST RECEIVED ---');
 
         const file = req.file;
@@ -197,18 +230,54 @@ function createApp(options = {}) {
         console.log(`Job: ${file.originalname}`);
         console.log(`Settings: [Duplex: ${duplexType || 'None'}] [Pages: ${pageRange || 'All'}] [Grayscale: ${grayscale}]`);
 
+        // Exact upload-size enforcement (see the multer limits note above).
+        if (file.size > MAX_UPLOAD_BYTES) {
+            try { fs.unlinkSync(file.path); } catch (e) {}
+            return res.status(413).json({
+                error: `File too large: uploads are limited to ${MAX_UPLOAD_BYTES} bytes.`
+            });
+        }
+
         try {
             let fileBuffer = fs.readFileSync(file.path);
 
-            if (file.mimetype !== 'application/pdf' && (pageRange || duplexType === 'odd' || duplexType === 'even')) {
+            // Authoritative type detection (issue #9): the declared
+            // mimetype/extension is client-controlled, so the magic bytes
+            // decide. Anything that is not a real PDF/JPEG/PNG is rejected —
+            // previously e.g. Office documents were forwarded to printers as
+            // raw application/octet-stream.
+            const detectedFormat = sniffDocumentFormat(fileBuffer);
+            if (!detectedFormat) {
+                try { fs.unlinkSync(file.path); } catch (e) {}
+                return res.status(415).json({
+                    error: 'Unsupported file type: only PDF, JPEG, and PNG files can be printed.'
+                });
+            }
+
+            if (detectedFormat !== 'application/pdf' && (pageRange || duplexType === 'odd' || duplexType === 'even')) {
                 try { fs.unlinkSync(file.path); } catch (e) {}
                 return res.status(400).json({
                     error: 'Page ranges and manual duplex are only supported for PDF files.'
                 });
             }
 
-            if (file.mimetype === 'application/pdf') {
-                let pdfDoc = await PDFDocument.load(fileBuffer);
+            if (detectedFormat === 'application/pdf') {
+                let pdfDoc;
+                try {
+                    pdfDoc = await PDFDocument.load(fileBuffer);
+                } catch (e) {
+                    try { fs.unlinkSync(file.path); } catch (err) {}
+                    return res.status(400).json({ error: 'Invalid or corrupt PDF file.' });
+                }
+                // pdf-lib's parser is lenient: garbage with a %PDF- header
+                // "loads" into a document with no readable pages. Such a
+                // file cannot print, so treat it as corrupt too.
+                let pageCount = 0;
+                try { pageCount = pdfDoc.getPageCount(); } catch (e) { pageCount = 0; }
+                if (pageCount < 1) {
+                    try { fs.unlinkSync(file.path); } catch (e) {}
+                    return res.status(400).json({ error: 'Invalid or corrupt PDF file.' });
+                }
                 let modified = false;
 
                 if (pageRange) {
@@ -242,7 +311,7 @@ function createApp(options = {}) {
                 }
             }
 
-            const data = buildPrintJob(file, fileBuffer, grayscale, duplexType);
+            const data = buildPrintJob(file, fileBuffer, grayscale, duplexType, detectedFormat);
             const printer = printerFactory(printerUrl);
 
             printer.execute('Print-Job', data, (err, response = {}) => {
@@ -287,10 +356,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+    MAX_UPLOAD_BYTES,
     app,
     buildPrintJob,
     checkPrinterReachability,
     createApp,
     getPageIndices,
-    isSuccessfulIppStatus
+    isSuccessfulIppStatus,
+    sniffDocumentFormat
 };

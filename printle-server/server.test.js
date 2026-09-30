@@ -5,6 +5,7 @@ const ipp = require('ipp');
 const { PDFDocument } = require('pdf-lib');
 
 const {
+    MAX_UPLOAD_BYTES,
     buildPrintJob,
     checkPrinterReachability,
     createApp,
@@ -281,4 +282,186 @@ test('print endpoint sends a real job to a mock IPP printer and the printer rece
             stopTestServer(mockPrinter.server)
         ]);
     }
+});
+
+// ---------------------------------------------------------------------------
+// Upload limits + content sniffing (issue #9)
+// ---------------------------------------------------------------------------
+
+function capturingPrinterFactory(captured) {
+    return () => ({
+        execute(operation, message, callback) {
+            captured.operation = operation;
+            captured.message = message;
+            callback(null, {
+                statusCode: 'successful-ok',
+                'job-attributes-tag': { 'job-id': 42 }
+            });
+        }
+    });
+}
+
+const PRINTER_URL = 'ipp://printer.local:631/printers/main';
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+
+async function postPrint(baseUrl, { printerUrl = PRINTER_URL, bytes, filename, type, extra = {} }) {
+    const formData = new FormData();
+    formData.append('printerUrl', printerUrl);
+    for (const [k, v] of Object.entries(extra)) formData.append(k, v);
+    formData.append('file', new Blob([bytes], { type }), filename);
+    return fetch(`${baseUrl}/api/print`, { method: 'POST', body: formData });
+}
+
+test('print endpoint rejects uploads over the 10MB limit with 413 and never prints', async () => {
+    let printInvoked = false;
+    const app = createApp({
+        printerFactory: () => ({
+            execute(op, msg, callback) {
+                printInvoked = true;
+                callback(null, { statusCode: 'successful-ok', 'job-attributes-tag': {} });
+            }
+        })
+    });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const oversized = Buffer.alloc(10 * 1024 * 1024 + 1, 0x20);
+        Buffer.from('%PDF-1.7').copy(oversized, 0);
+        const response = await postPrint(baseUrl, {
+            bytes: oversized, filename: 'huge.pdf', type: 'application/pdf'
+        });
+        assert.equal(response.status, 413);
+        const result = await response.json();
+        assert.match(result.error, /too large/i);
+        assert.equal(printInvoked, false);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint accepts an upload exactly at the 10MB limit', async () => {
+    const captured = {};
+    const app = createApp({ printerFactory: capturingPrinterFactory(captured) });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const exact = Buffer.alloc(10 * 1024 * 1024, 0x00);
+        PNG_BYTES.copy(exact, 0);
+        const response = await postPrint(baseUrl, {
+            bytes: exact, filename: 'big.png', type: 'image/png'
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.success, true);
+        assert.equal(captured.message['operation-attributes-tag']['document-format'], 'image/png');
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint rejects a fake PDF (declared pdf, wrong magic) with 415', async () => {
+    let printInvoked = false;
+    const app = createApp({
+        printerFactory: () => ({
+            execute(op, msg, callback) {
+                printInvoked = true;
+                callback(null, { statusCode: 'successful-ok', 'job-attributes-tag': {} });
+            }
+        })
+    });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const response = await postPrint(baseUrl, {
+            bytes: Buffer.from('this is definitely not a pdf document at all'),
+            filename: 'fake.pdf', type: 'application/pdf'
+        });
+        assert.equal(response.status, 415);
+        const result = await response.json();
+        assert.match(result.error, /Unsupported file type/);
+        assert.equal(printInvoked, false);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint rejects Office documents with 415 instead of forwarding raw bytes', async () => {
+    const app = createApp({ printerFactory: capturingPrinterFactory({}) });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const docx = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00, 0x08, 0x00]);
+        const response = await postPrint(baseUrl, {
+            bytes: docx, filename: 'report.docx',
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        assert.equal(response.status, 415);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint trusts magic bytes over the declared type (PDF declared as text)', async () => {
+    const captured = {};
+    const app = createApp({ printerFactory: capturingPrinterFactory(captured) });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const response = await postPrint(baseUrl, {
+            bytes: await createPdfBytes(2), filename: 'notes.txt', type: 'text/plain'
+        });
+        assert.equal(response.status, 200);
+        assert.equal(captured.message['operation-attributes-tag']['document-format'], 'application/pdf');
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint passes PNG through with the sniffed image/png format', async () => {
+    const captured = {};
+    const app = createApp({ printerFactory: capturingPrinterFactory(captured) });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const response = await postPrint(baseUrl, {
+            bytes: PNG_BYTES, filename: 'photo.png', type: 'application/pdf' // declared type lies
+        });
+        assert.equal(response.status, 200);
+        assert.equal(captured.message['operation-attributes-tag']['document-format'], 'image/png');
+        assert.deepEqual(Buffer.from(captured.message.data), PNG_BYTES);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint returns 400 for a corrupt PDF (valid magic, unparseable body)', async () => {
+    const app = createApp({ printerFactory: capturingPrinterFactory({}) });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const corrupt = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(256, 0x41)]);
+        const response = await postPrint(baseUrl, {
+            bytes: corrupt, filename: 'broken.pdf', type: 'application/pdf'
+        });
+        assert.equal(response.status, 400);
+        const result = await response.json();
+        assert.match(result.error, /corrupt PDF/);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('buildPrintJob prefers the sniffed document format over the declared mimetype', () => {
+    const job = buildPrintJob(
+        { originalname: 'photo.png', mimetype: 'application/pdf' },
+        PNG_BYTES,
+        false,
+        'none',
+        'image/png'
+    );
+    assert.equal(job['operation-attributes-tag']['document-format'], 'image/png');
+});
+
+test('MAX_UPLOAD_BYTES defaults to 10 MiB', () => {
+    assert.equal(MAX_UPLOAD_BYTES, 10 * 1024 * 1024);
 });

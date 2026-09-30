@@ -213,7 +213,15 @@ export default function App() {
       setErrorMessage("Please select a file to print.");
       return;
     }
-    
+
+    // Client-side mirror of the server upload limit (issue #9): fail fast
+    // with a clear message instead of uploading a file the server will 413.
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setErrorMessage(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Files up to 10MB can be printed.`);
+      return;
+    }
+
     if (!settings.serverUrl || settings.serverUrl.trim() === '' || settings.serverUrl.indexOf(':') === -1) {
       setErrorMessage("Print Failed. Please go to Settings and enter the PrintLe Server URL including the port (e.g., http://192.168.1.X:3001).");
       return;
@@ -409,7 +417,7 @@ export default function App() {
                 type="file" 
                 className="hidden" 
                 onChange={handleChange} 
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                accept=".pdf,.jpg,.jpeg,.png"
               />
               
               {isUploading ? (
@@ -521,7 +529,7 @@ export default function App() {
                       Tap to upload or drag & drop
                     </p>
                     <p className="text-sm text-slate-500 mt-1">
-                      PDF, PNG, JPG, DOCX up to 10MB
+                      PDF, PNG, JPG up to 10MB
                     </p>
                   </div>
                 </div>
