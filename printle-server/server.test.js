@@ -141,11 +141,11 @@ test('buildPrintJob applies grayscale and automatic duplex IPP attributes', () =
 });
 
 test('checkPrinterReachability resolves printer metadata from a successful IPP response', async () => {
-    const status = await checkPrinterReachability('ipp://printer.local:631/printers/main', {
+    const status = await checkPrinterReachability('ipp://192.0.2.10:631/printers/main', {
         printerFactory: () => ({
             execute(operation, message, callback) {
                 assert.equal(operation, 'Get-Printer-Attributes');
-                assert.equal(message['operation-attributes-tag']['printer-uri'], 'ipp://printer.local:631/printers/main');
+                assert.equal(message['operation-attributes-tag']['printer-uri'], 'ipp://192.0.2.10:631/printers/main');
                 callback(null, {
                     statusCode: 'successful-ok',
                     'printer-attributes-tag': {
@@ -191,12 +191,15 @@ test('printer status endpoint returns reachable=false when the printer is unavai
     const { server, baseUrl } = await startTestServer(app);
 
     try {
+        // 192.0.2.10 is TEST-NET-1 (documentation): publicly routable on paper,
+        // so it passes SSRF validation without DNS; the stubbed factory then
+        // simulates an unreachable printer.
         const response = await fetch(`${baseUrl}/api/printer-status`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ printerUrl: 'ipp://printer.local:631/printers/main' })
+            body: JSON.stringify({ printerUrl: 'ipp://192.0.2.10:631/printers/main' })
         });
 
         assert.equal(response.status, 200);
@@ -226,7 +229,7 @@ test('print endpoint rejects invalid PDF page ranges instead of printing the who
 
     try {
         const formData = new FormData();
-        formData.append('printerUrl', 'ipp://printer.local:631/printers/main');
+        formData.append('printerUrl', 'ipp://192.0.2.10:631/printers/main');
         formData.append('pages', '99');
         formData.append('file', new Blob([await createPdfBytes(2)], { type: 'application/pdf' }), 'sample.pdf');
 
@@ -245,7 +248,10 @@ test('print endpoint rejects invalid PDF page ranges instead of printing the who
 });
 
 test('print endpoint sends a real job to a mock IPP printer and the printer receives PDF data', async () => {
-    const app = createApp();
+    // The mock printer listens on loopback, which SSRF validation rejects by
+    // default; the test explicitly opts in, mirroring an operator who sets
+    // PRINTER_ALLOW_PRIVATE_NETWORKS=true for a LAN printer.
+    const app = createApp({ security: { allowPrivateNetworks: true } });
     const [{ server: appServer, baseUrl }, mockPrinter] = await Promise.all([
         startTestServer(app),
         startMockIppPrinter()
@@ -280,5 +286,224 @@ test('print endpoint sends a real job to a mock IPP printer and the printer rece
             stopTestServer(appServer),
             stopTestServer(mockPrinter.server)
         ]);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// SSRF lockdown (issue #8): printerUrl validation on the API endpoints
+// ---------------------------------------------------------------------------
+
+test('printer-status endpoint rejects http(s) printer URLs with 403 without contacting them', async () => {
+    let factoryCalled = false;
+    const app = createApp({
+        printerFactory: () => {
+            factoryCalled = true;
+            return { execute() {} };
+        }
+    });
+
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        for (const printerUrl of [
+            'http://192.0.2.10:631/printers/main',
+            'https://192.0.2.10/printers/main',
+        ]) {
+            const response = await fetch(`${baseUrl}/api/printer-status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printerUrl })
+            });
+            assert.equal(response.status, 403, printerUrl);
+            const result = await response.json();
+            assert.match(result.error, /not allowed/);
+            assert.match(result.reason, /scheme/);
+        }
+        assert.equal(factoryCalled, false, 'no outbound connection may be attempted for rejected URLs');
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('printer-status endpoint rejects loopback, private, and metadata targets with 403', async () => {
+    let factoryCalled = false;
+    const app = createApp({
+        printerFactory: () => {
+            factoryCalled = true;
+            return { execute() {} };
+        }
+    });
+
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        for (const printerUrl of [
+            'ipp://127.0.0.1:631/printers/main',
+            'ipp://10.0.0.5:631/printers/main',
+            'ipp://192.168.1.50:631/printers/main',
+            'ipp://169.254.169.254:80/', // cloud metadata endpoint
+            'ipp://0x7f000001:631/printers/main', // obfuscated loopback
+        ]) {
+            const response = await fetch(`${baseUrl}/api/printer-status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printerUrl })
+            });
+            assert.equal(response.status, 403, printerUrl);
+        }
+        assert.equal(factoryCalled, false);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('printer-status endpoint allows loopback when private networks are explicitly permitted', async () => {
+    const app = createApp({
+        security: { allowPrivateNetworks: true },
+        printerFactory: () => ({
+            execute(operation, message, callback) {
+                callback(null, {
+                    statusCode: 'successful-ok',
+                    'printer-attributes-tag': {
+                        'printer-name': 'Local Printer',
+                        'printer-state': 3,
+                        'printer-is-accepting-jobs': true
+                    }
+                });
+            }
+        })
+    });
+
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const response = await fetch(`${baseUrl}/api/printer-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ printerUrl: 'ipp://127.0.0.1:631/printers/main' })
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.reachable, true);
+        assert.equal(result.printerName, 'Local Printer');
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint rejects SSRF printer URLs with 403 and never prints', async () => {
+    let printInvoked = false;
+    const app = createApp({
+        printerFactory: () => ({
+            execute() {
+                printInvoked = true;
+            }
+        })
+    });
+
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const formData = new FormData();
+        formData.append('printerUrl', 'http://169.254.169.254/latest/meta-data/');
+        formData.append('file', new Blob([await createPdfBytes(1)], { type: 'application/pdf' }), 'evil.pdf');
+
+        const response = await fetch(`${baseUrl}/api/print`, {
+            method: 'POST',
+            body: formData
+        });
+
+        assert.equal(response.status, 403);
+        const result = await response.json();
+        assert.match(result.error, /not allowed/);
+        assert.equal(printInvoked, false);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// API-key gate (issue #8)
+// ---------------------------------------------------------------------------
+
+test('print APIs require the API key when PRINTLE_API_KEY is configured', async () => {
+    const app = createApp({
+        security: { apiKey: 's3cret' },
+        printerFactory: () => ({
+            execute(operation, message, callback) {
+                callback(null, { statusCode: 'successful-ok', 'printer-attributes-tag': {} });
+            }
+        })
+    });
+
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const post = (headers) => fetch(`${baseUrl}/api/printer-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ printerUrl: 'ipp://192.0.2.10:631/printers/main' })
+        });
+
+        assert.equal((await post({})).status, 401);
+        assert.equal((await post({ 'x-api-key': 'wrong' })).status, 401);
+
+        const ok = await post({ 'x-api-key': 's3cret' });
+        assert.equal(ok.status, 200);
+        assert.equal((await ok.json()).reachable, true);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('print endpoint enforces the API key before accepting uploads', async () => {
+    const app = createApp({ security: { apiKey: 's3cret' } });
+    const { server, baseUrl } = await startTestServer(app);
+
+    try {
+        const formData = new FormData();
+        formData.append('printerUrl', 'ipp://192.0.2.10:631/printers/main');
+        formData.append('file', new Blob([await createPdfBytes(1)], { type: 'application/pdf' }), 'doc.pdf');
+
+        const denied = await fetch(`${baseUrl}/api/print`, { method: 'POST', body: formData });
+        assert.equal(denied.status, 401);
+    } finally {
+        await stopTestServer(server);
+    }
+});
+
+test('API key can be configured through the PRINTLE_API_KEY environment variable', async () => {
+    const previous = process.env.PRINTLE_API_KEY;
+    process.env.PRINTLE_API_KEY = 'env-secret';
+    try {
+        const app = createApp({
+            printerFactory: () => ({
+                execute(operation, message, callback) {
+                    callback(null, { statusCode: 'successful-ok', 'printer-attributes-tag': {} });
+                }
+            })
+        });
+        const { server, baseUrl } = await startTestServer(app);
+        try {
+            const denied = await fetch(`${baseUrl}/api/printer-status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printerUrl: 'ipp://192.0.2.10:631/printers/main' })
+            });
+            assert.equal(denied.status, 401);
+
+            const allowed = await fetch(`${baseUrl}/api/printer-status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': 'env-secret' },
+                body: JSON.stringify({ printerUrl: 'ipp://192.0.2.10:631/printers/main' })
+            });
+            assert.equal(allowed.status, 200);
+            assert.equal((await allowed.json()).reachable, true);
+        } finally {
+            await stopTestServer(server);
+        }
+    } finally {
+        if (previous === undefined) delete process.env.PRINTLE_API_KEY;
+        else process.env.PRINTLE_API_KEY = previous;
     }
 });

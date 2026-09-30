@@ -5,6 +5,12 @@ const fs = require('fs');
 const cors = require('cors');
 const { PDFDocument } = require('pdf-lib');
 const path = require('path');
+const {
+    corsOriginOption,
+    readSecurityConfig,
+    requireApiKey,
+    validatePrinterUrl,
+} = require('./ssrf');
 
 const PORT = 3001;
 const uploadDir = path.join(__dirname, 'uploads');
@@ -149,18 +155,31 @@ function createApp(options = {}) {
         printerFactory = ipp.Printer
     } = options;
 
+    // Security posture for the printer APIs (issue #8): env-driven, with
+    // per-app overrides via options.security (used by tests).
+    const security = { ...readSecurityConfig(), ...(options.security || {}) };
+
     const app = express();
 
-    app.use(cors({ origin: '*' }));
+    app.use(cors({ origin: corsOriginOption(security) }));
     app.use(express.json());
+
+    // Shared-secret gate for the printer APIs. When PRINTLE_API_KEY is unset
+    // the middleware passes through and a startup warning is logged.
+    const apiAuth = requireApiKey(security);
 
     app.get('/', (req, res) => res.send('PrintLe Server is running!'));
 
-    app.post('/api/printer-status', async (req, res) => {
+    app.post('/api/printer-status', apiAuth, async (req, res) => {
         const printerUrl = req.body?.printerUrl;
 
         if (!printerUrl) {
             return res.status(400).json({ error: 'Missing printerUrl' });
+        }
+
+        const verdict = await validatePrinterUrl(printerUrl, security);
+        if (!verdict.ok) {
+            return res.status(403).json({ error: 'printerUrl not allowed', reason: verdict.reason });
         }
 
         try {
@@ -178,7 +197,7 @@ function createApp(options = {}) {
         }
     });
 
-    app.post('/api/print', upload.single('file'), async (req, res) => {
+    app.post('/api/print', apiAuth, upload.single('file'), async (req, res) => {
         console.log('\n--- /api/print POST RECEIVED ---');
 
         const file = req.file;
@@ -192,6 +211,14 @@ function createApp(options = {}) {
                 try { fs.unlinkSync(file.path); } catch (e) {}
             }
             return res.status(400).json({ error: 'Missing file or printerUrl' });
+        }
+
+        // SSRF lockdown (issue #8): validate before touching the printer.
+        // The uploaded file is removed on rejection like on other 400 paths.
+        const verdict = await validatePrinterUrl(printerUrl, security);
+        if (!verdict.ok) {
+            try { fs.unlinkSync(file.path); } catch (e) {}
+            return res.status(403).json({ error: 'printerUrl not allowed', reason: verdict.reason });
         }
 
         console.log(`Job: ${file.originalname}`);
@@ -281,6 +308,12 @@ function createApp(options = {}) {
 const app = createApp();
 
 if (require.main === module) {
+    if (!readSecurityConfig().apiKey) {
+        console.warn(
+            'WARNING: PRINTLE_API_KEY is not set — /api/print and /api/printer-status ' +
+            'are reachable without authentication. Set PRINTLE_API_KEY to require an x-api-key header.'
+        );
+    }
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`PrintLe Server running on port ${PORT}`);
     });
@@ -292,5 +325,8 @@ module.exports = {
     checkPrinterReachability,
     createApp,
     getPageIndices,
-    isSuccessfulIppStatus
+    isSuccessfulIppStatus,
+    readSecurityConfig,
+    requireApiKey,
+    validatePrinterUrl
 };
