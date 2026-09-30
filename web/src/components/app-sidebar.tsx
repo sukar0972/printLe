@@ -200,6 +200,15 @@ export function AppSidebarBody({
   renderIcon,
   brandMark,
 }: AppSidebarProps) {
+  const { setOpenMobile } = useSidebar()
+  const navigate = (nextPage: PrintlePage) => {
+    setOpenMobile(false)
+    onNavigate(nextPage)
+  }
+  const closeAndRun = (action: () => void) => {
+    setOpenMobile(false)
+    action()
+  }
   return (
     <>
       <SidebarHeader>
@@ -209,7 +218,7 @@ export function AppSidebarBody({
               type="button"
               size="lg"
               className="printle-brand-button"
-              onClick={() => onNavigate('queue')}
+              onClick={() => navigate('queue')}
               aria-label="printLe home"
             >
               <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
@@ -221,11 +230,11 @@ export function AppSidebarBody({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain groups={groups} page={page} onNavigate={onNavigate} renderIcon={renderIcon} />
+        <NavMain groups={groups} page={page} onNavigate={navigate} renderIcon={renderIcon} />
       </SidebarContent>
       <SidebarFooter>
         {themeControl ? <div className="px-2 pb-1">{themeControl}</div> : null}
-        <NavUser user={user} quota={quota} onProfile={onProfile} onSettings={onSettings} onSignOut={onSignOut} />
+        <NavUser user={user} quota={quota} onProfile={() => closeAndRun(onProfile)} onSettings={() => closeAndRun(onSettings)} onSignOut={() => closeAndRun(onSignOut)} />
       </SidebarFooter>
     </>
   )

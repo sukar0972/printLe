@@ -1,6 +1,11 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+
+export function DialogActions({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap justify-end gap-2 pt-2">{children}</div>
+}
+
 export function Dialog({ children, className, variant, label, labelledBy, role = 'dialog', onClose }: { children: ReactNode; className?: string; variant?: 'settings'; label?: string; labelledBy?: string; role?: 'dialog' | 'alertdialog'; onClose: () => void }) {
   return <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose() }}>
     <DialogPrimitive.Portal>

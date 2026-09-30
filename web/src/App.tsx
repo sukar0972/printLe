@@ -12,7 +12,7 @@ import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DataTableFrame } from '@/components/ui/data-table-frame'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogActions } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Login } from './components/login'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input as TextField } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 
@@ -297,11 +296,11 @@ function DropBox({ model }: { model: QueueModel }) {
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
-      <label className="zone-field zone-pages">Pages<input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
-      <label className="zone-field">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
+      <label className="zone-field zone-pages">Pages<Input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
+      <label className="zone-field">Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
       <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
       <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
-      <button className="primary" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</button>
+      <Button type="submit" variant="default" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
     </div>
     {model.error && <p className="error" role="alert">{model.error}</p>}
   </form>
@@ -315,13 +314,14 @@ function JobStatus({ job }: { job: Job }) {
 }
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
-  const held = job.status === 'HELD'
-  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
-  if (held) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  if (job.status === 'AWAITING_FLIP' && onFlip) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onFlip(job.id)}>Stack flipped</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  if (job.status === 'ABORTED' && onRetry) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
-  if (active) return <span className="job-actions"><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  return <span className="job-actions" />
+  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const action = job.status === 'HELD' ? { label: 'Print', run: onRelease }
+    : job.status === 'AWAITING_FLIP' && onFlip ? { label: 'Stack flipped', run: onFlip }
+      : job.status === 'ABORTED' && onRetry ? { label: 'Retry', run: onRetry } : undefined
+  return <span className="job-actions">
+    {action && <Button variant="outline" size="sm" onClick={() => action.run(job.id)}>{action.label}</Button>}
+    {canCancel && <Button variant="ghost-destructive" size="icon-sm" onClick={() => onCancel(job.id)} aria-label="Cancel" title="Cancel job"><X aria-hidden="true" /></Button>}
+  </span>
 }
 
 function statusLabel(status: string) {
@@ -363,7 +363,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
       <Metrics model={model} />
     </div>}
     <DropBox model={model} />
-    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs…" /></label>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
             <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
@@ -379,7 +379,7 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="drawer-backdrop" />
       <DialogPrimitive.Content role="complementary" className="detail-drawer" aria-label="Print job details" aria-describedby={undefined}>
-        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
       <section className="drawer-section current-state">
         <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
         <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
@@ -399,10 +399,10 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </ol></section>
       <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>IPP URL</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
-        {job.status === 'HELD' && <button className="primary" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</button>}
-        {job.status === 'AWAITING_FLIP' && <button className="primary" onClick={() => onFlip(job.id)}>Stack flipped—continue</button>}
-        {job.status === 'ABORTED' && <button className="primary" onClick={() => onRetry(job.id)}>Retry job</button>}
-        {!terminal && <button className="danger-outline" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</button>}
+        {job.status === 'HELD' && <Button variant="default" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
+        {job.status === 'AWAITING_FLIP' && <Button variant="default" onClick={() => onFlip(job.id)}>Stack flipped—continue</Button>}
+        {job.status === 'ABORTED' && <Button variant="default" onClick={() => onRetry(job.id)}>Retry job</Button>}
+        {!terminal && <Button variant="outline-destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
       </div>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
@@ -414,7 +414,7 @@ function TimelineItem({ label, time, complete = false, active = false }: { label
 }
 
 function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Keep job</button><button className={danger ? 'danger-button' : 'primary'} onClick={onConfirm}>{confirm}</button></div></Dialog>
+  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></Dialog>
 }
 
 function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: (reverse: boolean) => void }) {
@@ -425,7 +425,7 @@ function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
     <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Reverse the even-page order for this printer</label>
-    <div className="confirm-actions"><button className="quiet" autoFocus onClick={onClose}>Not ready</button><button className="primary" onClick={() => onConfirm(reverse)}>Continue printing</button></div>
+    <div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button variant="default" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
   </Dialog>
 }
 
@@ -446,7 +446,7 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
     && (job.colorMode !== 'COLOR' || printer.colorCapable)
     && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
   return <Dialog className="modal release-modal" label="Choose a printer" onClose={onClose}>
-      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><button className="quiet" onClick={onClose}>Close</button></div>
+      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
       <div className="release-printers">
         {printers.map(printer => {
           const ready = compatible(printer)
@@ -693,15 +693,15 @@ function ChangePasswordDialog({
         </div>
         <div className="grid gap-2">
           <Label htmlFor="profile-current-password">Current password</Label>
-          <TextField id="profile-current-password" name="currentPassword" type="password" autoComplete="current-password" required autoFocus />
+          <Input id="profile-current-password" name="currentPassword" type="password" autoComplete="current-password" required autoFocus />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="profile-new-password">New password</Label>
-          <TextField id="profile-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+          <Input id="profile-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="profile-confirm-password">Confirm new password</Label>
-          <TextField id="profile-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+          <Input id="profile-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
         </div>
         {error && (
           <Alert variant="destructive">
@@ -897,14 +897,14 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     </div>
 
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
-      <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
+      <div className="modal-title"><h2>Add IPP printer</h2><Button size="sm" type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></div>
       <p>Connect to a printer that accepts PDFs over IPP. One-sided, hardware duplex, and manual flip printing are supported.</p>
       <form onSubmit={addIpp}>
         <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
         <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
         <p className="muted">Use ipp:// or ipps://. Secure connections require a trusted certificate. Printers requiring a login are not supported yet.</p>
         {ippError && <p className="error" role="alert">{ippError}</p>}
-        <button className="primary" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</button>
+        <DialogActions><Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button></DialogActions>
       </form>
     </Dialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -946,22 +946,22 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />}
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
-      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
+      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
       <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
       <form onSubmit={save}>
-        <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
-        <label>Description<input name="description" defaultValue={selected.description} /></label>
+        <div className="form-grid"><label>Name<Input name="name" defaultValue={selected.name} required /></label><label>Location<Input name="location" defaultValue={selected.location} /></label><label>Mono price / page<Input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<Input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
+        <label>Description<Input name="description" defaultValue={selected.description} /></label>
         <label>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy}><option value="ALLOW">Allow</option><option value="WARN">Warn</option><option value="BLOCK">Block</option></Select></label>
         <div className="check-row"><label><input name="enabled" type="checkbox" defaultChecked={selected.enabled} />Enabled</label><label><input name="maintenance" type="checkbox" defaultChecked={selected.maintenance} />Maintenance mode</label></div>
-        <div className="rule-heading"><strong>Access rules</strong><button type="button" className="quiet" onClick={addRule}>Add rule</button></div>
+        <div className="rule-heading"><strong>Access rules</strong><Button size="sm" type="button" variant="outline" onClick={addRule}>Add rule</Button></div>
         <p className="muted">No rules means all authenticated users can view and release to this printer.</p>
         {rules.map((rule, index) => <div className="acl-row" key={`${index}-${rule.principalId}`}>
           <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: e.target.value as AclRule['principalType'], principalId: e.target.value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))}><option value="USER">User</option><option value="GROUP">Group</option></Select>
           <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: e.target.value } : r))}>{(rule.principalType === 'USER' ? users : groups).map(item => <option key={item.id} value={item.id}>{'displayName' in item ? item.displayName : item.name}</option>)}</Select>
           <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}>{['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => <option key={p}>{p}</option>)}</Select>
-          <button type="button" className="danger-text" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</button>
+          <Button size="sm" type="button" variant="ghost-destructive" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</Button>
         </div>)}
-        <button className="primary">Save printer</button>
+        <DialogActions><Button type="submit" variant="default">Save printer</Button></DialogActions>
       </form>
     </Dialog>}
   </main>
@@ -1272,7 +1272,7 @@ function UsersSection({ preview }: { preview: boolean }) {
             </Select>}
           </div>
           <Badge variant="muted">
-            {selectedCount} selected
+            {selectedCount > 0 && `${selectedCount} selected`}
           </Badge>
         </div>
       </div>}
@@ -1281,6 +1281,7 @@ function UsersSection({ preview }: { preview: boolean }) {
       {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />}
     </DataTableFrame>
 
+    <div className="mt-6">
     <DataTableFrame
       title="Groups"
       description="Named sets for printer access and shared page quotas."
@@ -1349,27 +1350,28 @@ function UsersSection({ preview }: { preview: boolean }) {
         </TableBody>
       </Table>
     </DataTableFrame>
+    </div>
     {open && <Dialog className="modal" label="Add a user" onClose={() => setOpen(false)}>
-        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><button className="quiet" onClick={() => setOpen(false)}>Close</button></div>
+        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></div>
         <form onSubmit={create}>
-          <label>Name<input name="displayName" required maxLength={120}/></label>
-          <label>Email<input name="email" type="email" required/></label>
-          <label>Temporary password<input name="password" type="password" minLength={12} required/></label>
+          <label>Name<Input name="displayName" required maxLength={120}/></label>
+          <label>Email<Input name="email" type="email" required/></label>
+          <label>Temporary password<Input name="password" type="password" minLength={12} required/></label>
           <label>Role<Select name="role" defaultValue="USER"><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label>
-          <button className="primary">Create user</button>
+          <DialogActions><Button type="submit" variant="default">Create user</Button></DialogActions>
         </form>
     </Dialog>}
-    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
-      <form onSubmit={updateUser}><div className="form-grid"><label>Name<input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
+    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
+      <form onSubmit={updateUser}><div className="form-grid"><label>Name<Input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<Input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
         <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <label key={group.id}><input type="checkbox" name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn} />{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</label>)}</fieldset>
-        <button className="primary compact">Save account</button></form>
+        <DialogActions><Button type="submit" variant="default">Save account</Button></DialogActions></form>
       <div className="modal-divider" />
-      <form onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<input name="reason" required maxLength={255} /></label></div><button className="quiet">Record adjustment</button></form>
+      <form onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<Input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<Input name="reason" required maxLength={255} /></label></div><DialogActions><Button type="submit" variant="outline">Record adjustment</Button></DialogActions></form>
       <div className="modal-divider" />
-      <form onSubmit={resetPassword}><label>Temporary password<input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><button className="quiet">Reset password</button></form>
+      <form onSubmit={resetPassword}><label>Temporary password<Input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><DialogActions><Button type="submit" variant="outline">Reset password</Button></DialogActions></form>
     </Dialog>}
-    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><button className="quiet" onClick={() => setGroupOpen(false)}>Close</button></div>
-      <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><button className="primary">Create group</button></form>
+    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><Button size="sm" variant="outline" onClick={() => setGroupOpen(false)}>Close</Button></div>
+      <form onSubmit={createGroup}><label>Name<Input name="name" required maxLength={120} /></label><label>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><DialogActions><Button type="submit" variant="default">Create group</Button></DialogActions></form>
     </Dialog>}
   </>
 }
@@ -1717,31 +1719,31 @@ function SettingsPolicy({ user, preview }: { user: CurrentUser; preview: boolean
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-2">
                 <Label htmlFor="policy-quota">Default monthly pages</Label>
-                <TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
+                <Input id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-timezone">Quota timezone</Label>
-                <TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
+                <Input id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-ttl">Held job lifetime (hours)</Label>
-                <TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
+                <Input id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-completed">Completed retention (hours)</Label>
-                <TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
+                <Input id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-failed">Failed retention (hours)</Label>
-                <TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
+                <Input id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-copies">Maximum copies</Label>
-                <TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
+                <Input id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-pages">Maximum pages per job</Label>
-                <TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
+                <Input id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
               </div>
             </div>
             <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3.5 sm:max-w-md bg-muted/20">
