@@ -89,7 +89,7 @@ before dialing it, and can require an API key:
 
 | Environment variable | Default | Effect |
 | --- | --- | --- |
-| `PRINTLE_API_KEY` | _(unset)_ | When set, `POST /api/print` and `POST /api/printer-status` require a matching `x-api-key` header (constant-time compare). When unset, a warning is logged at startup. |
+| `PRINTLE_API_KEY` | _(unset)_ | When set, `POST /api/print` and `POST /api/printer-status` require a matching `x-api-key` header (constant-time compare). When unset, a warning is logged at startup. **Treat this as required whenever private-network targets are enabled** (`PRINTER_ALLOW_PRIVATE_NETWORKS=true`, or private ranges in `PRINTER_ALLOWED_CIDRS` / hosts in `PRINTER_ALLOWED_HOSTS`): without it, anyone who can reach the server can use those endpoints unauthenticated. |
 | `PRINTER_ALLOWED_SCHEMES` | `ipp,ipps` | URL schemes the printer URL may use. `http`/`https` are rejected unless explicitly listed. |
 | `PRINTER_ALLOWED_HOSTS` | _(empty)_ | Exact hostnames allowed as printer targets. When set, listed hosts are trusted and other hosts are rejected. |
 | `PRINTER_ALLOWED_CIDRS` | _(empty)_ | IP ranges allowed as printer targets (e.g. `192.168.0.0/16`). |
@@ -114,7 +114,9 @@ PRINTER_ALLOW_PRIVATE_NETWORKS=true PRINTLE_API_KEY=<a-long-random-secret> npm s
 
 > ⚠️ Behavior change: before this change any URL was accepted. LAN printers
 > now need `PRINTER_ALLOW_PRIVATE_NETWORKS=true` (or an entry in
-> `PRINTER_ALLOWED_HOSTS` / `PRINTER_ALLOWED_CIDRS`).
+> `PRINTER_ALLOWED_HOSTS` / `PRINTER_ALLOWED_CIDRS`). When you enable any of
+> these, set `PRINTLE_API_KEY` as well — with private targets allowed and no
+> API key, the print endpoints are unauthenticated for anyone on the network.
 
 ## 🐳 Docker Deployment Setup
 For production use, the application should be deployed using Docker Compose.
