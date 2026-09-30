@@ -80,6 +80,42 @@ If you need to make changes, follow these steps to run the application outside o
     - **IPP Address:** The specific network address of your printer.
         
 
+## 🔐 Security: locking down the printer API (issue #8)
+
+Both print APIs let the client supply the printer URL — without checks, anyone
+who can reach the server can make it connect to **arbitrary internal hosts**
+(SSRF) and burn anyone's toner. The server now validates every `printerUrl`
+before dialing it, and can require an API key:
+
+| Environment variable | Default | Effect |
+| --- | --- | --- |
+| `PRINTLE_API_KEY` | _(unset)_ | When set, `POST /api/print` and `POST /api/printer-status` require a matching `x-api-key` header (constant-time compare). When unset, a warning is logged at startup. |
+| `PRINTER_ALLOWED_SCHEMES` | `ipp,ipps` | URL schemes the printer URL may use. `http`/`https` are rejected unless explicitly listed. |
+| `PRINTER_ALLOWED_HOSTS` | _(empty)_ | Exact hostnames allowed as printer targets. When set, listed hosts are trusted and other hosts are rejected. |
+| `PRINTER_ALLOWED_CIDRS` | _(empty)_ | IP ranges allowed as printer targets (e.g. `192.168.0.0/16`). |
+| `PRINTER_ALLOW_PRIVATE_NETWORKS` | `false` | Set to `true` to permit loopback / LAN / link-local printer targets — **required for typical home printers and local CUPS**. |
+| `CORS_ORIGINS` | `*` | Comma-separated origins allowed by CORS. Unset keeps the historic `*`; set to an empty value to serve same-origin only. |
+
+Default policy details:
+
+- Only `ipp://` / `ipps://` URLs, no embedded credentials.
+- Loopback, private (RFC1918/CGNAT/ULA), link-local (incl. the cloud metadata
+  address `169.254.169.254`), unspecified, multicast, and reserved ranges are
+  rejected — including obfuscated spellings (`0x7f000001`, `2130706433`,
+  `::ffff:127.0.0.1`) and hostnames that resolve to blocked addresses (every
+  resolved address is checked, which also blocks DNS-rebinding).
+- Rejected URLs return `403` with a reason, and no connection is attempted.
+
+**Typical home/LAN setup** (printer on the local network):
+
+```bash
+PRINTER_ALLOW_PRIVATE_NETWORKS=true PRINTLE_API_KEY=<a-long-random-secret> npm start
+```
+
+> ⚠️ Behavior change: before this change any URL was accepted. LAN printers
+> now need `PRINTER_ALLOW_PRIVATE_NETWORKS=true` (or an entry in
+> `PRINTER_ALLOWED_HOSTS` / `PRINTER_ALLOWED_CIDRS`).
+
 ## 🐳 Docker Deployment Setup
 For production use, the application should be deployed using Docker Compose.
 ### Prerequisites
