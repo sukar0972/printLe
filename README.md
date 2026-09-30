@@ -80,6 +80,22 @@ If you need to make changes, follow these steps to run the application outside o
     - **IPP Address:** The specific network address of your printer.
         
 
+## 📤 Upload policy (issue #9)
+
+`POST /api/print` enforces the limits the UI has always advertised:
+
+- **Size:** uploads are capped at **10 MiB** (`413` when exceeded). The web UI
+  checks the size before uploading; the server enforces it regardless of the
+  client (direct hits to `:3001` included). Override with
+  `PRINTLE_MAX_UPLOAD_BYTES`.
+- **Type:** the server inspects the file's magic bytes — the declared
+  Content-Type and extension are not trusted. Only real **PDF, JPEG, and PNG**
+  files are accepted (`415` otherwise); the sniffed type is what is sent to
+  the printer as the IPP `document-format`. Office documents (`.doc`/`.docx`)
+  are no longer forwarded to printers as raw bytes.
+- PDFs that fail to parse or contain no readable pages are rejected with
+  `400` instead of being sent to the printer.
+
 ## 🐳 Docker Deployment Setup
 For production use, the application should be deployed using Docker Compose.
 ### Prerequisites
