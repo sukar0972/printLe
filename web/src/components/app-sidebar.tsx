@@ -14,8 +14,11 @@ import {
 } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Progress } from '@/components/ui/progress'
+import type { Quota } from '@/api'
 
-export type PrintlePage = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
+import type { Page } from '@/lib/navigation'
+export type PrintlePage = Page
 
 export type NavIconName = 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings'
 
@@ -35,12 +38,25 @@ type AppSidebarProps = {
   page: PrintlePage
   onNavigate: (page: PrintlePage) => void
   user: { displayName: string; email: string }
+  quota?: Quota
   onProfile: () => void
   onSettings: () => void
   onSignOut: () => void
   themeControl?: ReactNode
   renderIcon: (name: NavIconName) => ReactNode
   brandMark: ReactNode
+}
+
+function QuotaBar({ quota }: { quota: Quota }) {
+  const used = quota.used + quota.pending
+  const pct = quota.exempt || quota.limit <= 0 ? 0 : Math.min(100, Math.round((used / quota.limit) * 100))
+  return <div className="grid gap-1.5 px-1 pt-2">
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">Quota</span>
+      <span className="font-medium tabular-nums">{quota.exempt ? 'Unlimited' : `${used} / ${quota.limit}`}</span>
+    </div>
+    <Progress value={quota.exempt ? 0 : pct} aria-label="Quota used" />
+  </div>
 }
 
 function initials(name: string) {
@@ -95,11 +111,13 @@ function NavMain({
 
 function NavUser({
   user,
+  quota,
   onProfile,
   onSettings,
   onSignOut,
 }: {
   user: { displayName: string; email: string }
+  quota?: Quota
   onProfile: () => void
   onSettings: () => void
   onSignOut: () => void
@@ -146,6 +164,7 @@ function NavUser({
                   <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                 </div>
               </div>
+              {quota && <QuotaBar quota={quota} />}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onProfile}>
@@ -173,6 +192,7 @@ export function AppSidebarBody({
   page,
   onNavigate,
   user,
+  quota,
   onProfile,
   onSettings,
   onSignOut,
@@ -205,7 +225,7 @@ export function AppSidebarBody({
       </SidebarContent>
       <SidebarFooter>
         {themeControl ? <div className="px-2 pb-1">{themeControl}</div> : null}
-        <NavUser user={user} onProfile={onProfile} onSettings={onSettings} onSignOut={onSignOut} />
+        <NavUser user={user} quota={quota} onProfile={onProfile} onSettings={onSettings} onSignOut={onSignOut} />
       </SidebarFooter>
     </>
   )

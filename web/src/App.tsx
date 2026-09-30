@@ -4,8 +4,8 @@ import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { Activity, CheckCircle2, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, X } from 'lucide-react'
-import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
+import { Activity, CheckCircle2, Download, FileText, Key, LogOut, Monitor, Moon, MoreHorizontal, Printer as PrinterIcon, Settings2, Shield, Sun, UserRound, X } from 'lucide-react'
+import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, onSessionExpired, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
@@ -22,28 +22,24 @@ import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Login } from './components/login'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input as TextField } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+
 import { Select as SelectMenu, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
+import { MetricStripSkeleton, Skeleton, TableRowsSkeleton } from '@/components/ui/skeleton'
+import { PageActiveContext, usePageActive } from '@/hooks/page-active'
+import { accessiblePage, parsePage, type Page } from '@/lib/navigation'
 
-type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
+type SettingsSection = 'general' | 'account' | 'policy' | 'diagnostics'
 type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
-
-const TYPES = [
-  { id: 'geist', short: '1 Geist', blurb: 'printLe’s original geometric sans' },
-  { id: 'dmsans', short: '2 DM Sans', blurb: 'more Code’s default UI sans' },
-  { id: 'fira', short: '3 Fira Code', blurb: 'more Code’s mono setting' },
-  { id: 'jetbrains', short: '4 JetBrains Mono', blurb: 'more Code’s code stack' },
-] as const
-type TypeId = typeof TYPES[number]['id']
 
 const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' }
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
@@ -67,28 +63,38 @@ const previewPrinters: Printer[] = [
 
 export default function App() {
   const preview = usePreview()
-  const typeface = useTypeface()
   const [user, setUser] = useState<CurrentUser | null>()
-  const [page, setPage] = useState<Page>('queue')
+  const [sessionNotice, setSessionNotice] = useState('')
+  const [quota, setQuota] = useState<Quota | undefined>(preview.on ? previewQuota : undefined)
+  const [selectedPage, setPage] = useState<Page>(() => storedPage(preview.on))
+  const page = user ? accessiblePage(selectedPage, user.role) : selectedPage
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
   const theme = useTheme()
   const sidebar = useSidebar()
+  useEffect(() => onSessionExpired(() => { setUser(null); setSessionNotice('Your session ended. Sign in again.') }), [])
   useEffect(() => {
     document.documentElement.dataset.layout = preview.variant
     return () => { delete document.documentElement.dataset.layout }
   }, [preview.variant])
   useEffect(() => {
-    if (preview.on) { setUser(previewUser); return }
-    api.me().then(setUser).catch(() => setUser(null))
+    if (preview.on) { setUser(previewUser); setQuota(previewQuota); setSessionNotice(''); return }
+    api.me().then(account => { setUser(account); setSessionNotice('') }).catch(() => setUser(null))
+    api.quota().then(setQuota).catch(() => setQuota(undefined))
   }, [preview.on])
-  if (user === undefined) return <main className="center"><div className="spinner" aria-label="Loading" /></main>
-  if (!user) return <Login onLogin={() => api.me().then(setUser)} theme={theme} />
+  useEffect(() => {
+    if (!user || preview.on) return
+    setPage(page)
+    localStorage.setItem('printle-page', page)
+  }, [page, user, preview.on])
+  if (user === undefined) return <BootSkeleton />
+  if (!user) return <Login onLogin={() => api.me().then(account => { setUser(account); setSessionNotice('') })} theme={theme} notice={sessionNotice} />
   const sidebarGroups: SidebarNavGroup[] = [
     {
       label: 'Workspace',
       items: [
         { page: 'queue', title: 'Print queue', icon: 'queue' },
         { page: 'profile', title: 'My profile', icon: 'profile' },
-        { page: 'settings', title: 'Settings', icon: 'settings' },
       ],
     },
     ...((user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on)
@@ -113,10 +119,10 @@ export default function App() {
         page={page}
         onNavigate={setPage}
         user={user}
+        quota={quota}
         onProfile={() => setPage('profile')}
-        onSettings={() => setPage('settings')}
-        onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => setUser(null))}
-        themeControl={<ThemeButton theme={theme} />}
+        onSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
+        onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => { setSessionNotice(''); setUser(null) })}
         renderIcon={(name) => <NavIcon name={name} />}
         brandMark={<Mark />}
       />}
@@ -124,67 +130,49 @@ export default function App() {
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
             <span className="role-badge">{user.role.toLowerCase()}</span>
       </>}
-      notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
+      notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it on My profile.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : (page === 'users-reports' || page === 'users' || page === 'reports') ? <UsersReports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} />}
+          <KeepAlive page="queue" current={page}><Queue preview={preview.on} organized variant={preview.variant} /></KeepAlive>
+          <KeepAlive page="profile" current={page}><Profile user={user} preview={preview.on} onManage={() => { setSettingsSection('account'); setSettingsOpen(true) }} /></KeepAlive>
+          {(user.role === 'ADMIN' || preview.on) && <KeepAlive page="printers" current={page}><PrinterAdmin preview={preview.on} /></KeepAlive>}
+          {(user.role === 'ADMIN' || preview.on) && <KeepAlive page="fake-printer" current={page}><FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /></KeepAlive>}
+          {(user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on) && <KeepAlive page="users-reports" current={page}><UsersReports preview={preview.on} /></KeepAlive>}
+          {settingsOpen && <SettingsMenu user={user} preview={preview.on} theme={theme} section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsOpen(false)} onProfile={() => { setSettingsOpen(false); setPage('profile') }} onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => { setSessionNotice(''); setUser(null) })} />}
     </AppShell>
 }
 
-function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: ReturnType<typeof useTheme> }) {
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError('')
-    const data = new FormData(event.currentTarget)
-    try { await api.login(String(data.get('email')), String(data.get('password'))); await onLogin() }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in') } finally { setBusy(false) }
-  }
-  return <main className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-    <section className="login-hero relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
-      <img src="/printle-logo.svg" alt="printLe" className="h-10 w-auto" />
-      <div className="max-w-lg space-y-4">
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight">Print what you need.<br />Pick it up when you&rsquo;re ready.</h1>
-        <p className="text-sm leading-relaxed text-white/70">A private web print queue for your team. Upload a PDF, then release it at the printer.</p>
+function storedPage(preview: boolean): Page {
+  if (preview || typeof localStorage === 'undefined') return 'queue'
+  return parsePage(localStorage.getItem('printle-page'))
+}
+
+function KeepAlive({ page, current, children }: { page: Page; current: Page; children: ReactNode }) {
+  const [seen, setSeen] = useState(page === current)
+  useEffect(() => { if (page === current) setSeen(true) }, [page, current])
+  if (!seen) return null
+  return <PageActiveContext.Provider value={page === current}><div hidden={page !== current}>{children}</div></PageActiveContext.Provider>
+}
+
+function BootSkeleton() {
+  return <main className="page grid gap-6" aria-busy="true" aria-label="Loading">
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="mt-2 h-4 w-72" />
+        </div>
       </div>
-      <p className="text-xs text-white/50">Private web print queue · release at the printer</p>
-    </section>
-    <section className="flex items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="gap-2">
-          <img src="/printle-logo.svg" alt="printLe" className="h-8 w-auto lg:hidden" />
-          <CardDescription className="text-xs font-medium tracking-widest uppercase">Welcome back</CardDescription>
-          <CardTitle asChild><h2 className="text-xl tracking-tight">Sign in to printLe</h2></CardTitle>
-          <CardDescription>Use the account provided by your administrator.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4" onSubmit={submit}>
-            <div className="grid gap-2">
-              <Label htmlFor="login-email">Email</Label>
-              <TextField id="login-email" name="email" type="email" autoComplete="username" required autoFocus />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="login-password">Password</Label>
-              <TextField id="login-password" name="password" type="password" autoComplete="current-password" required />
-            </div>
-            {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
-            <Button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-          </form>
-        </CardContent>
-        <CardFooter className="justify-between">
-          <a href="#preview" className="hover:text-foreground underline-offset-4 hover:underline">Open dashboard preview</a>
-          <ThemeButton theme={theme} />
-        </CardFooter>
-      </Card>
-    </section>
+      <MetricStripSkeleton label="Loading allowance" />
+    </div>
+    <Skeleton className="h-36 w-full" />
+    <TableRowsSkeleton />
   </main>
 }
 
 function PreviewBanner() {
-  return <div className="preview-banner">
-    <span className="preview-blurb"><strong>printLe preview</strong></span>
-    <span className="preview-actions">
-      <button type="button" onClick={() => { location.hash = '' }}>Leave preview</button>
-    </span>
-  </div>
+  return <button type="button" className="preview-badge" onClick={() => { location.hash = '' }}>
+    Preview
+  </button>
 }
 
 type QueueModel = {
@@ -200,6 +188,7 @@ type QueueModel = {
   limit: number
   usedPct: number
   busy: boolean
+  ready: boolean
   error: string
   printers: Printer[]
   upload: (event: FormEvent<HTMLFormElement>) => void
@@ -219,11 +208,13 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const [confirmFlip, setConfirmFlip] = useState<Job>()
   const [notice, setNotice] = useState('')
   const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(preview)
   const fetchQueue = useCallback(async () => {
     // Wait for every request, including failures, before allowing another batch.
     const results = await Promise.allSettled([api.jobs(), api.quota(), api.printers()])
     const [j, q, p] = results
     const failure = results.find(result => result.status === 'rejected')
+    setReady(true)
     if (failure?.status === 'rejected') {
       setLoadError(message(failure.reason))
       return false
@@ -234,7 +225,8 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     }
     return false
   }, [])
-  const load = useQueueRefresh(fetchQueue, !preview)
+  const queueActive = usePageActive()
+  const load = useQueueRefresh(fetchQueue, !preview && queueActive)
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
     setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
@@ -273,7 +265,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error: error || loadError, printers, upload, cancel, release, retry, flip }
+  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, ready, error: error || loadError, printers, upload, cancel, release, retry, flip }
   const selectedJob = jobs.find(job => job.id === selectedJobId)
   return <>
     <LayoutLedger model={model} onInspect={job => setSelectedJobId(job.id)} />
@@ -287,7 +279,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
 
 function Metrics({ model }: { model: QueueModel }) {
   const { quota, remaining, limit, held, pendingPages, used, usedPct } = model
-  if (!quota) return null
+  if (!quota) return model.ready ? null : <MetricStripSkeleton label="Loading quota" />
   return <section className="metrics quota-strip" aria-label="Quota">
     <MetricCard label="Pages left" value={quota.exempt ? '∞' : remaining} hint={quota.exempt ? 'Unlimited' : `of ${limit} this month`} meter={quota.exempt ? undefined : usedPct} />
     <MetricCard label="Waiting" value={held.length} hint="jobs held at printer" />
@@ -376,7 +368,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
             <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>} footer={<TablePagination table={table} noun="jobs" />}>
-      {model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
+      {!model.ready ? <TableRowsSkeleton /> : model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
     </DataTableFrame>
   </main>
 }
@@ -483,27 +475,32 @@ const previewGroups: Group[] = [
 
 function Profile({ user, preview, onManage }: { user: CurrentUser; preview: boolean; onManage: () => void }) {
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
+  const [ready, setReady] = useState(preview)
   const [error, setError] = useState('')
+  const [passwordNotice, setPasswordNotice] = useState('')
+  const [passwordOpen, setPasswordOpen] = useState(false)
   useEffect(() => {
     if (preview) return
-    api.quota().then(setQuota).catch(e => setError(message(e)))
+    api.quota().then(setQuota).catch(e => setError(message(e))).finally(() => setReady(true))
   }, [preview])
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - (quota?.used ?? 0) - (quota?.pending ?? 0))
   const usedPct = quota && !quota.exempt && quota.limit > 0 ? Math.min(100, Math.round(((quota.used + (quota.pending ?? 0)) / quota.limit) * 100)) : 0
   const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
   return <main className="page grid gap-6">
-    <div className="alt-content-heading">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">My profile</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">My profile</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
+        </div>
+        <nav aria-label="Breadcrumb"><span>Account</span><b>/</b><strong>My profile</strong></nav>
       </div>
-      <nav aria-label="Breadcrumb"><span>Account</span><b>/</b><strong>My profile</strong></nav>
-    </div>
 
-    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {passwordNotice && <Alert variant="success"><AlertDescription>{passwordNotice}</AlertDescription></Alert>}
 
-    {quota && <section className="metrics quota-strip" aria-label="Allowance overview">
+      {!ready ? <MetricStripSkeleton label="Loading allowance" /> : quota && <section className="metrics quota-strip" aria-label="Allowance overview">
       <MetricCard
         label="Pages left"
         value={quota.exempt ? '∞' : remaining}
@@ -511,21 +508,23 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
         meter={quota.exempt ? undefined : usedPct}
       />
       <MetricCard
-        label="Printed this month"
+        label="Printed"
         value={quota.used}
         hint="pages processed"
       />
       <MetricCard
-        label="Reserved in queue"
+        label="Reserved"
         value={quota.pending ?? 0}
         hint="pages awaiting release"
       />
       <MetricCard
-        label="Account role"
+        className="max-[800px]:basis-full!"
+        label="Role"
         value={statusLabel(user.role)}
         hint={user.role === 'ADMIN' ? 'Full administrative access' : 'Standard printing access'}
       />
-    </section>}
+      </section>}
+    </div>
 
     <Card>
       <CardHeader>
@@ -568,10 +567,21 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             </div>
             <Progress value={usedPct} aria-label="Quota used" />
           </div>
-          <div><Button variant="outline" onClick={onManage}>Manage profile settings</Button></div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPasswordOpen(true)}>Change password</Button>
+            <Button variant="outline" onClick={onManage}>Manage profile settings</Button>
+          </div>
         </div>
       </CardContent>
     </Card>
+    {passwordOpen && (
+      <ChangePasswordDialog
+        email={user.email}
+        preview={preview}
+        onClose={() => setPasswordOpen(false)}
+        onChanged={() => { setPasswordOpen(false); setPasswordNotice('Password changed.') }}
+      />
+    )}
 
     <div className="grid gap-6 md:grid-cols-2">
       <Card>
@@ -637,6 +647,76 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
   </main>
 }
 
+function ChangePasswordDialog({
+  email,
+  preview,
+  onClose,
+  onChanged,
+}: {
+  email: string
+  preview: boolean
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const next = String(data.get('newPassword'))
+    if (next !== String(data.get('confirmPassword'))) {
+      setError('New passwords do not match')
+      return
+    }
+    if (next.length < 12) {
+      setError('Use at least 12 characters')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: next })
+      onChanged()
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog labelledBy="change-password-title" onClose={onClose}>
+      <form className="grid gap-4" noValidate onSubmit={submit}>
+        <div className="grid gap-1.5">
+          <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Account</p>
+          <h2 id="change-password-title" className="text-lg font-semibold tracking-tight">Change password</h2>
+          <p className="text-muted-foreground m-0 text-sm">Use at least 12 characters. This updates the password for {email}.</p>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-current-password">Current password</Label>
+          <TextField id="profile-current-password" name="currentPassword" type="password" autoComplete="current-password" required autoFocus />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-new-password">New password</Label>
+          <TextField id="profile-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-confirm-password">Confirm new password</Label>
+          <TextField id="profile-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+        </div>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return <div className="flex items-center justify-between gap-4 border-b border-border py-2.5 last:border-0">
     <dt className="text-muted-foreground text-sm">{label}</dt>
@@ -666,12 +746,12 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
   const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(preview)
   const load = useCallback(async () => {
     if (preview) { setPrinters(previewPrinters); return }
-    try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
+    try { const [p, u, g, report] = await Promise.all([api.printers(), api.users(), api.groups(), api.report()]); setPrinters(p); setUsers(u); setGroups(g); setUsage(report); setError('') } catch (e) { setError(message(e)) } finally { setReady(true) }
   }, [preview])
   useEffect(() => { void load() }, [load])
-  useEffect(() => { if (!preview) api.report().then(setUsage).catch(e => setError(message(e))) }, [preview])
   async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
   async function addIpp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -772,45 +852,49 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const statuses = ['ALL', 'ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE', 'DISABLED'] as const
 
   return <main className="page grid gap-6">
-    <div className="alt-content-heading">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Printers</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Discovered queues, hardware identity, capabilities, policy, and pricing.</p>
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Printers</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Discovered queues, hardware identity, capabilities, policy, and pricing.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={busy} onClick={sync}>
+            <Activity className="mr-1.5 size-3.5" />
+            {busy ? 'Refreshing…' : 'Refresh printers'}
+          </Button>
+          <Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>
+            Add IPP printer
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" disabled={busy} onClick={sync}>
-          <Activity className="mr-1.5 size-3.5" />
-          {busy ? 'Refreshing…' : 'Refresh printers'}
-        </Button>
-        <Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>
-          Add IPP printer
-        </Button>
-      </div>
-    </div>
 
-    <section className="metrics quota-strip" aria-label="Fleet metrics">
+      {!ready ? <MetricStripSkeleton label="Loading fleet" /> : (
+      <section className="metrics quota-strip" aria-label="Fleet metrics">
       <MetricCard
-        label="Active fleet"
+        label="Active"
         value={printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length}
         hint={`of ${printers.length} registered printers`}
         meter={printers.length > 0 ? Math.round((printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length / printers.length) * 100) : 0}
       />
       <MetricCard
-        label="Color capable"
+        label="Color"
         value={printers.filter(p => p.colorCapable).length}
         hint="support full-spectrum color"
       />
       <MetricCard
-        label="Duplex hardware"
+        label="Duplex"
         value={printers.filter(p => p.duplexCapable).length}
         hint="two-sided printing enabled"
       />
       <MetricCard
-        label="Fleet volume"
-        value={`${usage.printedPages} pages`}
+        label="Pages"
+        value={usage.printedPages}
         hint={`${usage.completedJobs} completed jobs`}
       />
-    </section>
+      </section>
+      )}
+    </div>
 
     {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
       <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
@@ -859,7 +943,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="printers" />}
     >
-      <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />}
     </DataTableFrame>
     {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
       <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
@@ -895,9 +979,10 @@ function UsersSection({ preview }: { preview: boolean }) {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [groupFilter, setGroupFilter] = useState('ALL')
   const [open, setOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
+  const [ready, setReady] = useState(preview)
   const load = useCallback(async () => {
     if (preview) { setUsers(previewUsers); setGroups(previewGroups); return }
-    try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
+    try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) } finally { setReady(true) }
   }, [preview])
   useEffect(() => { void load() }, [load])
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -1107,29 +1192,31 @@ function UsersSection({ preview }: { preview: boolean }) {
     enableRowSelection: true,
   })
   return <>
+    {!ready ? <MetricStripSkeleton label="Loading directory" /> : (
     <section className="metrics quota-strip" aria-label="Directory metrics">
       <MetricCard
-        label="Total members"
+        label="Members"
         value={users.length}
         hint={`${users.filter(u => u.status === 'ACTIVE').length} active accounts`}
         meter={users.length > 0 ? Math.round((users.filter(u => u.status === 'ACTIVE').length / users.length) * 100) : 0}
       />
       <MetricCard
-        label="Administrators"
+        label="Admins"
         value={users.filter(u => u.role === 'ADMIN').length}
         hint="full administration"
       />
       <MetricCard
-        label="Access groups"
+        label="Groups"
         value={groups.length}
         hint={`${groups.filter(g => !g.builtIn).length} custom policy groups`}
       />
       <MetricCard
-        label="Quota exempt"
+        label="Exempt"
         value={users.filter(u => u.quotaExempt).length}
         hint="unlimited page allowance"
       />
     </section>
+    )}
 
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
@@ -1191,7 +1278,7 @@ function UsersSection({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="users" />}
     >
-      <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />}
     </DataTableFrame>
 
     <DataTableFrame
@@ -1297,9 +1384,10 @@ function ReportsSection({ preview }: { preview: boolean }) {
   const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
   const [range, setRange] = useState('all')
   const [error, setError] = useState('')
+  const [ready, setReady] = useState(preview)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'completedAt', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
-  useEffect(() => { if (!preview) api.report().then(value => { setReport(value); setError('') }).catch(e => setError(message(e))) }, [preview])
+  useEffect(() => { if (!preview) api.report().then(value => { setReport(value); setError('') }).catch(e => setError(message(e))).finally(() => setReady(true)) }, [preview])
   const jobs = useMemo(() => filterReportJobs(report.jobs, range), [report.jobs, range])
   const totals = useMemo(() => ({
     completedJobs: jobs.length,
@@ -1383,45 +1471,49 @@ function ReportsSection({ preview }: { preview: boolean }) {
   })
   return <>
     <Separator className="my-2" />
-    <div className="alt-content-heading">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
-        <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
+          <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" asChild>
+            <a href={preview ? '#preview' : '/api/admin/reports/jobs.csv'} download={!preview}>
+              <Download aria-hidden="true" className="size-3.5" />
+              Export CSV
+            </a>
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" asChild>
-          <a href={preview ? '#preview' : '/api/admin/reports/jobs.csv'} download={!preview}>
-            <Download aria-hidden="true" className="size-3.5" />
-            Export CSV
-          </a>
-        </Button>
-      </div>
-    </div>
-    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <section aria-label="Usage" className="metrics quota-strip">
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {!ready ? <MetricStripSkeleton label="Loading usage" /> : (
+      <section aria-label="Usage" className="metrics quota-strip">
       <MetricCard
-        label="Completed jobs"
+        label="Jobs"
         value={totals.completedJobs}
         hint={range === 'all' ? 'all retained history' : 'in selected range'}
         meter={report.jobs.length > 0 ? Math.round((totals.completedJobs / report.jobs.length) * 100) : 0}
       />
       <MetricCard
-        label="Printed pages"
+        label="Pages"
         value={totals.printedPages}
         hint="copies included"
       />
       <MetricCard
-        label="Estimated cost"
+        label="Cost"
         value={money(totals.estimatedCost)}
         hint="at the recorded rate"
       />
       <MetricCard
-        label="Color jobs"
+        label="Color"
         value={totals.colorJobs}
         hint={totals.completedJobs > 0 ? `${Math.round((totals.colorJobs / totals.completedJobs) * 100)}% of completed` : '0% of completed'}
         meter={totals.completedJobs > 0 ? Math.round((totals.colorJobs / totals.completedJobs) * 100) : 0}
       />
-    </section>
+      </section>
+      )}
+    </div>
     <DataTableFrame
       className="report-table"
       title="Completed jobs"
@@ -1460,7 +1552,7 @@ function ReportsSection({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="jobs" />}
     >
-      <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />}
     </DataTableFrame>
   </>
 }
@@ -1468,15 +1560,17 @@ function ReportsSection({ preview }: { preview: boolean }) {
 function UsersReports({ preview }: { preview: boolean }) {
   return (
     <main className="page users-page grid gap-6">
-      <div className="alt-content-heading">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Users & Reports</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, access policy groups, and print accounting reports.</p>
+      <div className="quota-block">
+        <div className="alt-content-heading">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Users & Reports</h1>
+            <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, access policy groups, and print accounting reports.</p>
+          </div>
+          <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Users & Reports</strong></nav>
         </div>
-        <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Users & Reports</strong></nav>
-      </div>
 
-      <UsersSection preview={preview} />
+        <UsersSection preview={preview} />
+      </div>
 
       <ReportsSection preview={preview} />
     </main>
@@ -1498,123 +1592,116 @@ function filterReportJobs(jobs: ReportJob[], range: string) {
 
 const previewSettings: InstanceSettings = { defaultMonthlyPageQuota: 200, quotaTimezone: 'UTC', heldJobTtlHours: 24, completedRetentionHours: 720, failedRetentionHours: 168, maxCopies: 100, maxPagesPerJob: 1000, colorPrintingAllowed: true, updatedAt: new Date().toISOString() }
 
-function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean }) {
-  const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
-  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : { database: 'checking', storage: 'checking', printing: 'checking', registeredPrinters: 0 })
-  const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
-  const [notice, setNotice] = useState(''); const [error, setError] = useState('')
-  useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
-  useEffect(() => { if (!preview && user.role === 'ADMIN') Promise.all([api.settings(), api.diagnostics()]).then(([s, d]) => { setSettings(s); setDiagnostics(d); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
-  async function savePolicy(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: colorAllowed }
-    try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }
-  }
-  async function changePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form)
-    if (data.get('newPassword') !== data.get('confirmPassword')) { setError('New passwords do not match'); return }
-    try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
-  }
-  return <main className="page grid gap-6">
-    <div className="alt-content-heading">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Personal appearance, account security, and instance print policy.</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <nav aria-label="Breadcrumb"><span>Management</span><b>/</b><strong>Settings</strong></nav>
+function SettingsMenu({ user, preview, theme, section, onSection, onClose, onProfile, onSignOut }: { user: CurrentUser; preview: boolean; theme: ReturnType<typeof useTheme>; section: SettingsSection; onSection: (section: SettingsSection) => void; onClose: () => void; onProfile: () => void; onSignOut: () => void }) {
+  const admin = user.role === 'ADMIN'
+  const items: { id: SettingsSection; label: string; icon: ReactNode }[] = [
+    { id: 'general', label: 'General', icon: <Settings2 className="size-4" /> },
+    { id: 'account', label: 'Account', icon: <UserRound className="size-4" /> },
+    ...(admin ? [
+      { id: 'policy' as const, label: 'Print policy', icon: <Shield className="size-4" /> },
+      { id: 'diagnostics' as const, label: 'Diagnostics', icon: <Activity className="size-4" /> },
+    ] : []),
+  ]
+  return <Dialog variant="settings" label="Settings" onClose={onClose}>
+    <div className="settings-menu-nav">
+      <h2>Settings</h2>
+      <nav aria-label="Settings sections">
+        {items.map(item => (
+          <button key={item.id} type="button" aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)}>
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <button type="button" className="settings-sign-out" onClick={onSignOut}>
+        <LogOut className="size-4" />
+        Sign out
+      </button>
+    </div>
+    <div className="settings-menu-pane">
+      <header>
+        <h2>{items.find(item => item.id === section)?.label}</h2>
+        <button type="button" className="settings-close" aria-label="Close settings" onClick={onClose}><X className="size-4" /></button>
+      </header>
+      {section === 'general' && <SettingsGeneral theme={theme} />}
+      {section === 'account' && <SettingsAccount user={user} onProfile={onProfile} />}
+      {section === 'policy' && admin && <SettingsPolicy user={user} preview={preview} />}
+      {section === 'diagnostics' && admin && <SettingsDiagnostics user={user} preview={preview} />}
+    </div>
+  </Dialog>
+}
+
+function SettingsGeneral({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  return <section className="settings-panel" aria-label="Appearance">
+    <h3>Appearance</h3>
+    <div className="settings-row">
+      <span>Mode</span>
+      <div className="theme-switch" role="group" aria-label="Theme">
+        {(['light', 'dark', 'system'] as const).map(value => (
+          <button key={value} type="button" aria-pressed={theme.value === value} aria-label={value === 'light' ? 'Light' : value === 'dark' ? 'Dark' : 'System'} onClick={() => theme.set(value)}>
+            {value === 'light' ? <Sun className="size-4" /> : value === 'dark' ? <Moon className="size-4" /> : <Monitor className="size-4" />}
+          </button>
+        ))}
       </div>
     </div>
+  </section>
+}
+
+function SettingsAccount({ user, onProfile }: { user: CurrentUser; onProfile: () => void }) {
+  return <section className="settings-panel" aria-label="Account">
+    <button type="button" className="settings-link" onClick={onProfile}>
+      <UserRound className="size-4" />
+      <span><strong>My profile</strong><small>{user.email}</small></span>
+    </button>
+  </section>
+}
+
+function SettingsDiagnostics({ user, preview }: { user: CurrentUser; preview: boolean }) {
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | undefined>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : undefined)
+  const [error, setError] = useState('')
+  useEffect(() => { if (!preview && user.role === 'ADMIN') api.diagnostics().then(value => { setDiagnostics(value); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
+  return <div className="grid gap-4">
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
-    {user.role === 'ADMIN' && (
+    {!diagnostics ? <MetricStripSkeleton label="Loading system status" /> : (
       <section aria-label="System status" className="metrics quota-strip">
         <MetricCard
           label="Database"
-          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} mono>{diagnostics.database}</Badge>}
+          value={diagnostics.database}
           hint="PostgreSQL connection"
         />
         <MetricCard
-          label="Job storage"
-          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} mono>{diagnostics.storage}</Badge>}
+          label="Storage"
+          value={diagnostics.storage}
           hint="Spool file storage"
         />
         <MetricCard
-          label="Printing protocol"
-          value={<Badge variant={diagnostics.printing === 'IPP' ? 'success' : 'warning'} mono>{diagnostics.printing}</Badge>}
+          label="Protocol"
+          value={diagnostics.printing}
           hint="Direct printer connection"
         />
         <MetricCard
-          label="Registered printers"
+          label="Printers"
           value={diagnostics.registeredPrinters}
           hint="Configured IPP endpoints"
         />
       </section>
     )}
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle asChild><h2 className="text-base font-semibold">Typeface</h2></CardTitle>
-            <CardDescription className="mt-1">DM Sans is the default. Your selection is saved locally.</CardDescription>
-          </div>
-          <Badge variant="outline">Appearance</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <RadioGroup className="sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
-          {TYPES.map(item => (
-            <Label
-              key={item.id}
-              htmlFor={`typeface-${item.id}`}
-              variant="choice"
-              data-selected={typeface.value === item.id ? 'true' : undefined}
-            >
-              <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-1" />
-              <div className="grid gap-0.5">
-                <div className="flex items-center gap-2">
-                  <strong className="text-sm font-semibold tracking-tight">{item.short.replace(/^\d+ /, '')}</strong>
-                  {item.id === 'dmsans' && <Badge variant="secondary">Default</Badge>}
-                </div>
-                <small className="text-muted-foreground text-xs leading-relaxed">{item.blurb}</small>
-              </div>
-            </Label>
-          ))}
-        </RadioGroup>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle asChild><h2 className="text-base font-semibold">Password</h2></CardTitle>
-            <CardDescription className="mt-1">Use at least 12 characters.</CardDescription>
-          </div>
-          <Lock className="size-4 text-muted-foreground" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-4" onSubmit={changePassword}>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="current-password">Current password</Label>
-              <TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-password">New password</Label>
-              <TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="confirm-password">Confirm new password</Label>
-              <TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
-            </div>
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button type="submit" size="sm">Change password</Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-    {user.role === 'ADMIN' && (
+  </div>
+}
+
+function SettingsPolicy({ user, preview }: { user: CurrentUser; preview: boolean }) {
+  const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
+  const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
+  const [notice, setNotice] = useState(''); const [error, setError] = useState('')
+  useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
+  useEffect(() => { if (!preview && user.role === 'ADMIN') api.settings().then(value => { setSettings(value); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: colorAllowed }
+    try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }
+  }
+  return <div className="grid gap-4">
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
       <Card key={settings.updatedAt}>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1670,15 +1757,7 @@ function Settings({ typeface, user, preview }: { typeface: ReturnType<typeof use
           </form>
         </CardContent>
       </Card>
-    )}
-  </main>
-}
-
-function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
-  const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
-  return <button className="icon-button" title={`Theme: ${theme.value}`} aria-label={`Theme ${theme.value}`} onClick={() => theme.set(next)}>
-    {theme.resolved === 'dark' ? <MoonIcon /> : <SunIcon />}
-  </button>
+  </div>
 }
 
 function QueueDate({ value }: { value: string }) {
@@ -1706,18 +1785,6 @@ function usePreview() {
   return preview
 }
 
-function useTypeface() {
-  const [value, setValue] = useState<TypeId>(() => {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('printle-typeface') : null
-    return TYPES.some(item => item.id === saved) ? saved as TypeId : 'dmsans'
-  })
-  useEffect(() => {
-    document.documentElement.dataset.type = value
-    localStorage.setItem('printle-typeface', value)
-  }, [value])
-  return { value, set: setValue }
-}
-
 function useSidebar() {
   const [collapsed, setCollapsed] = useState(() => typeof localStorage !== 'undefined' && localStorage.getItem('printle-sidebar') === 'collapsed')
   useEffect(() => {
@@ -1743,8 +1810,6 @@ function useTheme() {
 }
 
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
-function SunIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> }
-function MoonIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg> }
 function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings' | 'logout' }) {
   if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
   if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
@@ -1754,7 +1819,7 @@ function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | '
   if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports', users: 'Users & Reports', reports: 'Users & Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }

@@ -9,6 +9,8 @@ afterEach(() => { cleanup(); window.location.hash = '' })
 test('shows login and reports invalid credentials', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch')
   fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ required: false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ token: 'csrf' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Invalid email or password' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
   render(<App />)
@@ -17,6 +19,69 @@ test('shows login and reports invalid credentials', async () => {
   await userEvent.type(screen.getByLabelText('Password'), 'wrong-password')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password')
+})
+
+test('shows an inline error for an invalid login email', async () => {
+  const fetchMock = vi.spyOn(globalThis, 'fetch')
+  fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }))
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ required: false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Sign in to printLe' })
+  await userEvent.type(screen.getByLabelText('Email'), 'afhjdsufhdsf')
+  await userEvent.type(screen.getByLabelText('Password'), 'any-password')
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address')
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/auth/login'))).toBe(false)
+})
+
+test('shows a compact getting-started dialog when setup is required', async () => {
+  let signedIn = false
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+    const url = String(input)
+    if (url.endsWith('/api/auth/me')) {
+      return signedIn
+        ? json({ id: '1', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' })
+        : new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (url.endsWith('/api/auth/setup') && options?.method !== 'POST') return json({ required: true })
+    if (url.endsWith('/api/auth/csrf')) return json({ token: 'csrf' })
+    if (url.endsWith('/api/auth/setup') && options?.method === 'POST') return new Response(null, { status: 204 })
+    if (url.endsWith('/api/auth/login')) { signedIn = true; return json({ authenticated: true }) }
+    if (url.endsWith('/api/jobs/quota')) return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    if (url.endsWith('/api/jobs')) return json([])
+    return new Response('{}', { status: 404 })
+  })
+  render(<App />)
+  const setup = await screen.findByRole('region', { name: 'Getting started' })
+  expect(screen.getByRole('heading', { name: 'Create admin account' })).toBeInTheDocument()
+  await userEvent.type(within(setup).getByLabelText('Name'), 'Alex Rivera')
+  await userEvent.type(within(setup).getByLabelText('Email'), 'alex@printle.local')
+  await userEvent.type(within(setup).getByLabelText('Password'), 'long-enough-pass')
+  await userEvent.type(within(setup).getByLabelText('Confirm password'), 'long-enough-pass')
+  await userEvent.clear(within(setup).getByLabelText('Email'))
+  await userEvent.type(within(setup).getByLabelText('Email'), 'afhjdsufhdsf')
+  await userEvent.click(within(setup).getByRole('button', { name: 'Create admin' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address')
+  await userEvent.clear(within(setup).getByLabelText('Email'))
+  await userEvent.type(within(setup).getByLabelText('Email'), 'alex@printle.local')
+  await userEvent.click(within(setup).getByRole('button', { name: 'Create admin' }))
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Getting started' })).not.toBeInTheDocument())
+})
+
+test('shows a skeleton until the signed-in session is known', async () => {
+  let releaseMe: (response: Response) => void = () => {}
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/api/auth/me')) return new Promise(resolve => { releaseMe = resolve })
+    if (url.endsWith('/api/jobs/quota')) return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    return new Response('{}', { status: 404 })
+  })
+  render(<App />)
+  expect(screen.getByRole('main', { name: 'Loading' })).toHaveAttribute('aria-busy', 'true')
+  expect(screen.getByLabelText('Loading allowance')).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Sign in to printLe' })).not.toBeInTheDocument()
+  releaseMe(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }))
+  expect(await screen.findByRole('heading', { name: 'Sign in to printLe' })).toBeInTheDocument()
 })
 
 test('renders a dashboard preview with sample jobs', async () => {
@@ -28,14 +93,13 @@ test('renders a dashboard preview with sample jobs', async () => {
   expect(screen.getAllByText(/1st September 2026/).length).toBeGreaterThan(0)
   expect(screen.getAllByText('Grayscale')[0]).toBeInTheDocument()
   expect(screen.getAllByLabelText('Cancel').length).toBeGreaterThan(0)
-  expect(document.documentElement).toHaveAttribute('data-type', 'dmsans')
 })
 
 test('uses the permanent shadcn application layout', async () => {
   window.location.hash = '#preview'
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
-  expect(screen.getByText('printLe preview')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument()
   expect(screen.getByText('Pages left')).toBeInTheDocument()
   expect(document.documentElement).toHaveAttribute('data-layout', 'shadcn')
   expect(screen.queryByRole('button', { name: 'Muted AdminLTE' })).not.toBeInTheDocument()
@@ -48,17 +112,12 @@ test('shows the print pass on My profile', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'My profile' }))
   expect(screen.getByText('Member')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'My print pass' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Change password' }))
+  expect(screen.getByRole('heading', { name: 'Change password' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Current password')).toBeInTheDocument()
   expect(document.documentElement).not.toHaveAttribute('data-pass')
-})
-
-test('selects and saves a typeface from settings', async () => {
-  window.location.hash = '#preview'
-  render(<App />)
-  expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  await userEvent.click(screen.getByRole('radio', { name: /Fira Code/ }))
-  expect(document.documentElement).toHaveAttribute('data-type', 'fira')
-  expect(localStorage.getItem('printle-typeface')).toBe('fira')
 })
 
 test('sorts the queue when a column header is clicked', async () => {
@@ -152,8 +211,10 @@ test('renders printer, group, report, and diagnostic administration views', asyn
   expect(screen.getAllByText('Everyone').length).toBeGreaterThan(0)
   expect(screen.getByRole('button', { name: '+ Add group' })).toBeInTheDocument()
   expect(screen.getByText('$3.18')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  expect(await screen.findByText('Printing protocol')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Settings' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Diagnostics' }))
+  expect(await screen.findByText('Protocol')).toBeInTheDocument()
 })
 
 test('paginates the queue when the page size changes', async () => {
@@ -189,7 +250,53 @@ test('collapses the sidebar and opens the account menu', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Account menu' }))
   expect(screen.getByRole('menuitem', { name: 'Profile' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('menuitem', { name: 'Settings' }))
-  expect(await screen.findByText('Printing protocol')).toBeInTheDocument()
+  expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Theme' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Typeface' })).not.toBeInTheDocument()
+})
+
+test('returns to the last page and keeps it mounted after leaving', async () => {
+  localStorage.setItem('printle-page', 'printers')
+  let printerPages = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/api/auth/me')) return json({ id: '1', email: 'admin@example.com', displayName: 'Admin', role: 'ADMIN' })
+    if (url.endsWith('/api/jobs/quota')) return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    if (url.endsWith('/api/jobs')) return json([])
+    if (url.endsWith('/api/printers')) return json([])
+    if (url.endsWith('/api/admin/users')) { printerPages += 1; return json([]) }
+    if (url.endsWith('/api/admin/users')) return json([])
+    if (url.endsWith('/api/admin/groups')) return json([])
+    if (url.endsWith('/api/admin/reports')) return json({ completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
+    if (url.endsWith('/api/admin/system/settings')) return json({ defaultMonthlyPageQuota: 200, quotaTimezone: 'UTC', heldJobTtlHours: 24, completedRetentionHours: 720, failedRetentionHours: 168, maxCopies: 100, maxPagesPerJob: 1000, colorPrintingAllowed: true, updatedAt: '2026-09-01T00:00:00Z' })
+    if (url.endsWith('/api/admin/system/diagnostics')) return json({ database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 1 })
+    return new Response('{}', { status: 404 })
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+  expect(localStorage.getItem('printle-page')).toBe('printers')
+  await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
+  expect(await screen.findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+  await waitFor(() => expect(printerPages).toBe(1))
+  await userEvent.click(screen.getByRole('button', { name: 'Print queue' }))
+  expect(await screen.findByRole('heading', { name: 'Print dashboard' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Printers' }))
+  expect(screen.getByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+  expect(printerPages).toBe(1)
+})
+
+test('sends an expired session back to sign-in', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/api/auth/me')) return json({ id: '1', email: 'sam@example.com', displayName: 'Sam', role: 'USER' })
+    if (url.endsWith('/api/jobs/quota')) return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    if (url.endsWith('/api/jobs')) return new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } })
+    if (url.endsWith('/api/auth/setup')) return json({ required: false })
+    return new Response('{}', { status: 404 })
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Sign in to printLe' })).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Your session ended. Sign in again.')
 })
 
 test('renders an authenticated empty queue', async () => {
@@ -206,6 +313,34 @@ test('renders an authenticated empty queue', async () => {
 })
 
 function json(value: unknown) { return Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
+
+test.each(['printers', 'fake-printer', 'users-reports'])('returns a regular user to the queue from saved %s navigation', async saved => {
+  localStorage.setItem('printle-page', saved)
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+    const path = String(input)
+    if (path === '/api/auth/me') return json({ id: 'user', email: 'user@example.com', displayName: 'User', role: 'USER' })
+    if (path === '/api/jobs/quota') return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    return json([])
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument()
+  await waitFor(() => expect(localStorage.getItem('printle-page')).toBe('queue'))
+  expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith('/api/admin/'))).toBe(false)
+})
+
+test('preserves an accessible saved page for an administrator', async () => {
+  localStorage.setItem('printle-page', 'printers')
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+    const path = String(input)
+    if (path === '/api/auth/me') return json({ id: 'admin', email: 'admin@example.com', displayName: 'Admin', role: 'ADMIN' })
+    if (path === '/api/jobs/quota') return json({ limit: 100, used: 0, pending: 0, remaining: 100, exempt: false })
+    if (path === '/api/admin/reports') return json({ completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
+    return json([])
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+  expect(localStorage.getItem('printle-page')).toBe('printers')
+})
 
 test('adds a direct IPP printer and displays the connection', async () => {
   const printer = { id: 'ipp-1', name: 'Office IPP', ippUri: 'ipp://192.168.1.50/ipp/print', transport: 'DIRECT_IPP', status: 'ONLINE', enabled: true, maintenance: false, colorCapable: true, duplexCapable: true, monoPageRate: 0.05, colorPageRate: 0.2, rateVersion: 1 }

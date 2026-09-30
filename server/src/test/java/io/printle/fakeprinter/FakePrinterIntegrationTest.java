@@ -40,7 +40,10 @@ class FakePrinterIntegrationTest {
     @MockitoBean JobStatePoller jobPoller;
 
     @BeforeEach void enable() { fake.enable(true); fake.clearEvents(); }
-    String endpoint() { return "ipp://127.0.0.1:" + port + fake.snapshot().path(); }
+    // Exercise delivery on the host's LAN address; the advertised loopback URL stays restricted.
+    String endpoint() throws java.net.SocketException {
+        return "ipp://" + io.printle.TestNetworkAddress.host() + ":" + port + fake.snapshot().path();
+    }
 
     @Test void normalPrintleWorkflowDiscoversDeliversPollsAndCompletes() throws Exception {
         String printerId = JsonPath.read(mvc.perform(post("/api/printers/ipp").with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -141,7 +144,7 @@ class FakePrinterIntegrationTest {
         assertEquals(205, fake.snapshot().events().getFirst().requestId());
     }
 
-    IppMessage request(int operation, int id) {
+    IppMessage request(int operation, int id) throws java.net.SocketException {
         return new IppMessage(operation, id).add(1, 0x47, "attributes-charset", "utf-8")
             .add(1, 0x48, "attributes-natural-language", "en").add(1, 0x45, "printer-uri", endpoint());
     }

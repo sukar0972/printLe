@@ -25,6 +25,7 @@ management:
   endpoints.web.exposure.include: health,info
   endpoint.health.probes.enabled: true
 printle:
+  trusted-proxies: ${PRINTLE_TRUSTED_PROXIES:}
   storage-path: ${PRINTLE_STORAGE_PATH:./data/jobs}
   bootstrap-admin-email: ${PRINTLE_BOOTSTRAP_ADMIN_EMAIL:admin@printle.local}
   bootstrap-admin-password: ${PRINTLE_BOOTSTRAP_ADMIN_PASSWORD:change-me-now}

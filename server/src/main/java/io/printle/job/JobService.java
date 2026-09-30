@@ -19,6 +19,9 @@ import org.apache.pdfbox.Loader;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,14 +44,14 @@ public class JobService {
     private final QuotaLedgerRepository quotaLedger; private final Path storage;
     private final PrinterRepository printers;
     private final io.printle.ipp.DirectIppClient ipp;
-    private final org.springframework.transaction.support.TransactionTemplate transactions;
+    private final TransactionTemplate transactions;
     private final PrinterAccessService printerAccess;
     private final InstanceSettingsService settings; private final UserGroupRepository groups;
     public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit,
                       QuotaService quotas, QuotaLedgerRepository quotaLedger, PrinterRepository printers,
                       PrinterAccessService printerAccess, InstanceSettingsService settings, UserGroupRepository groups, PrintleProperties properties, io.printle.ipp.DirectIppClient ipp, org.springframework.transaction.PlatformTransactionManager transactionManager) throws IOException {
         this.ipp = ipp;
-        this.transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        this.transactions = new TransactionTemplate(transactionManager);
         this.jobs = jobs; this.users = users; this.audit = audit; this.quotas = quotas; this.quotaLedger = quotaLedger; this.printers = printers; this.printerAccess = printerAccess;
         this.storage = Path.of(properties.storagePath()).toAbsolutePath().normalize();
         this.settings = settings; this.groups = groups;
@@ -302,11 +305,21 @@ public class JobService {
         return new QuotaView(limit, used, pending, owner.isQuotaExempt() ? null : Math.max(0, limit - used - pending), owner.isQuotaExempt());
     }
 
-    @Transactional
     public void expireHeldJobs() {
-        for (var job : jobs.findAllByStatusAndExpiresAtLessThanEqual(JobStatus.HELD, Instant.now())) {
-            job.expire(); quotas.settle(job, false); deletePayload(job);
-            audit.record(job.getOwner(), "JOB_EXPIRED", "PRINT_JOB", job.getId().toString(), job.getOriginalFilename());
+        var cutoff = Instant.now();
+        for (var id : jobs.findExpiredIds(JobStatus.HELD, cutoff)) {
+            transactions.executeWithoutResult(tx -> {
+                var job = jobs.findByIdForUpdate(id).orElse(null);
+                if (job == null || job.getStatus() != JobStatus.HELD
+                    || job.getExpiresAt() == null || job.getExpiresAt().isAfter(cutoff)) return;
+                job.expire();
+                quotas.settle(job, false);
+                audit.record(job.getOwner(), "JOB_EXPIRED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
+                TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override public void afterCommit() { deletePayload(job); }
+                    });
+            });
         }
     }
 

@@ -44,6 +44,7 @@ class RateLimitIntegrationTest {
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .param("email", "user" + i + "@test.local")
                     .param("password", "wrong-password-" + i)
+                    .header("X-Forwarded-For", "203.0.113." + i)
                     .with(request -> {
                         request.setRemoteAddr(testIp);
                         return request;
@@ -57,6 +58,7 @@ class RateLimitIntegrationTest {
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("email", "user11@test.local")
                 .param("password", "wrong-password-11")
+                .header("X-Forwarded-For", "203.0.113.99")
                 .with(request -> {
                     request.setRemoteAddr(testIp);
                     return request;

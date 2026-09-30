@@ -5,6 +5,7 @@ import io.printle.user.AppUserRepository;
 import io.printle.user.UserStatus;
 import io.printle.audit.AuditService;
 import io.printle.ratelimit.LoginRateLimitFilter;
+import io.printle.ratelimit.ClientAddressResolver;
 import io.printle.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -25,6 +26,9 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 @EnableMethodSecurity
 @EnableConfigurationProperties(PrintleProperties.class)
 public class SecurityConfig {
+    @Bean ClientAddressResolver clientAddressResolver(@org.springframework.beans.factory.annotation.Value("${printle.trusted-proxies:}") String proxies) {
+        return new ClientAddressResolver(proxies);
+    }
     @Bean org.springframework.security.core.session.SessionRegistry sessionRegistry() {
         return new org.springframework.security.core.session.SessionRegistryImpl();
     }
@@ -42,13 +46,13 @@ public class SecurityConfig {
             .orElseThrow(() -> new org.springframework.security.core.userdetails.UsernameNotFoundException("Invalid credentials"));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit, org.springframework.security.core.session.SessionRegistry sessions, RateLimitService rateLimitService) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AppUserRepository users, AuditService audit, org.springframework.security.core.session.SessionRegistry sessions, RateLimitService rateLimitService, ClientAddressResolver addresses) throws Exception {
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrf.setCookiePath("/");
         var handler = new CsrfTokenRequestAttributeHandler();
         handler.setCsrfRequestAttributeName(null);
         return http
-            .addFilterBefore(new LoginRateLimitFilter(rateLimitService, objectMapper), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new LoginRateLimitFilter(rateLimitService, objectMapper, addresses), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
             .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(handler)
                 .ignoringRequestMatchers("/api/fake-printer/ipp/*"))
             .headers(headers -> headers
@@ -57,7 +61,7 @@ public class SecurityConfig {
                 .contentTypeOptions(options -> {}))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/fake-printer/ipp/*").permitAll()
-                .requestMatchers("/actuator/health/**", "/api/auth/csrf", "/api/auth/login").permitAll()
+                .requestMatchers("/actuator/health/**", "/api/auth/csrf", "/api/auth/login", "/api/auth/setup").permitAll()
                 .anyRequest().authenticated())
             .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessions)
                 .expiredSessionStrategy(event -> {
