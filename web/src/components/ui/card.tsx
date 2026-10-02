@@ -1,0 +1,46 @@
+import * as React from 'react'
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '@/lib/utils'
+
+const cardVariants = cva('bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border py-6', {
+  variants: {
+    variant: {
+      default: '',
+      warning: 'border-warning/20 bg-warning/5',
+      dashed: 'border-dashed',
+    },
+  },
+  defaultVariants: { variant: 'default' },
+})
+
+function Card({ className, variant, ...props }: React.ComponentProps<'div'> & VariantProps<typeof cardVariants>) {
+  return <div data-slot="card" className={cn(cardVariants({ variant }), className)} {...props} />
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="card-header" className={cn('flex flex-col gap-1.5 px-6', className)} {...props} />
+}
+
+function CardTitle({ className, asChild = false, ...props }: React.ComponentProps<'div'> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : 'div'
+  return <Comp data-slot="card-title" className={cn('leading-none font-semibold', className)} {...props} />
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="card-description" className={cn('text-muted-foreground text-sm', className)} {...props} />
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="card-action" className={cn('ml-auto', className)} {...props} />
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="card-content" className={cn('px-6 text-sm', className)} {...props} />
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="card-footer" className={cn('flex items-center px-6 text-sm text-muted-foreground', className)} {...props} />
+}
+
+export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent }

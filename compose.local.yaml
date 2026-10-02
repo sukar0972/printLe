@@ -1,0 +1,4 @@
+# Local override for nested Docker environments that drop internal-network traffic.
+networks:
+  backend:
+    internal: false
