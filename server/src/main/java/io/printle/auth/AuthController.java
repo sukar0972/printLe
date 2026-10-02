@@ -3,7 +3,6 @@ package io.printle.auth;
 import io.printle.user.AppUser;
 import io.printle.user.AppUserRepository;
 import io.printle.user.Role;
-import io.printle.user.UserGroup;
 import io.printle.user.UserGroupRepository;
 import io.printle.audit.AuditService;
 import jakarta.validation.Valid;
@@ -35,9 +34,11 @@ public class AuthController {
     public Map<String, Boolean> setup() { return Map.of("required", users.count() == 0); }
 
     @PostMapping("/setup") @ResponseStatus(HttpStatus.NO_CONTENT) @Transactional
-    public synchronized void completeSetup(@Valid @RequestBody SetupRequest request) {
+    public void completeSetup(@Valid @RequestBody SetupRequest request) {
+        // Bootstrap creates this built-in group before requests are served. Hold its
+        // database lock through commit so concurrent setup requests cannot both win.
+        var everyone = groups.findByNameForUpdate("Everyone").orElseThrow();
         if (users.count() > 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "An administrator already exists");
-        var everyone = groups.findByName("Everyone").orElseGet(() -> groups.save(new UserGroup("Everyone", true)));
         var admin = users.save(new AppUser(request.email(), request.displayName(), passwords.encode(request.password()), Role.ADMIN));
         everyone.addMember(admin);
         audit.record(admin, "SETUP_ADMIN", "USER", admin.getId().toString(), "First-run administrator");

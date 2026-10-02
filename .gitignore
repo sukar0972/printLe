@@ -5,6 +5,8 @@
 .firecrawl/
 node_modules/
 dist/
+dist.bak/
+.mvn.bak/
 coverage/
 target/
 *.tsbuildinfo
