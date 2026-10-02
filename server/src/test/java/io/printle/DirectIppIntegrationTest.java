@@ -121,16 +121,16 @@ class DirectIppIntegrationTest {
             .andExpect(jsonPath("$[?(@.id == '%s')].estimatedCost".formatted(job)).value(0.10));
     }
 
-    @Test void deliveryFailureKeepsRemoteIdAndDoesNotResubmitAndCanCancel() throws Exception {
+    @Test void deliveryFailureCancelsTheEmptyJobAndAllowsAnotherRelease() throws Exception {
         String path = "/send-failure-" + UUID.randomUUID();
         String id = add(path), job = upload("ONE_SIDED");
         mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf())).andExpect(status().isBadGateway());
-        mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf()))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.ippJobId").value(42));
+        mvc.perform(get("/api/jobs")).andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(job)).value("HELD"));
         assertEquals(1, received.stream().filter(r -> r.operation() == 6).count());
+        assertEquals(1, received.stream().filter(r -> r.operation() == 8 && r.path().equals(path)).count());
+        mvc.perform(post("/api/jobs/{id}/release", job).param("printerId", id).with(csrf())).andExpect(status().isBadGateway());
+        assertEquals(2, received.stream().filter(r -> r.operation() == 6).count());
         mvc.perform(delete("/api/jobs/{id}", job).with(csrf())).andExpect(status().isNoContent());
-        assertTrue(received.stream().anyMatch(r -> r.operation() == 8 && r.path().equals(path)));
-        jobs.syncActiveJobs();
         mvc.perform(get("/api/jobs")).andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(job)).value("CANCELED"));
     }
 

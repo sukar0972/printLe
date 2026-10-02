@@ -111,10 +111,11 @@ public class DirectIppClient {
         var colorModes = response.getStrings(Tag.printerAttributes, Types.printColorModeSupported);
 
         var copiesRange = response.getValue(Tag.printerAttributes, Types.copiesSupported);
-        int maxCopies = copiesRange != null ? copiesRange.getLast() : 1;
+        int maxCopies = copiesRange != null ? copiesRange.getLast() : Integer.MAX_VALUE;
+        boolean colorCapable = Boolean.TRUE.equals(color) || colorModes.stream().anyMatch(DirectIppClient::isColorMode);
 
         return new Capabilities(name, location, status, accepting != null ? accepting : true,
-            color != null ? color : false, sides, media, reasons, colorModes, maxCopies, operations);
+            colorCapable, sides, media, reasons, colorModes, maxCopies, operations);
     }
 
     public PreparedSubmission prepare(String endpoint, UUID key, String user, int copies, ColorMode color, DuplexMode duplex) {
@@ -127,11 +128,12 @@ public class DirectIppClient {
             default -> "one-sided";
         };
         if (!caps.sides().isEmpty() && !caps.sides().contains(sides)) throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer does not support the selected sides setting");
-        String mode = color == ColorMode.COLOR ? "color" : "monochrome";
-        if (color == ColorMode.COLOR && !caps.color()) throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer does not support color");
-        if (caps.color() && !caps.colorModes().contains(mode))
+        boolean wantsColor = color == ColorMode.COLOR;
+        if (wantsColor && !caps.color()) throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer does not support color");
+        if (!caps.colorModes().isEmpty() && caps.colorModes().stream().noneMatch(wantsColor ? DirectIppClient::isColorMode : DirectIppClient::isMonoMode))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer cannot guarantee the selected color mode");
-        boolean staged = caps.operations().containsAll(List.of(5, 6));
+        String mode = preferredColorMode(caps.colorModes(), wantsColor);
+        boolean staged = !caps.operations().contains(2) && caps.operations().containsAll(List.of(5, 6));
 
         var opAttrs = new ArrayList<Attribute<?>>();
         opAttrs.add(Types.jobName.of("printLe-" + key));
@@ -141,7 +143,9 @@ public class DirectIppClient {
         var jobAttrs = new ArrayList<Attribute<?>>();
         if (caps.maxCopies() > 1) jobAttrs.add(Types.copies.of(copies));
         if (!caps.sides().isEmpty()) jobAttrs.add(Types.sides.of(sides));
-        if (!caps.colorModes().isEmpty() && caps.colorModes().contains(mode)) jobAttrs.add(Types.printColorMode.of(mode));
+        // A color-capable printer must receive an explicit mode even when it omits
+        // the supported-mode list; attribute fidelity requires it to honor or reject it.
+        if (caps.color() || !caps.colorModes().isEmpty()) jobAttrs.add(Types.printColorMode.of(mode));
 
         AttributeGroup jobGroup = jobAttrs.isEmpty() ? null : AttributeGroup.groupOf(Tag.jobAttributes, jobAttrs);
         var request = packet(staged ? Operation.createJob : Operation.printJob, endpoint, user, opAttrs, jobGroup);
@@ -161,8 +165,9 @@ public class DirectIppClient {
         var reasons = response.getStrings(Tag.jobAttributes, Types.jobStateReasons);
         if (reasons.isEmpty()) reasons = response.getStrings(Tag.operationAttributes, Types.jobStateReasons);
         String reasonsStr = reasons.isEmpty() ? (prepared.staged() ? "job-incoming" : "none") : String.join(",", reasons);
+        boolean colorRejected = response.getCode() != 0 && colorModeUnsupported(response);
 
-        return new Submission(id, prepared.endpoint(), stateStr, reasonsStr);
+        return new Submission(id, prepared.endpoint(), stateStr, reasonsStr, colorRejected);
     }
 
     public void send(String endpoint, int id, String user, Path file) {
@@ -265,14 +270,33 @@ public class DirectIppClient {
                 String message = resPacket.getString(Tag.operationAttributes, Types.statusMessage);
                 throw new IppException("Printer rejected the IPP request (0x" + Integer.toHexString(code) + "): " + (message != null ? message : "unsupported operation or settings"));
             }
-            if (code != 0 && (packet.getCode() == 2 || packet.getCode() == 5))
-                throw new IppException("Printer did not honor all required print settings; delivery is unconfirmed");
             return resPacket;
         } catch (IppException e) { throw e; }
         catch (Exception e) { throw new IppException("Could not communicate with the IPP printer; check its address, network access, and TLS certificate"); }
     }
 
-    public record Submission(int jobId, String endpoint, String state, String reasons) {}
+    public record Submission(int jobId, String endpoint, String state, String reasons, boolean colorRejected) {
+        public Submission(int jobId, String endpoint, String state, String reasons) { this(jobId, endpoint, state, reasons, false); }
+    }
+
+    private static boolean isColorMode(String mode) {
+        return "color".equals(mode) || "process-color".equals(mode) || "highlight".equals(mode);
+    }
+    private static boolean isMonoMode(String mode) {
+        return "monochrome".equals(mode) || "process-monochrome".equals(mode) || "bi-level".equals(mode);
+    }
+    private static String preferredColorMode(List<String> modes, boolean color) {
+        for (String candidate : color ? List.of("color", "process-color", "highlight") : List.of("monochrome", "process-monochrome", "bi-level"))
+            if (modes.contains(candidate)) return candidate;
+        return color ? "color" : "monochrome";
+    }
+    private static boolean colorModeUnsupported(IppPacket response) {
+        for (var group : response.getAttributeGroups()) {
+            if (group.getTag() != Tag.unsupportedAttributes) continue;
+            for (var attribute : group) if ("print-color-mode".equals(attribute.getName())) return true;
+        }
+        return false;
+    }
     public record IppStatus(int jobId, String state, String reasons) {}
 
     public static class IppException extends ResponseStatusException {

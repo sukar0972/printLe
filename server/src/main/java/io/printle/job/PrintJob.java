@@ -80,6 +80,7 @@ public class PrintJob {
         this.completedAt = null; this.ippStateReasons = "Delivery not confirmed; check the printer before sending another job";
     }
     public void restoreBeforeSubmission(String phase) {
+        this.submissionKey = null;
         this.status = "EVEN".equals(phase) ? JobStatus.AWAITING_FLIP : JobStatus.HELD;
         this.manualPhase = "EVEN".equals(phase) ? "ODD" : null;
         this.ippJobId = "EVEN".equals(phase) ? oddIppJobId : null;

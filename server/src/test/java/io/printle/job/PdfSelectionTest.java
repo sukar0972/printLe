@@ -10,6 +10,9 @@ import java.io.ByteArrayOutputStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PdfSelectionTest {
+    @Test void keepsTheRequestedPageOrder() {
+        assertEquals(java.util.List.of(4, 0, 1), PdfSelection.indices("5, 1-2, 5", 5));
+    }
     private byte[] pdf() throws Exception {
         try (var doc = new PDDocument(); var out = new ByteArrayOutputStream()) {
             for (int i = 1; i <= 5; i++) doc.addPage(new PDPage(new PDRectangle(100 * i, 600)));

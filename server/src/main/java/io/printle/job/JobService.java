@@ -35,7 +35,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Service
 public class JobService {
@@ -47,6 +49,8 @@ public class JobService {
     private final TransactionTemplate transactions;
     private final PrinterAccessService printerAccess;
     private final InstanceSettingsService settings; private final UserGroupRepository groups;
+    // Do not reconcile a remote job while this process is still sending its document.
+    private final Set<UUID> submitting = ConcurrentHashMap.newKeySet();
     public JobService(PrintJobRepository jobs, AppUserRepository users, AuditService audit,
                       QuotaService quotas, QuotaLedgerRepository quotaLedger, PrinterRepository printers,
                       PrinterAccessService printerAccess, InstanceSettingsService settings, UserGroupRepository groups, PrintleProperties properties, io.printle.ipp.DirectIppClient ipp, org.springframework.transaction.PlatformTransactionManager transactionManager) throws IOException {
@@ -99,13 +103,24 @@ public class JobService {
     @Transactional
     public void cancel(String email, UUID id) {
         var job = ownedJob(email, id);
-        if (job.getStatus() == JobStatus.HELD || job.getStatus() == JobStatus.AWAITING_FLIP) {
+        if (job.getStatus() == JobStatus.HELD) {
             job.cancelHeld(); quotas.settle(job, false); deletePayload(job);
             audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), job.getOriginalFilename());
             return;
         }
+        if (job.getStatus() == JobStatus.AWAITING_FLIP) {
+            job.cancelHeld(); quotas.settlePrinted(job, oddImpressions(job)); deletePayload(job);
+            audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), "Odd pages already printed");
+            return;
+        }
+        if (job.getStatus() == JobStatus.SUBMISSION_UNKNOWN) {
+            if (job.getIppJobId() != null && job.getIppUri() != null) ipp.cancel(job.getIppUri(), job.getIppJobId(), email);
+            job.cancelHeld(); settleTerminal(job);
+            audit.record(job.getOwner(), "JOB_CANCELED", "PRINT_JOB", id.toString(), "Unconfirmed delivery abandoned");
+            return;
+        }
         if (Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED).contains(job.getStatus())) {
-            if (job.getIppUri() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "This historical job has no IPP endpoint");
+            if (job.getIppUri() == null || job.getIppJobId() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "This job has no IPP endpoint");
             ipp.cancel(job.getIppUri(), job.getIppJobId(), email);
             audit.record(job.getOwner(), "JOB_CANCEL_REQUESTED", "PRINT_JOB", id.toString(), "IPP " + job.getIppJobId());
             return;
@@ -114,12 +129,20 @@ public class JobService {
     }
 
     public PrintJob release(String email, UUID id, UUID printerId) {
-        DirectSubmissionPlan[] plan = {null};
-        var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, plan));
-        if (plan[0] != null) {
-            return executeDirect(plan[0]);
+        return duringSubmission(id, () -> {
+            DirectSubmissionPlan[] plan = {null};
+            var job = transactions.execute(transaction -> prepareRelease(email, id, printerId, plan));
+            return plan[0] == null ? job : executeDirect(plan[0]);
+        });
+    }
+
+    private PrintJob duringSubmission(UUID id, Supplier<PrintJob> action) {
+        if (!submitting.add(id)) throw new ResponseStatusException(HttpStatus.CONFLICT, "This job is already being submitted");
+        try {
+            return action.get();
+        } finally {
+            submitting.remove(id);
         }
-        return job;
     }
 
     private record DirectSubmissionPlan(UUID jobId, String endpoint, UUID key, String email,
@@ -145,24 +168,20 @@ public class JobService {
             attempted = true;
             if (prepared.staged()) {
                 var submission = ipp.submit(prepared, null);
-                transactions.execute(tx -> {
-                    var current = ownedJob(plan.email(), plan.jobId());
-                    applyRemote(current, submission, plan.phase());
-                    return current;
-                });
-                ipp.send(plan.endpoint(), submission.jobId(), plan.email(), payload);
-                return transactions.execute(tx -> {
-                    var current = ownedJob(plan.email(), plan.jobId());
-                    if (current.getPrinter() != null) current.getPrinter().getName();
-                    return current;
-                });
+                if (!submissionPending(plan)) return commitSubmission(plan, submission);
+                if (submission.colorRejected()) rejectColor(plan, submission);
+                try {
+                    ipp.send(plan.endpoint(), submission.jobId(), plan.email(), payload);
+                } catch (RuntimeException sendError) {
+                    if (cancelRemote(plan.endpoint(), submission.jobId(), plan.email())) restoreSubmission(plan);
+                    else commitSubmission(plan, submission);
+                    throw sendError;
+                }
+                return commitSubmission(plan, submission);
             } else {
                 var remote = ipp.submit(prepared, payload);
-                return transactions.execute(tx -> {
-                    var current = ownedJob(plan.email(), plan.jobId());
-                    applyRemote(current, remote, plan.phase());
-                    return current;
-                });
+                if (remote.colorRejected()) rejectColor(plan, remote);
+                return commitSubmission(plan, remote);
             }
         } catch (IOException | RuntimeException e) {
             if (!attempted) transactions.execute(tx -> {
@@ -187,12 +206,57 @@ public class JobService {
         settleTerminal(job);
         if (job.getPrinter() != null) job.getPrinter().getName();
     }
+    private PrintJob commitSubmission(DirectSubmissionPlan plan, io.printle.ipp.DirectIppClient.Submission remote) {
+        var job = transactions.execute(tx -> {
+            var current = ownedJob(plan.email(), plan.jobId());
+            if (plan.key().equals(current.getSubmissionKey()) && current.getStatus() == JobStatus.SUBMISSION_UNKNOWN)
+                applyRemote(current, remote, plan.phase());
+            if (current.getPrinter() != null) current.getPrinter().getName();
+            return current;
+        });
+        // Cancellation can win the database lock before the printer returns its ID.
+        // Preserve that decision and cancel the newly discovered remote job too.
+        if (job != null && job.getStatus() == JobStatus.CANCELED && plan.key().equals(job.getSubmissionKey()))
+            cancelRemote(plan.endpoint(), remote.jobId(), plan.email());
+        return job;
+    }
+
+    private boolean submissionPending(DirectSubmissionPlan plan) {
+        return Boolean.TRUE.equals(transactions.execute(tx -> {
+            var current = ownedJob(plan.email(), plan.jobId());
+            return current.getStatus() == JobStatus.SUBMISSION_UNKNOWN && plan.key().equals(current.getSubmissionKey());
+        }));
+    }
+
+    private void restoreSubmission(DirectSubmissionPlan plan) {
+        transactions.execute(tx -> {
+            var current = ownedJob(plan.email(), plan.jobId());
+            if (current.getStatus() == JobStatus.SUBMISSION_UNKNOWN && plan.key().equals(current.getSubmissionKey()))
+                current.restoreBeforeSubmission(plan.phase());
+            return null;
+        });
+    }
+
+    private boolean cancelRemote(String endpoint, int jobId, String email) {
+        try { ipp.cancel(endpoint, jobId, email); return true; }
+        catch (RuntimeException ignored) { return false; }
+    }
+
+    private void rejectColor(DirectSubmissionPlan plan, io.printle.ipp.DirectIppClient.Submission remote) {
+        if (!cancelRemote(plan.endpoint(), remote.jobId(), plan.email())) commitSubmission(plan, remote);
+        else restoreSubmission(plan);
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "The printer did not honor the selected color mode");
+    }
+
     private void settleTerminal(PrintJob job) {
         if (!Set.of(JobStatus.COMPLETED, JobStatus.CANCELED, JobStatus.ABORTED).contains(job.getStatus())) return;
-        quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
+        if (job.getStatus() != JobStatus.COMPLETED && "EVEN".equals(job.getManualPhase())) quotas.settlePrinted(job, oddImpressions(job));
+        else quotas.settle(job, job.getStatus() == JobStatus.COMPLETED);
         if (job.getStatus() != JobStatus.ABORTED) deletePayload(job);
         priceIfCompleted(job);
     }
+
+    private static int oddImpressions(PrintJob job) { return ((job.getPages() + 1) / 2) * job.getCopies(); }
 
     private PrintJob prepareRelease(String email, UUID id, UUID printerId, DirectSubmissionPlan[] plan) {
         var job = ownedJob(email, id);
@@ -218,41 +282,60 @@ public class JobService {
         }
     }
 
-    @Transactional
     public void syncActiveJobs() {
-        for (var uncertain : jobs.findAllByStatusOrderByCompletedAtDesc(JobStatus.SUBMISSION_UNKNOWN)) {
-            if (uncertain.getIppUri() == null) continue;
+        List<UnknownPoll> unknown = transactions.execute(tx -> jobs.findAllByStatusOrderByCompletedAtDesc(JobStatus.SUBMISSION_UNKNOWN).stream()
+            .filter(job -> !submitting.contains(job.getId()))
+            .filter(job -> job.getIppUri() != null && job.getSubmissionKey() != null)
+            .map(job -> new UnknownPoll(job.getId(), job.getIppUri(), job.getSubmissionKey(), job.getOwner().getEmail(), job.getManualPhase()))
+            .toList());
+        for (var item : unknown == null ? List.<UnknownPoll>of() : unknown) {
             try {
-                var remote = ipp.findJob(uncertain.getIppUri(), uncertain.getSubmissionKey(), uncertain.getOwner().getEmail());
-                if (remote != null) {
-                    var current = jobs.findByIdForUpdate(uncertain.getId()).orElseThrow();
-                    if (current.getStatus() == JobStatus.SUBMISSION_UNKNOWN) applyRemote(current, remote, current.getManualPhase());
-                }
+                var remote = ipp.findJob(item.uri(), item.key(), item.email());
+                if (remote == null) continue;
+                transactions.execute(tx -> {
+                    var current = jobs.findByIdForUpdate(item.id()).orElse(null);
+                    if (current != null && !submitting.contains(item.id()) && current.getStatus() == JobStatus.SUBMISSION_UNKNOWN
+                        && item.key().equals(current.getSubmissionKey()) && item.uri().equals(current.getIppUri()))
+                        applyRemote(current, remote, item.phase());
+                    return null;
+                });
             } catch (Exception ignored) { /* Never guess whether an unacknowledged Print-Job printed. */ }
         }
         var active = Set.of(JobStatus.PENDING, JobStatus.PENDING_HELD, JobStatus.PROCESSING, JobStatus.PROCESSING_STOPPED);
-        for (var job : jobs.findAllByIppJobIdIsNotNullAndStatusIn(active)) {
+        List<ActivePoll> polling = transactions.execute(tx -> jobs.findAllByIppJobIdIsNotNullAndStatusIn(active).stream()
+            .filter(job -> !submitting.contains(job.getId()))
+            .filter(job -> job.getIppUri() != null && job.getIppJobId() != null)
+            .map(job -> new ActivePoll(job.getId(), job.getIppUri(), job.getIppJobId(), job.getOwner().getEmail(), job.getSubmissionKey()))
+            .toList());
+        for (var item : polling == null ? List.<ActivePoll>of() : polling) {
             try {
-                if (job.getIppUri() == null) continue;
-                var state = ipp.status(job.getIppUri(), job.getIppJobId(), job.getOwner().getEmail());
-                var mapped = ippState(state.state());
-                job.updateIppState(mapped, state.reasons());
-                if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase()) && job.getPages() > 1) {
-                    job.awaitingFlip(state.reasons());
-                    audit.record(job.getOwner(), "JOB_AWAITING_FLIP", "PRINT_JOB", job.getId().toString(), "Odd pages complete");
-                    continue;
-                }
-                if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
-                    quotas.settle(job, mapped == JobStatus.COMPLETED);
-                    if (mapped != JobStatus.ABORTED) deletePayload(job);
-                    priceIfCompleted(job);
-                    audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), "IPP " + job.getIppJobId());
-                }
+                var state = ipp.status(item.uri(), item.jobId(), item.email());
+                transactions.execute(tx -> {
+                    var job = jobs.findByIdForUpdate(item.id()).orElse(null);
+                    if (job == null || submitting.contains(item.id()) || !active.contains(job.getStatus())
+                        || job.getIppJobId() == null || job.getIppJobId() != item.jobId()
+                        || !Objects.equals(item.key(), job.getSubmissionKey()) || !item.uri().equals(job.getIppUri())) return null;
+                    var mapped = ippState(state.state());
+                    job.updateIppState(mapped, state.reasons());
+                    if (mapped == JobStatus.COMPLETED && job.getDuplexMode() == DuplexMode.MANUAL && "ODD".equals(job.getManualPhase()) && job.getPages() > 1) {
+                        job.awaitingFlip(state.reasons());
+                        audit.record(job.getOwner(), "JOB_AWAITING_FLIP", "PRINT_JOB", job.getId().toString(), "Odd pages complete");
+                        return null;
+                    }
+                    if (mapped == JobStatus.COMPLETED || mapped == JobStatus.CANCELED || mapped == JobStatus.ABORTED) {
+                        settleTerminal(job);
+                        audit.record(job.getOwner(), "JOB_" + mapped, "PRINT_JOB", job.getId().toString(), "IPP " + job.getIppJobId());
+                    }
+                    return null;
+                });
             } catch (Exception ignored) {
                 // A transient printer outage must not invent a job state. Try again on the next poll.
             }
         }
     }
+
+    private record UnknownPoll(UUID id, String uri, UUID key, String email, String phase) {}
+    private record ActivePoll(UUID id, String uri, int jobId, String email, UUID key) {}
 
     @Transactional
     public PrintJob retry(String email, UUID id) {
@@ -270,19 +353,18 @@ public class JobService {
     public PrintJob confirmFlip(String email, UUID id) { return confirmFlip(email, id, false); }
 
     public PrintJob confirmFlip(String email, UUID id, boolean reverse) {
-        DirectSubmissionPlan[] plan = {null};
-        var job = transactions.execute(transaction -> prepareFlip(email, id, reverse, plan));
-        if (plan[0] != null) {
-            return executeDirect(plan[0]);
-        }
-        return job;
+        return duringSubmission(id, () -> {
+            DirectSubmissionPlan[] plan = {null};
+            var job = transactions.execute(transaction -> prepareFlip(email, id, reverse, plan));
+            return plan[0] == null ? job : executeDirect(plan[0]);
+        });
     }
 
     private PrintJob prepareFlip(String email, UUID id, boolean reverse, DirectSubmissionPlan[] plan) {
         var job = ownedJob(email, id);
         if (job.getStatus() != JobStatus.AWAITING_FLIP || job.getDuplexMode() != DuplexMode.MANUAL)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This job is not waiting for a paper-stack flip");
-        var key = UUID.nameUUIDFromBytes((job.getId() + ":even:" + job.getAttempt()).getBytes(StandardCharsets.UTF_8));
+        var key = UUID.randomUUID();
         if (job.getIppUri() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "This historical job has no IPP endpoint");
         {
             printerAccess.require(email, job.getPrinter(), PrinterPermission.RELEASE_OWN);
@@ -326,12 +408,15 @@ public class JobService {
     @Transactional
     public void purgeRetainedJobs() {
         var policy = settings.current();
-        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.COMPLETED), Instant.now().minus(Duration.ofHours(policy.getCompletedRetentionHours()))));
-        purge(jobs.findAllByStatusInAndCompletedAtLessThan(Set.of(JobStatus.CANCELED, JobStatus.ABORTED, JobStatus.EXPIRED), Instant.now().minus(Duration.ofHours(policy.getFailedRetentionHours()))));
+        var now = Instant.now();
+        purge(Set.of(JobStatus.COMPLETED), now.minus(Duration.ofHours(policy.getCompletedRetentionHours())));
+        purge(Set.of(JobStatus.CANCELED, JobStatus.ABORTED, JobStatus.EXPIRED), now.minus(Duration.ofHours(policy.getFailedRetentionHours())));
     }
 
-    private void purge(List<PrintJob> expired) {
-        for (var job : expired) {
+    private void purge(Set<JobStatus> statuses, Instant cutoff) {
+        for (var id : jobs.findIdsByStatusInAndCompletedAtLessThan(statuses, cutoff)) {
+            var job = jobs.findByIdForUpdate(id).orElse(null);
+            if (job == null || !statuses.contains(job.getStatus()) || job.getCompletedAt() == null || !job.getCompletedAt().isBefore(cutoff)) continue;
             deletePayload(job); quotaLedger.detachJob(job.getId()); jobs.delete(job);
         }
     }

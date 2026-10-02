@@ -40,15 +40,15 @@
     "vite": "latest"
   },
   "devDependencies": {
-    "@shadcn/lint": "^0.1.0",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@testing-library/user-event": "latest",
     "@types/node": "^26.4.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@shadcn/lint": "0.1.5",
     "jsdom": "latest",
-    "oxlint": "^1.83.0",
+    "oxlint": "1.85.0",
     "vitest": "latest"
   }
 }

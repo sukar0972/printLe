@@ -191,6 +191,7 @@ type QueueModel = {
   busy: boolean
   ready: boolean
   error: string
+  loadError: string
   printers: Printer[]
   upload: (event: FormEvent<HTMLFormElement>) => void
   cancel: (id: string) => void
@@ -253,7 +254,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   }
   async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
   async function flip(id: string) { const target = jobs.find(job => job.id === id); if (target) setConfirmFlip(target) }
-  async function confirmManualFlip(reverse = false) {
+  async function confirmManualFlip(reverse: boolean) {
     if (!confirmFlip) return
     const id = confirmFlip.id
     setConfirmFlip(undefined)
@@ -261,7 +262,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     setError(''); setLoadError(''); try { await api.flip(id, reverse); setNotice('Even pages submitted to the printer.'); await load() } catch (e) { setError(message(e)) }
   }
   const held = jobs.filter(job => job.status === 'HELD')
-  const pendingPages = quota?.pending || held.reduce((sum, job) => sum + job.pages * job.copies, 0)
+  const pendingPages = quota?.pending ?? held.reduce((sum, job) => sum + job.pages * job.copies, 0)
   const used = quota?.used ?? 0
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
@@ -278,6 +279,10 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   </>
 }
 
+function PageHeader({ eyebrow, title, copy, actions }: { eyebrow?: string; title: string; copy?: string; actions?: ReactNode }) {
+  return <div className="page-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{copy && <p>{copy}</p>}</div>{actions}</div>
+}
+
 function Metrics({ model }: { model: QueueModel }) {
   const { quota, remaining, limit, held, pendingPages, used, usedPct } = model
   if (!quota) return model.ready ? null : <MetricStripSkeleton label="Loading quota" />
@@ -292,7 +297,7 @@ function Metrics({ model }: { model: QueueModel }) {
 function DropBox({ model }: { model: QueueModel }) {
   return <div className="upload-zone"><Form onSubmit={model.upload}>
     <label className="zone-target">
-      <span className="upload-icon" aria-hidden="true">↑</span>
+      <span className="upload-icon" aria-hidden="true"><Upload /></span>
       <strong>Drop PDF here</strong>
       <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
@@ -360,10 +365,9 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
   })
   const states = [...new Set(model.jobs.map(job => job.status))]
   return <main className="page ledger-page">
-    {model.organized && <div className="quota-block">
-      <div className="alt-content-heading"><div><h1>Print dashboard</h1><p>Queue activity and print service health</p></div><nav aria-label="Breadcrumb"><span>Home</span><b>/</b><strong>Dashboard</strong></nav></div>
-      <Metrics model={model} />
-    </div>}
+    <PageHeader eyebrow="Workspace" title="Print queue" copy="Upload a PDF, then release it when you are at the printer." />
+    {model.loadError && <Alert variant="destructive"><AlertDescription>{model.loadError}</AlertDescription></Alert>}
+    {model.organized && <Metrics model={model} />}
     <DropBox model={model} />
     <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<div className="queue-search"><Field><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs…" /></Field></div>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
@@ -386,7 +390,7 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
         {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical printer reason</summary><code>{job.ippStateReasons}</code></details>}
       </section>
       <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
-        <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
+        <div><dt>Pages</dt><dd>{job.pages}{job.pageRange ? ` · ${job.pageRange}` : ''}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
         <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
         <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
         <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
@@ -422,6 +426,7 @@ function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void
     <p className="eyebrow">Manual duplex · step 2 of 2</p><DialogTitle id="flip-title">Reload the printed stack</DialogTitle>
     <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
+    <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Pages came out face down. Reverse the even-page order.</label>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
     <CheckboxField checked={reverse} onCheckedChange={checked => setReverse(checked === true)}>Reverse the even-page order for this printer</CheckboxField>
     <div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button variant="default" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
@@ -438,6 +443,15 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   </ToastPrimitive.Provider>
 }
 
+function releaseBlockReason(job: Job, printer: Printer) {
+  if (!printer.enabled || printer.status === 'OFFLINE' || printer.status === 'UNCONFIGURED') return 'Unavailable'
+  if (printer.maintenance) return 'Maintenance'
+  if (printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK') return humanizeReason(printer.stateReasons || 'error')
+  if (job.colorMode === 'COLOR' && !printer.colorCapable) return 'No color'
+  if ((job.duplexMode === 'TWO_SIDED_LONG_EDGE' || job.duplexMode === 'TWO_SIDED_SHORT_EDGE') && !printer.duplexCapable) return 'No duplex'
+  return ''
+}
+
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
   const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
     && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
@@ -448,9 +462,10 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
       <DialogHeader layout="split"><div><p className="eyebrow">Release job</p><DialogTitle>Choose a printer</DialogTitle><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></DialogHeader>
       <div className="release-printers">
         {printers.map(printer => {
-          const ready = compatible(printer)
-          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || 'Printer'} · ready`
-          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
+          const blocked = releaseBlockReason(job, printer)
+          const ready = !blocked
+          const detail = blocked || (printer.stateReasons && printer.stateReasons !== 'none' ? humanizeReason(printer.stateReasons) : `${printer.location || 'Ready'}`)
+          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{detail}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
         })}
         {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer.</p>}
       </div>
@@ -458,7 +473,7 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
 }
 
 function Empty() {
-  return <div className="empty"><Mark/><h3>Your queue is empty</h3><p>PDFs you upload will wait here until you release or cancel them.</p></div>
+  return <EmptyState title="Your queue is empty" description="PDFs you upload will wait here until you release or cancel them." />
 }
 
 const previewUsers: ManagedUser[] = [
@@ -538,7 +553,8 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
+      <CardContent>
+        <div className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
         <div className="lg:pr-10">
           <div className="print-pass">
             <PassFlourish />
@@ -570,6 +586,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             <Button variant="outline" onClick={() => setPasswordOpen(true)}>Change password</Button>
             <Button variant="outline" onClick={onManage}>Manage profile settings</Button>
           </div>
+        </div>
         </div>
       </CardContent>
     </Card>
@@ -779,7 +796,6 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   }
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
     const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
@@ -789,14 +805,8 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     return matchesQuery && matchesStatus && matchesCapability
   }), [printers, query, statusFilter, capabilityFilter])
   const columns = useMemo<ColumnDef<AppTableFeatures, Printer>[]>(() => [
-    {
-      id: 'select',
-      header: ({ table }) => <Checkbox aria-label="Select all printers" checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? 'indeterminate' : false} onCheckedChange={value => table.toggleAllPageRowsSelected(Boolean(value))} />,
-      cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.name}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
-      enableSorting: false,
-    },
     { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
-    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.ippUri || 'No location'}</small></span> },
+    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || 'No location'}</small></span> },
     {
       id: 'state',
       accessorFn: printer => printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED',
@@ -841,12 +851,10 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     features: dataTableFeatures,
     data: visiblePrinters,
     columns,
-    state: { sorting, pagination, rowSelection },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    onRowSelectionChange: setRowSelection,
     getRowId: printer => printer.id,
-    enableRowSelection: true,
   })
   const statuses = ['ALL', 'ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE', 'DISABLED'] as const
 
@@ -979,6 +987,19 @@ function UsersSection({ preview }: { preview: boolean }) {
     try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) } finally { setReady(true) }
   }, [preview])
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!selected) return
+    document.getElementById(`account-${accountFocus}`)?.scrollIntoView({ block: 'center' })
+  }, [selected, accountFocus])
+  async function setAccountStatus(user: ManagedUser) {
+    const status = user.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
+    const body = { email: user.email, displayName: user.displayName, role: user.role, status, monthlyPageQuota: user.monthlyPageQuota, quotaExempt: user.quotaExempt }
+    try {
+      if (preview) setUsers(current => current.map(item => item.id === user.id ? { ...item, status } : item))
+      else { await api.updateUser(user.id, body); await load() }
+      setError('')
+    } catch (e) { setError(message(e)) }
+  }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) { setOpen(false); return }
     const data = Object.fromEntries(new FormData(event.currentTarget))
@@ -1117,7 +1138,7 @@ function UsersSection({ preview }: { preview: boolean }) {
             </Badge>
           </div>
           <span className="text-xs text-muted-foreground">
-            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'OPERATOR' ? 'Print operations' : row.original.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}
+            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'MANAGER' ? 'Reports' : 'Standard printing'}
           </span>
         </div>
       ),
@@ -1165,15 +1186,15 @@ function UsersSection({ preview }: { preview: boolean }) {
       cell: ({ row }) => <DropdownMenu>
         <DropdownMenuTrigger className="row-menu-trigger" aria-label={`Manage ${row.original.displayName}`}><MoreHorizontal /></DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Edit account</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Adjust quota</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Reset password</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('account'); setSelected(row.original) }}>Edit account</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('quota'); setSelected(row.original) }}>Adjust quota</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setAccountFocus('password'); setSelected(row.original) }}>Reset password</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem danger onSelect={() => setSelected(row.original)}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
+          <DropdownMenuItem danger onSelect={() => { void setAccountStatus(row.original) }}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
     },
-  ], [groups])
+  ], [groups, setAccountStatus])
   const table = useTable({
     features: dataTableFeatures,
     data: visibleUsers,
@@ -1495,15 +1516,6 @@ function ReportsSection({ preview }: { preview: boolean }) {
       className="report-table"
       title="Completed jobs"
       description="Volume and estimated cost by user and printer."
-      actions={<SelectMenu value={range} onValueChange={value => { setRange(value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-        <SelectTrigger className="w-40" aria-label="Report date range"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All time</SelectItem>
-          <SelectItem value="month">This month</SelectItem>
-          <SelectItem value="30">Last 30 days</SelectItem>
-          <SelectItem value="7">Last 7 days</SelectItem>
-        </SelectContent>
-      </SelectMenu>}
       filters={<div className="space-y-3">
         <div className="filter-pills">
           {([
@@ -1532,6 +1544,16 @@ function ReportsSection({ preview }: { preview: boolean }) {
       {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="reports" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />}
     </DataTableFrame>
   </>
+}
+
+function downloadReport(jobs: ReportJob[]) {
+  const lines = ['job_id,completed_at,user,printer,pages,color_mode,estimated_cost,rate_version', ...jobs.map(job => [job.id, job.completedAt, job.user, job.printer || '', job.printedPages, job.colorMode, job.estimatedCost, job.rateVersion ?? ''].map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))]
+  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'printle-jobs.csv'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function UsersReports({ preview }: { preview: boolean }) {
@@ -1788,13 +1810,8 @@ function useTheme() {
 
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
 function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings' | 'logout' }) {
-  if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
-  if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
-  if (name === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-  if (name === 'users' || name === 'users-reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-  if (name === 'reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-  if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+  const Icon = { queue: List, profile: UserRound, printer: PrinterIcon, users: UsersIcon, reports: BarChart3, 'users-reports': UsersIcon, settings: SettingsIcon, logout: LogOut }[name]
+  return <Icon aria-hidden="true" />
 }
 function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
@@ -1808,7 +1825,7 @@ function jobStatusCopy(status: string) {
   return ({
     HELD: 'Waiting for you to choose a printer.',
     EXPIRED: 'The held job expired before it was released.',
-    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Check the printer before submitting another copy.',
+    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Cancel it after you check the printer, or wait for printLe to find the job.',
     PENDING: 'The printer accepted the job and is waiting to print it.',
     PENDING_HELD: 'The printer is holding the submitted job.',
     PROCESSING: 'The printer is currently processing this job.',

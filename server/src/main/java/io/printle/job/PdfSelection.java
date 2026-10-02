@@ -21,17 +21,18 @@ public final class PdfSelection {
         }
     }
     static List<Integer> indices(String range, int count) {
-        var pages = new TreeSet<Integer>();
+        var pages = new LinkedHashSet<Integer>();
         for (String piece : range.split(",", -1)) {
             String part = piece.trim();
             if (!part.matches("[0-9]+(?:\\s*-\\s*[0-9]+)?")) throw invalid("Use page ranges such as 1-3, 5");
             String[] bounds = part.split("\\s*-\\s*");
             try {
                 int first = Integer.parseInt(bounds[0]), last = bounds.length == 1 ? first : Integer.parseInt(bounds[1]);
-                if (first < 1 || last < first || last > count) throw invalid("Page ranges must be within 1–" + count + " and in ascending order");
+                if (first < 1 || last < first || last > count) throw invalid("Page ranges must be within 1–" + count);
                 for (int page = first; page <= last; page++) pages.add(page - 1);
             } catch (NumberFormatException e) { throw invalid("Invalid page number"); }
         }
+        if (pages.isEmpty()) throw invalid("Choose at least one page");
         return List.copyOf(pages);
     }
     public static byte[] manualPass(byte[] pdf, boolean even, int copies, boolean reverse) throws IOException {

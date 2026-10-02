@@ -71,7 +71,7 @@ class FakePrinterIntegrationTest {
         jobs.syncActiveJobs();
         mvc.perform(get("/api/jobs")).andExpect(jsonPath("$[?(@.id == '%s')].status".formatted(jobId)).value("COMPLETED"));
         var operations = fake.snapshot().events().stream().map(FakePrinterService.Event::operation).toList();
-        assertTrue(operations.containsAll(List.of("Get-Printer-Attributes", "Create-Job", "Send-Document", "Get-Job-Attributes", "Set job state")));
+        assertTrue(operations.containsAll(List.of("Get-Printer-Attributes", "Print-Job", "Get-Job-Attributes", "Set job state")));
         mvc.perform(get("/api/admin/fake-printer")).andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
     }
 
@@ -81,7 +81,6 @@ class FakePrinterIntegrationTest {
             Files.write(file, pdf());
             UUID key = UUID.randomUUID();
             var first = ipp.submit(ipp.prepare(endpoint(), key, "test-user", 1, ColorMode.MONOCHROME, DuplexMode.ONE_SIDED), file);
-            ipp.send(endpoint(), first.jobId(), "test-user", file);
             assertEquals(first.jobId(), ipp.findJob(endpoint(), key, "test-user").jobId());
             assertNull(ipp.findJob(endpoint(), key, "different-user"));
             fake.setState(first.jobId(), "stopped");
@@ -90,11 +89,25 @@ class FakePrinterIntegrationTest {
             ipp.cancel(endpoint(), first.jobId(), "test-user");
             assertEquals("canceled", ipp.status(endpoint(), first.jobId(), "test-user").state());
             var second = ipp.submit(ipp.prepare(endpoint(), UUID.randomUUID(), "test-user", 1, ColorMode.MONOCHROME, DuplexMode.ONE_SIDED), file);
-            ipp.send(endpoint(), second.jobId(), "test-user", file);
             fake.setState(second.jobId(), "aborted");
             assertEquals("aborted", ipp.status(endpoint(), second.jobId(), "test-user").state());
             assertThrows(DirectIppClient.IppException.class, () -> ipp.cancel(endpoint(), second.jobId(), "test-user"));
             assertTrue(fake.snapshot().events().stream().anyMatch(e -> e.operation().equals("Cancel-Job") && e.status().equals("0x0404")));
+        } finally { Files.deleteIfExists(file); }
+    }
+
+    @Test void stagedJobsStillAcceptSendDocument() throws Exception {
+        Path file = Files.createTempFile("fake-printer-staged", ".pdf");
+        try {
+            Files.write(file, pdf());
+            var created = send(request(5, 201).add(1, 0x42, "requesting-user-name", "test-user").bytes());
+            assertEquals(0, created.code);
+            int id = created.number("job-id", 0);
+            ipp.send(endpoint(), id, "test-user", file);
+            assertEquals("processing", ipp.status(endpoint(), id, "test-user").state());
+            var received = fake.snapshot().jobs().stream().filter(job -> job.id() == id).findFirst().orElseThrow();
+            assertEquals(2, received.document().pages());
+            ipp.cancel(endpoint(), id, "test-user");
         } finally { Files.deleteIfExists(file); }
     }
 

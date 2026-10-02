@@ -149,6 +149,22 @@ DNS answers are checked when a connection opens, including every IPv4 and IPv6
 destination. The connection uses those checked addresses and preserves the
 original hostname for TLS certificate verification.
 
+The connection check requires native PDF support and either Print-Job or
+Create-Job plus Send-Document, along with Get-Job-Attributes and Cancel-Job.
+Copies, color, hardware duplex, and manual flip are checked against the printer.
+Print-Job is used when the printer supports it, so the PDF and the job id travel
+together. If a printer only supports Create-Job, a failed document send attempts to cancel
+that job and returns it to the held queue when cancellation succeeds. If
+cancellation fails, printLe retains the remote job ID for reconciliation.
+
+An empty access list permits every signed-in user. Add rules to restrict a
+printer. View-only rules do not allow release. Submit, release, and manage rules
+allow someone to release their own jobs; printLe does not release another
+person's job. Remote job IDs are stored with the printer URL, so devices can
+reuse the same numeric IDs without mixing jobs.
+
+The API container must be able to reach printers on the LAN.
+
 The upload form accepts page ranges such as `1-3, 5`; leave Pages blank to print
 all pages. Quotas count the selected pages multiplied by the number of copies.
 Manual duplex prints odd pages first, waits for you to reload the stack, then
