@@ -166,7 +166,7 @@ test('searches jobs and shows truthful IPP job details', async () => {
   expect(screen.getByRole('button', { name: 'onboarding-handbook.pdf' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Q3-budget.pdf' })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'onboarding-handbook.pdf' }))
-  expect(screen.getByRole('complementary', { name: 'Print job details' })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: 'Print job details' })).toBeInTheDocument()
   expect(screen.getByText('The printer reported the job as completed.')).toBeInTheDocument()
   expect(screen.getByText('Studio Color')).toBeInTheDocument()
   expect(screen.getByText('$2.80')).toBeInTheDocument()
@@ -225,7 +225,7 @@ test('paginates the queue when the page size changes', async () => {
   await userEvent.click(screen.getByRole('option', { name: '5' }))
   expect(screen.getByText('Viewing 5 out of 7 jobs')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Next ›' }))
-  expect(screen.getByRole('button', { name: '2' })).toHaveClass('current')
+  expect(screen.getByRole('button', { name: '2' })).toHaveAttribute('aria-current', 'page')
 })
 
 test('opens account actions from the user directory menu', async () => {

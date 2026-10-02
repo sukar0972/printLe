@@ -1,5 +1,5 @@
 import { useQueueRefresh } from './hooks/use-queue-refresh'
-import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -12,7 +12,7 @@ import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DataTableFrame } from '@/components/ui/data-table-frame'
-import { Dialog, DialogActions } from '@/components/ui/dialog'
+import { AppDialog, DialogFooter, DialogTitle, DialogHeader } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Login } from './components/login'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Form } from '@/components/ui/form'
+import { Field, CheckboxField } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 
@@ -288,7 +290,7 @@ function Metrics({ model }: { model: QueueModel }) {
 }
 
 function DropBox({ model }: { model: QueueModel }) {
-  return <form className="upload-zone" onSubmit={model.upload}>
+  return <div className="upload-zone"><Form onSubmit={model.upload}>
     <label className="zone-target">
       <span className="upload-icon" aria-hidden="true">↑</span>
       <strong>Drop PDF here</strong>
@@ -296,14 +298,14 @@ function DropBox({ model }: { model: QueueModel }) {
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
-      <label className="zone-field zone-pages">Pages<Input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
-      <label className="zone-field">Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
-      <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
-      <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
+      <div className="zone-field"><Field>Pages<Input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></Field></div>
+      <div className="zone-field"><Field>Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></Field></div>
+      <div className="zone-field"><Field>Color<Select name="colorMode" defaultValue="MONOCHROME" options={[{ value: "MONOCHROME", label: "Grayscale" }, { value: "COLOR", label: "Color" }]} /></Field></div>
+      <div className="zone-field"><Field>Sides<Select name="duplexMode" defaultValue="ONE_SIDED" options={[{ value: "ONE_SIDED", label: "One-sided" }, { value: "TWO_SIDED_LONG_EDGE", label: "Two-sided · long edge" }, { value: "TWO_SIDED_SHORT_EDGE", label: "Two-sided · short edge" }, { value: "MANUAL", label: "Manual flip" }]} /></Field></div>
       <Button type="submit" variant="default" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
     </div>
     {model.error && <p className="error" role="alert">{model.error}</p>}
-  </form>
+  </Form></div>
 }
 
 function JobStatus({ job }: { job: Job }) {
@@ -363,23 +365,21 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
       <Metrics model={model} />
     </div>}
     <DropBox model={model} />
-    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs…" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<div className="queue-search"><Field><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs…" /></Field></div>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
             <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>} footer={<TablePagination table={table} noun="jobs" />}>
-      {!model.ready ? <TableRowsSkeleton /> : model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
+      {!model.ready ? <TableRowsSkeleton /> : model.jobs.length === 0 ? <Empty /> : <DataTable table={table} variant="queue" empty={<Empty />} />}
     </DataTableFrame>
   </main>
 }
 
 function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { job: Job; onClose: () => void; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry: (id: string) => void; onFlip: (id: string) => void }) {
   const terminal = ['COMPLETED', 'CANCELED', 'ABORTED', 'EXPIRED'].includes(job.status)
-  return <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose() }}>
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="drawer-backdrop" />
-      <DialogPrimitive.Content role="complementary" className="detail-drawer" aria-label="Print job details" aria-describedby={undefined}>
-        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
+  return <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
+      <SheetContent variant="details" showCloseButton={false} aria-labelledby={undefined} aria-label="Print job details" aria-describedby={undefined}>
+        <div className="drawer-title"><div><p className="eyebrow">Print job</p><SheetTitle>{job.filename}</SheetTitle><p className="mono-id">{job.id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
       <section className="drawer-section current-state">
         <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
         <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
@@ -404,9 +404,8 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
         {job.status === 'ABORTED' && <Button variant="default" onClick={() => onRetry(job.id)}>Retry job</Button>}
         {!terminal && <Button variant="outline-destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
       </div>
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
-  </DialogPrimitive.Root>
+      </SheetContent>
+  </Sheet>
 }
 
 function TimelineItem({ label, time, complete = false, active = false }: { label: string; time?: string; complete?: boolean; active?: boolean }) {
@@ -414,19 +413,19 @@ function TimelineItem({ label, time, complete = false, active = false }: { label
 }
 
 function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></Dialog>
+  return <AppDialog size="compact" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><DialogTitle id="confirm-title">{title}</DialogTitle><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></AppDialog>
 }
 
 function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: (reverse: boolean) => void }) {
   const [reverse, setReverse] = useState(false)
-  return <Dialog className="modal flip-modal" labelledBy="flip-title" onClose={onClose}>
-    <p className="eyebrow">Manual duplex · step 2 of 2</p><h2 id="flip-title">Reload the printed stack</h2>
+  return <AppDialog labelledBy="flip-title" onClose={onClose}>
+    <p className="eyebrow">Manual duplex · step 2 of 2</p><DialogTitle id="flip-title">Reload the printed stack</DialogTitle>
     <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
-    <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Reverse the even-page order for this printer</label>
+    <CheckboxField checked={reverse} onCheckedChange={checked => setReverse(checked === true)}>Reverse the even-page order for this printer</CheckboxField>
     <div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button variant="default" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
-  </Dialog>
+  </AppDialog>
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -445,8 +444,8 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
     && !(job.duplexMode === 'MANUAL' && printer.ippUri)
     && (job.colorMode !== 'COLOR' || printer.colorCapable)
     && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
-  return <Dialog className="modal release-modal" label="Choose a printer" onClose={onClose}>
-      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
+  return <AppDialog size="compact" label="Choose a printer" onClose={onClose}>
+      <DialogHeader layout="split"><div><p className="eyebrow">Release job</p><DialogTitle>Choose a printer</DialogTitle><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></DialogHeader>
       <div className="release-printers">
         {printers.map(printer => {
           const ready = compatible(printer)
@@ -455,7 +454,7 @@ function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printer
         })}
         {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer.</p>}
       </div>
-  </Dialog>
+  </AppDialog>
 }
 
 function Empty() {
@@ -684,11 +683,11 @@ function ChangePasswordDialog({
     }
   }
   return (
-    <Dialog labelledBy="change-password-title" onClose={onClose}>
-      <form className="grid gap-4" noValidate onSubmit={submit}>
+    <AppDialog labelledBy="change-password-title" onClose={onClose}>
+      <Form noValidate onSubmit={submit}>
         <div className="grid gap-1.5">
           <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Account</p>
-          <h2 id="change-password-title" className="text-lg font-semibold tracking-tight">Change password</h2>
+          <DialogTitle id="change-password-title">Change password</DialogTitle>
           <p className="text-muted-foreground m-0 text-sm">Use at least 12 characters. This updates the password for {email}.</p>
         </div>
         <div className="grid gap-2">
@@ -712,8 +711,8 @@ function ChangePasswordDialog({
           <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</Button>
         </div>
-      </form>
-    </Dialog>
+      </Form>
+    </AppDialog>
   )
 }
 
@@ -896,17 +895,17 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       )}
     </div>
 
-    {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
-      <div className="modal-title"><h2>Add IPP printer</h2><Button size="sm" type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></div>
+    {addingIpp && <AppDialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
+      <DialogHeader layout="split"><DialogTitle>Add IPP printer</DialogTitle><Button size="sm" type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></DialogHeader>
       <p>Connect to a printer that accepts PDFs over IPP. One-sided, hardware duplex, and manual flip printing are supported.</p>
-      <form onSubmit={addIpp}>
-        <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
-        <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
+      <Form onSubmit={addIpp}>
+        <Field>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></Field>
+        <Field>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></Field>
         <p className="muted">Use ipp:// or ipps://. Secure connections require a trusted certificate. Printers requiring a login are not supported yet.</p>
         {ippError && <p className="error" role="alert">{ippError}</p>}
-        <DialogActions><Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button></DialogActions>
-      </form>
-    </Dialog>}
+        <DialogFooter><Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button></DialogFooter>
+      </Form>
+    </AppDialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
     <DataTableFrame
@@ -914,14 +913,9 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       title="Printer fleet"
       description="Monitor IPP printers, capabilities, health, and page pricing."
       actions={<div className="printer-table-controls">
-        <label className="sr-only" htmlFor="printer-search">Search printers</label>
+        <Field className="sr-only" htmlFor="printer-search">Search printers</Field>
         <Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-        <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-          <option value="ALL">All capabilities</option>
-          <option value="COLOR">Color</option>
-          <option value="MONO">Mono</option>
-          <option value="DUPLEX">Duplex</option>
-        </Select>
+        <Select aria-label="Filter by capability" value={capabilityFilter} onValueChange={value => { setCapabilityFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "All capabilities" }, { value: "COLOR", label: "Color" }, { value: "MONO", label: "Mono" }, { value: "DUPLEX", label: "Duplex" }]} />
       </div>}
       filters={<div className="filter-pills">
         {statuses.map(status => {
@@ -943,27 +937,27 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="printers" />}
     >
-      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />}
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="printers" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />}
     </DataTableFrame>
-    {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
-      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
+    {selected && <AppDialog size="wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
+      <DialogHeader layout="split"><div><p className="eyebrow">Printer policy</p><DialogTitle>{selected.name}</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></DialogHeader>
       <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
-      <form onSubmit={save}>
-        <div className="form-grid"><label>Name<Input name="name" defaultValue={selected.name} required /></label><label>Location<Input name="location" defaultValue={selected.location} /></label><label>Mono price / page<Input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<Input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
-        <label>Description<Input name="description" defaultValue={selected.description} /></label>
-        <label>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy}><option value="ALLOW">Allow</option><option value="WARN">Warn</option><option value="BLOCK">Block</option></Select></label>
-        <div className="check-row"><label><input name="enabled" type="checkbox" defaultChecked={selected.enabled} />Enabled</label><label><input name="maintenance" type="checkbox" defaultChecked={selected.maintenance} />Maintenance mode</label></div>
+      <Form onSubmit={save}>
+        <div className="form-grid"><Field>Name<Input name="name" defaultValue={selected.name} required /></Field><Field>Location<Input name="location" defaultValue={selected.location} /></Field><Field>Mono price / page<Input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></Field><Field>Color price / page<Input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></Field></div>
+        <Field>Description<Input name="description" defaultValue={selected.description} /></Field>
+        <Field>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy} options={[{ value: "ALLOW", label: "Allow" }, { value: "WARN", label: "Warn" }, { value: "BLOCK", label: "Block" }]} /></Field>
+        <div className="check-row"><CheckboxField name="enabled" defaultChecked={selected.enabled}>Enabled</CheckboxField><CheckboxField name="maintenance" defaultChecked={selected.maintenance}>Maintenance mode</CheckboxField></div>
         <div className="rule-heading"><strong>Access rules</strong><Button size="sm" type="button" variant="outline" onClick={addRule}>Add rule</Button></div>
         <p className="muted">No rules means all authenticated users can view and release to this printer.</p>
         {rules.map((rule, index) => <div className="acl-row" key={`${index}-${rule.principalId}`}>
-          <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: e.target.value as AclRule['principalType'], principalId: e.target.value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))}><option value="USER">User</option><option value="GROUP">Group</option></Select>
-          <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: e.target.value } : r))}>{(rule.principalType === 'USER' ? users : groups).map(item => <option key={item.id} value={item.id}>{'displayName' in item ? item.displayName : item.name}</option>)}</Select>
-          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}>{['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => <option key={p}>{p}</option>)}</Select>
+          <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: value as AclRule['principalType'], principalId: value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))} options={[{ value: "USER", label: "User" }, { value: "GROUP", label: "Group" }]} />
+          <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: value } : r))} options={(rule.principalType === 'USER' ? users : groups).map(item => ({ value: item.id, label: 'displayName' in item ? item.displayName : item.name }))} />
+          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, permission: value as AclRule['permission'] } : r))} options={['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => ({ value: p, label: p }))} />
           <Button size="sm" type="button" variant="ghost-destructive" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</Button>
         </div>)}
-        <DialogActions><Button type="submit" variant="default">Save printer</Button></DialogActions>
-      </form>
-    </Dialog>}
+        <DialogFooter><Button type="submit" variant="default">Save printer</Button></DialogFooter>
+      </Form>
+    </AppDialog>}
   </main>
 }
 
@@ -1225,10 +1219,10 @@ function UsersSection({ preview }: { preview: boolean }) {
       title="Users"
       description="Manage organization members and their printing access."
       actions={<div className="flex items-center gap-2">
-        <label className="user-search">
+        <div className="user-search"><Field>
           <span className="sr-only">Search users</span>
           <Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-        </label>
+        </Field></div>
         <Button size="sm" onClick={() => setOpen(true)}>+ Add user</Button>
       </div>}
       filters={<div className="space-y-3">
@@ -1250,26 +1244,10 @@ function UsersSection({ preview }: { preview: boolean }) {
         </div>
         <div className="user-filter-row">
           <div className="flex flex-wrap items-center gap-2">
-            <Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-              <option value="ALL">Role: All</option>
-              <option value="ADMIN">Admin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="OPERATOR">Operator</option>
-              <option value="USER">User</option>
-            </Select>
-            <Select aria-label="Filter by status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-              <option value="ALL">Status: All</option>
-              <option value="ACTIVE">Active</option>
-              <option value="SUSPENDED">Suspended</option>
-            </Select>
-            <Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-              <option value="ALL">Group: All</option>
-              {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </Select>
-            {selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}>
-              <option value="" disabled>Add selected to group…</option>
-              {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </Select>}
+            <Select aria-label="Filter by role" value={roleFilter} onValueChange={value => { setRoleFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Role: All" }, { value: "ADMIN", label: "Admin" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "USER", label: "User" }]} />
+            <Select aria-label="Filter by status" value={statusFilter} onValueChange={value => { setStatusFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Status: All" }, { value: "ACTIVE", label: "Active" }, { value: "SUSPENDED", label: "Suspended" }]} />
+            <Select aria-label="Filter by group" value={groupFilter} onValueChange={value => { setGroupFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Group: All" }, ...groups.map(group => ({ value: group.id, label: group.name }))]} />
+            {selectedCount > 0 && <Select aria-label="Add selected users to a group" value="" onValueChange={value => { void addSelectedToGroup(value) }} placeholder="Add selected to group…" className="w-auto" options={groups.filter(group => !group.builtIn).map(group => ({ value: group.id, label: group.name }))} />}
           </div>
           <Badge variant="muted">
             {selectedCount > 0 && `${selectedCount} selected`}
@@ -1278,7 +1256,7 @@ function UsersSection({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="users" />}
     >
-      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />}
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="users" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />}
     </DataTableFrame>
 
     <div className="mt-6">
@@ -1334,10 +1312,7 @@ function UsersSection({ preview }: { preview: boolean }) {
                 <TableCell className="text-right">
                   {!group.builtIn && (
                     <div className="flex items-center justify-end gap-2">
-                      <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}>
-                        <option value="" disabled>Add member…</option>
-                        {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
-                      </Select>
+                      <Select aria-label={`Add member to ${group.name}`} value="" onValueChange={value => { void addMember(group, value) }} placeholder="Add member…" className="w-auto" options={available.map(user => ({ value: user.id, label: user.displayName }))} />
                       <Button variant="ghost-destructive" size="sm" onClick={() => void removeGroup(group)}>
                         Delete
                       </Button>
@@ -1351,28 +1326,28 @@ function UsersSection({ preview }: { preview: boolean }) {
       </Table>
     </DataTableFrame>
     </div>
-    {open && <Dialog className="modal" label="Add a user" onClose={() => setOpen(false)}>
-        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></div>
-        <form onSubmit={create}>
-          <label>Name<Input name="displayName" required maxLength={120}/></label>
-          <label>Email<Input name="email" type="email" required/></label>
-          <label>Temporary password<Input name="password" type="password" minLength={12} required/></label>
-          <label>Role<Select name="role" defaultValue="USER"><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label>
-          <DialogActions><Button type="submit" variant="default">Create user</Button></DialogActions>
-        </form>
-    </Dialog>}
-    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
-      <form onSubmit={updateUser}><div className="form-grid"><label>Name<Input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<Input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
-        <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <label key={group.id}><input type="checkbox" name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn} />{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</label>)}</fieldset>
-        <DialogActions><Button type="submit" variant="default">Save account</Button></DialogActions></form>
-      <div className="modal-divider" />
-      <form onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<Input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<Input name="reason" required maxLength={255} /></label></div><DialogActions><Button type="submit" variant="outline">Record adjustment</Button></DialogActions></form>
-      <div className="modal-divider" />
-      <form onSubmit={resetPassword}><label>Temporary password<Input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><DialogActions><Button type="submit" variant="outline">Reset password</Button></DialogActions></form>
-    </Dialog>}
-    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><Button size="sm" variant="outline" onClick={() => setGroupOpen(false)}>Close</Button></div>
-      <form onSubmit={createGroup}><label>Name<Input name="name" required maxLength={120} /></label><label>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><DialogActions><Button type="submit" variant="default">Create group</Button></DialogActions></form>
-    </Dialog>}
+    {open && <AppDialog label="Add a user" onClose={() => setOpen(false)}>
+        <DialogHeader layout="split"><div><p className="eyebrow">New account</p><DialogTitle>Add a user</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></DialogHeader>
+        <Form onSubmit={create}>
+          <Field>Name<Input name="displayName" required maxLength={120}/></Field>
+          <Field>Email<Input name="email" type="email" required/></Field>
+          <Field>Temporary password<Input name="password" type="password" minLength={12} required/></Field>
+          <Field>Role<Select name="role" defaultValue="USER" options={[{ value: "USER", label: "User" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "ADMIN", label: "Admin" }]} /></Field>
+          <DialogFooter><Button type="submit" variant="default">Create user</Button></DialogFooter>
+        </Form>
+    </AppDialog>}
+    {selected && <AppDialog size="wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><DialogHeader layout="split"><div><p className="eyebrow">Account</p><DialogTitle>{selected.displayName}</DialogTitle><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></DialogHeader>
+      <Form onSubmit={updateUser}><div className="form-grid"><Field>Name<Input name="displayName" defaultValue={selected.displayName} required /></Field><Field>Email<Input name="email" type="email" defaultValue={selected.email} required /></Field><Field>Role<Select name="role" defaultValue={selected.role} options={[{ value: "USER", label: "User" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "ADMIN", label: "Admin" }]} /></Field><Field>Status<Select name="status" defaultValue={selected.status} options={[{ value: "ACTIVE", label: "Active" }, { value: "SUSPENDED", label: "Suspended" }]} /></Field><Field>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></Field></div><div className="check-row"><CheckboxField name="quotaExempt" defaultChecked={selected.quotaExempt}>Exempt from quota</CheckboxField></div>
+        <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <CheckboxField key={group.id} name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn}>{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</CheckboxField>)}</fieldset>
+        <DialogFooter><Button type="submit" variant="default">Save account</Button></DialogFooter></Form>
+      <Separator className="my-5" />
+      <Form onSubmit={adjust}><div className="form-grid"><Field>Quota adjustment<Input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></Field><Field>Reason<Input name="reason" required maxLength={255} /></Field></div><DialogFooter><Button type="submit" variant="outline">Record adjustment</Button></DialogFooter></Form>
+      <Separator className="my-5" />
+      <Form onSubmit={resetPassword}><Field>Temporary password<Input name="temporaryPassword" type="password" minLength={12} required /></Field><p className="muted">The user will be prompted to replace this after signing in.</p><DialogFooter><Button type="submit" variant="outline">Reset password</Button></DialogFooter></Form>
+    </AppDialog>}
+    {groupOpen && <AppDialog label="Add a group" onClose={() => setGroupOpen(false)}><DialogHeader layout="split"><div><p className="eyebrow">Access policy</p><DialogTitle>Add a group</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setGroupOpen(false)}>Close</Button></DialogHeader>
+      <Form onSubmit={createGroup}><Field>Name<Input name="name" required maxLength={120} /></Field><Field>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></Field><DialogFooter><Button type="submit" variant="default">Create group</Button></DialogFooter></Form>
+    </AppDialog>}
   </>
 }
 
@@ -1554,7 +1529,7 @@ function ReportsSection({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="jobs" />}
     >
-      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />}
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="reports" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />}
     </DataTableFrame>
   </>
 }
@@ -1604,33 +1579,33 @@ function SettingsMenu({ user, preview, theme, section, onSection, onClose, onPro
       { id: 'diagnostics' as const, label: 'Diagnostics', icon: <Activity className="size-4" /> },
     ] : []),
   ]
-  return <Dialog variant="settings" label="Settings" onClose={onClose}>
+  return <AppDialog variant="settings" label="Settings" onClose={onClose}>
     <div className="settings-menu-nav">
-      <h2>Settings</h2>
+      <DialogTitle>Settings</DialogTitle>
       <nav aria-label="Settings sections">
         {items.map(item => (
-          <button key={item.id} type="button" aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)}>
+          <Button key={item.id} variant="ghost" className="justify-start" aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)}>
             {item.icon}
             {item.label}
-          </button>
+          </Button>
         ))}
       </nav>
-      <button type="button" className="settings-sign-out" onClick={onSignOut}>
+      <Button variant="ghost" className="mt-auto justify-start" onClick={onSignOut}>
         <LogOut className="size-4" />
         Sign out
-      </button>
+      </Button>
     </div>
     <div className="settings-menu-pane">
       <header>
         <h2>{items.find(item => item.id === section)?.label}</h2>
-        <button type="button" className="settings-close" aria-label="Close settings" onClick={onClose}><X className="size-4" /></button>
+        <Button variant="ghost" size="icon-sm" aria-label="Close settings" onClick={onClose}><X className="size-4" /></Button>
       </header>
       {section === 'general' && <SettingsGeneral theme={theme} />}
       {section === 'account' && <SettingsAccount user={user} onProfile={onProfile} />}
       {section === 'policy' && admin && <SettingsPolicy user={user} preview={preview} />}
       {section === 'diagnostics' && admin && <SettingsDiagnostics user={user} preview={preview} />}
     </div>
-  </Dialog>
+  </AppDialog>
 }
 
 function SettingsGeneral({ theme }: { theme: ReturnType<typeof useTheme> }) {
@@ -1638,11 +1613,11 @@ function SettingsGeneral({ theme }: { theme: ReturnType<typeof useTheme> }) {
     <h3>Appearance</h3>
     <div className="settings-row">
       <span>Mode</span>
-      <div className="theme-switch" role="group" aria-label="Theme">
+      <div className="flex gap-1 rounded-md bg-muted p-1" role="group" aria-label="Theme">
         {(['light', 'dark', 'system'] as const).map(value => (
-          <button key={value} type="button" aria-pressed={theme.value === value} aria-label={value === 'light' ? 'Light' : value === 'dark' ? 'Dark' : 'System'} onClick={() => theme.set(value)}>
+          <Button key={value} variant={theme.value === value ? 'default' : 'ghost'} size="icon-sm" aria-pressed={theme.value === value} aria-label={value === 'light' ? 'Light' : value === 'dark' ? 'Dark' : 'System'} onClick={() => theme.set(value)}>
             {value === 'light' ? <Sun className="size-4" /> : value === 'dark' ? <Moon className="size-4" /> : <Monitor className="size-4" />}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -1715,7 +1690,7 @@ function SettingsPolicy({ user, preview }: { user: CurrentUser; preview: boolean
           </div>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-5" onSubmit={savePolicy}>
+          <Form onSubmit={savePolicy}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-2">
                 <Label htmlFor="policy-quota">Default monthly pages</Label>
@@ -1756,7 +1731,7 @@ function SettingsPolicy({ user, preview }: { user: CurrentUser; preview: boolean
             <div className="flex justify-end pt-1">
               <Button type="submit" size="sm">Save instance policy</Button>
             </div>
-          </form>
+          </Form>
         </CardContent>
       </Card>
   </div>

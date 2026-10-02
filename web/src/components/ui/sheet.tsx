@@ -48,9 +48,11 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  variant = 'default',
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
+  variant?: 'default' | 'details'
   showCloseButton?: boolean
 }) {
   return (
@@ -68,6 +70,7 @@ function SheetContent({
             "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
           side === "bottom" &&
             "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          variant === 'details' && 'w-full overflow-y-auto p-6 sm:max-w-xl',
           className
         )}
         {...props}

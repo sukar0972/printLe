@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ChangeEvent, type ReactElement, type ReactNode, type SelectHTMLAttributes } from 'react'
+import type { ReactNode } from 'react'
 import * as React from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -22,7 +22,8 @@ function SelectTrigger({ className, size = 'default', children, ...props }: Reac
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "border-input bg-background data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 flex w-fit items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 cursor-pointer",
+        "border-input bg-background text-foreground data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/30 flex w-fit items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 cursor-pointer",
+        size === 'sm' ? 'h-8' : 'h-10',
         className,
       )}
       {...props}
@@ -92,24 +93,22 @@ function SelectScrollDownButton({ className, ...props }: React.ComponentProps<ty
 
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator, SelectScrollUpButton, SelectScrollDownButton }
 
-export function OptionSelect({ className, children, value, defaultValue, onChange, name, disabled, required, id, 'aria-label': ariaLabel }: SelectHTMLAttributes<HTMLSelectElement>) {
-  const options = Children.toArray(children).filter(isValidElement) as ReactElement<{ value?: string; disabled?: boolean; children?: ReactNode }>[]
-  const placeholderOption = options.find(option => (option.props.value ?? '') === '')
-  const items = options.filter(option => (option.props.value ?? String(option.props.children)) !== '')
-  const change = (nextValue: string) => onChange?.({ target: { value: nextValue }, currentTarget: { value: nextValue } } as ChangeEvent<HTMLSelectElement>)
-  return <Select
-    value={value == null ? undefined : String(value)}
-    defaultValue={defaultValue == null || defaultValue === '' ? undefined : String(defaultValue)}
-    onValueChange={change} name={name} disabled={disabled} required={required}
-  >
-    <SelectTrigger id={id} aria-label={ariaLabel} className={cn('ui-select', className)}>
-      <SelectValue placeholder={placeholderOption?.props.children ?? 'Select…'} />
+type OptionSelectProps = Omit<React.ComponentProps<typeof SelectPrimitive.Root>, 'children'> & {
+  options: { value: string; label: ReactNode; disabled?: boolean }[]
+  placeholder?: ReactNode
+  id?: string
+  className?: string
+  'aria-label'?: string
+  size?: 'sm' | 'default'
+}
+
+export function OptionSelect({ options, placeholder = 'Select…', id, className, size, 'aria-label': ariaLabel, ...props }: OptionSelectProps) {
+  return <Select {...props}>
+    <SelectTrigger id={id} aria-label={ariaLabel} size={size} className={cn('w-full', className)}>
+      <SelectValue placeholder={placeholder} />
     </SelectTrigger>
     <SelectContent>
-      {items.map((option, index) => {
-        const itemValue = option.props.value ?? String(option.props.children)
-        return <SelectItem disabled={option.props.disabled} value={itemValue} key={`${itemValue}-${index}`}>{option.props.children}</SelectItem>
-      })}
+      {options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
     </SelectContent>
   </Select>
 }

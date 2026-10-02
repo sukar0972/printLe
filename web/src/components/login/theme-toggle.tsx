@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { Moon, Sun } from 'lucide-react'
 import type { ThemeController } from './types'
 
@@ -5,9 +6,10 @@ export function ThemeToggle({ theme }: { theme: ThemeController; className?: str
   const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
 
   return (
-    <button
+    <Button
       type="button"
-      className="icon-button"
+      variant="ghost"
+      size="icon-sm"
       title={`Theme: ${theme.value}`}
       aria-label={`Theme ${theme.value}`}
       onClick={() => theme.set(next)}
@@ -18,6 +20,6 @@ export function ThemeToggle({ theme }: { theme: ThemeController; className?: str
         <Sun aria-hidden="true" />
       )}
       <span className="sr-only">Toggle theme</span>
-    </button>
+    </Button>
   )
 }

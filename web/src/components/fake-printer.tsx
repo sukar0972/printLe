@@ -1,3 +1,4 @@
+import { CheckboxField } from '@/components/ui/field'
 import { useCallback, useEffect, useState } from 'react'
 import { api, type FakePrinterSnapshot } from '../api'
 import { Button } from './ui/button'
@@ -225,10 +226,9 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
                     </Button>
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm pt-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={showPolls} onChange={event => setShowPolls(event.target.checked)} className="rounded border-border" />
+                <CheckboxField checked={showPolls} onCheckedChange={checked => setShowPolls(checked === true)}>
                   Show discovery and status polls
-                </label>
+                </CheckboxField>
               </CardHeader>
               <CardContent className="grid gap-2">
                 {events.length === 0 && <p className="text-sm text-muted-foreground py-2">{data.events.length ? 'No actions match this filter.' : 'No actions yet. Printer discovery will appear as Get-Printer-Attributes.'}</p>}
