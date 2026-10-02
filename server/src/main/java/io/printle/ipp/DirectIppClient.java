@@ -8,32 +8,69 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.*;
+import java.net.InetAddress;
 import java.net.URI;
-import java.net.http.*;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** RFC 8010/8011 IPP client using com.hp.jipp:jipp-core. */
 @Component
 public class DirectIppClient {
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3))
-        .followRedirects(HttpClient.Redirect.NEVER).version(HttpClient.Version.HTTP_1_1).build();
+    private final IppTransport transport;
     private final AtomicInteger sequence = new AtomicInteger();
-    private static final int LIMIT = 1024 * 1024;
+
+    public DirectIppClient(IppTransport transport) { this.transport = transport; }
 
     public static String validateUri(String value) {
         try {
             URI uri = URI.create(value == null ? "" : value.trim());
-            if (!("ipp".equals(uri.getScheme()) || "ipps".equals(uri.getScheme())) || uri.getHost() == null
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+            if (!(scheme.equals("ipp") || scheme.equals("ipps"))
+                || host.isBlank()
                 || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getRawQuery() != null
-                || uri.getPort() == 0 || uri.getPort() > 65535 || uri.toString().length() > 1024)
+                || uri.getPort() == 0 || uri.getPort() > 65535 || uri.toString().length() > 1024
+                || blockedHost(host))
                 throw new IllegalArgumentException();
             return uri.toASCIIString();
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an ipp:// or ipps:// printer URL without credentials, query, or fragment");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an ipp:// or ipps:// printer URL on your network, without credentials, a query, or a fragment");
         }
+    }
+
+    /** Reject obvious unsafe URIs; DNS destinations are also checked by the transport. */
+    static boolean blockedHost(String host) {
+        String name = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        if (name.endsWith(".")) name = name.substring(0, name.length() - 1);
+        if (name.equals("localhost") || name.endsWith(".localhost") || name.equals("metadata.google.internal")
+            || name.equals("metadata.google.internal.")) return true;
+        if (!name.matches("\\d+\\.\\d+\\.\\d+\\.\\d+") && !name.contains(":")) return false;
+        try {
+            return PrinterDnsResolver.blocked(InetAddress.getByName(name));
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    static boolean tlsScheme(String scheme) {
+        return "ipps".equals(scheme) || "https".equals(scheme);
+    }
+
+    static URI printerUri(URI uri) {
+        String scheme = uri.getScheme().toLowerCase();
+        if ("ipp".equals(scheme) || "ipps".equals(scheme)) return uri;
+        String ippScheme = tlsScheme(scheme) ? "ipps" : "ipp";
+        return URI.create(ippScheme + "://" + uri.getRawAuthority()
+            + (uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath()));
+    }
+
+    static URI transportUri(URI uri) {
+        String scheme = uri.getScheme().toLowerCase();
+        if ("http".equals(scheme) || "https".equals(scheme)) return uri;
+        String httpScheme = tlsScheme(scheme) ? "https" : "http";
+        String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+        return URI.create(httpScheme + "://" + uri.getRawAuthority() + (uri.getPort() < 0 ? ":631" : "") + path);
     }
 
     public Capabilities inspect(String endpoint) {
@@ -201,7 +238,7 @@ public class DirectIppClient {
         var opAttrs = new ArrayList<Attribute<?>>();
         opAttrs.add(Types.attributesCharset.of("utf-8"));
         opAttrs.add(Types.attributesNaturalLanguage.of("en"));
-        opAttrs.add(Types.printerUri.of(URI.create(validateUri(endpoint))));
+        opAttrs.add(Types.printerUri.of(printerUri(URI.create(validateUri(endpoint)))));
         if (user != null) {
             opAttrs.add(Types.requestingUserName.of(user));
         }
@@ -222,19 +259,10 @@ public class DirectIppClient {
 
     private IppPacket exchange(String endpoint, IppPacket packet, Path file) {
         try {
-            var uri = URI.create(validateUri(endpoint));
-            var target = URI.create((uri.getScheme().equals("ipps") ? "https" : "http") + "://"
-                + uri.getRawAuthority() + (uri.getPort() < 0 ? ":631" : "")
-                + (uri.getRawPath().isEmpty() ? "/" : uri.getRawPath()));
+            var target = transportUri(URI.create(validateUri(endpoint)));
             var baos = new ByteArrayOutputStream();
             packet.write(baos);
-            var header = HttpRequest.BodyPublishers.ofByteArray(baos.toByteArray());
-            var body = file == null ? header : HttpRequest.BodyPublishers.concat(header, HttpRequest.BodyPublishers.ofFile(file));
-            var response = http.send(HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/ipp").header("Accept", "application/ipp").POST(body).build(), HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() != 200) throw new IppException("Printer returned HTTP " + response.statusCode() + "; check its URL, access policy, and TLS certificate");
-            byte[] bytes = response.body();
-            if (bytes.length > LIMIT) throw new IppException("Printer response is too large");
+            byte[] bytes = transport.exchange(target, baos.toByteArray(), file);
             var resPacket = IppPacket.parse(new ByteArrayInputStream(bytes));
             if (resPacket.getRequestId() != packet.getRequestId()) throw new IppException("Invalid IPP response header");
             int code = resPacket.getCode();
@@ -244,7 +272,6 @@ public class DirectIppClient {
             }
             return resPacket;
         } catch (IppException e) { throw e; }
-        catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IppException("Printer request interrupted"); }
         catch (Exception e) { throw new IppException("Could not communicate with the IPP printer; check its address, network access, and TLS certificate"); }
     }
 

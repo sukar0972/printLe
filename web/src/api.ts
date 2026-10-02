@@ -12,6 +12,24 @@ export type InstanceSettings = { defaultMonthlyPageQuota: number; quotaTimezone:
 export type Diagnostics = { database: string; storage: string; printing: string; registeredPrinters: number }
 
 let csrfToken: string | undefined
+const sessionHandlers = new Set<() => void>()
+
+export class SessionExpired extends Error {
+  constructor() {
+    super('Your session ended. Sign in again.')
+    this.name = 'SessionExpired'
+  }
+}
+
+export function onSessionExpired(handler: () => void) {
+  sessionHandlers.add(handler)
+  return () => { sessionHandlers.delete(handler) }
+}
+
+function sessionExpired() {
+  csrfToken = undefined
+  for (const handler of sessionHandlers) handler()
+}
 
 async function csrf() {
   if (csrfToken) return csrfToken
@@ -26,6 +44,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('X-XSRF-TOKEN', await csrf())
   const response = await fetch(path, { ...options, headers, credentials: 'include' })
+  if (response.status === 401 && !path.startsWith('/api/auth/')) {
+    sessionExpired()
+    throw new SessionExpired()
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.error ?? body.detail ?? `Request failed (${response.status})`)
@@ -46,6 +68,9 @@ export const api = {
   fakePrinterJobState: (id: number, state: string) => request<void>(`/api/admin/fake-printer/jobs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) }),
   clearFakePrinterEvents: () => request<void>('/api/admin/fake-printer/events', { method: 'DELETE' }),
   me: () => request<CurrentUser>('/api/auth/me'),
+  setup: () => request<{ required: boolean }>('/api/auth/setup'),
+  completeSetup: (body: { email: string; displayName: string; password: string }) =>
+    request<void>('/api/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   login: async (email: string, password: string) => {
     const body = new URLSearchParams({ email, password })
     const result = await request<{ authenticated: boolean }>('/api/auth/login', { method: 'POST', body })

@@ -40,7 +40,7 @@ export function AppShell({
         </Sidebar>
         <SidebarInset className="workspace">
           <header className="topbar">
-            <SidebarTrigger className="icon-button sidebar-toggle" aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'} />
+            <SidebarTrigger className="sidebar-toggle" aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'} />
             {header}
           </header>
           {notice}

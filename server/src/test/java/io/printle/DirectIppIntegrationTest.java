@@ -38,10 +38,12 @@ class DirectIppIntegrationTest {
     static HttpServer printer;
     static final List<Received> received = new CopyOnWriteArrayList<>();
     static volatile int jobState = 5;
-    static String endpoint(String path) { return "ipp://127.0.0.1:" + printer.getAddress().getPort() + path; }
+    static String host;
+    static String endpoint(String path) { return "ipp://" + host + ":" + printer.getAddress().getPort() + path; }
 
     @BeforeAll static void startPrinter() throws Exception {
-        printer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        host = TestNetworkAddress.host();
+        printer = HttpServer.create(new InetSocketAddress(host, 0), 0);
         printer.createContext("/", exchange -> {
             try {
                 byte[] bytes = exchange.getRequestBody().readAllBytes();

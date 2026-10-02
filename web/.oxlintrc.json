@@ -14,7 +14,6 @@
           "layout",
           "shell",
           "workspace",
-          "icon-button",
           "sidebar-toggle",
           "printle-brand-button",
           "group-policy-table"
@@ -60,16 +59,6 @@
             "allow": [
               "layout",
               "spacing"
-            ]
-          },
-          {
-            "pattern": "^Dialog$",
-            "allow": [
-              "modal",
-              "confirm-modal",
-              "flip-modal",
-              "release-modal",
-              "modal-wide"
             ]
           },
           {
@@ -120,7 +109,6 @@
         "allow": [
           "shell",
           "workspace",
-          "icon-button",
           "sidebar-toggle",
           "printle-brand-button",
           "group-policy-table",

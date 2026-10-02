@@ -1,18 +1,18 @@
 import { useQueueRefresh } from './hooks/use-queue-refresh'
-import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { BarChart3, List, LogOut, Moon, Settings as SettingsIcon, Sun, Upload, UserRound, Users as UsersIcon, CheckCircle2, Download, FileText, Key, Lock, MoreHorizontal, Printer as PrinterIcon, Shield, X } from 'lucide-react'
-import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, Printer, Quota, Report, ReportJob } from './api'
+import { Activity, CheckCircle2, Download, FileText, Key, LogOut, Monitor, Moon, MoreHorizontal, Printer as PrinterIcon, Settings2, Shield, Sun, UserRound, X } from 'lucide-react'
+import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, onSessionExpired, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { FakePrinter } from './components/fake-printer'
 import { AppSidebarBody, SidebarNavGroup } from './components/app-sidebar'
 import { DataTable, TablePagination } from './components/data-table'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DataTableFrame } from '@/components/ui/data-table-frame'
-import { Dialog } from '@/components/ui/dialog'
+import { AppDialog, DialogFooter, DialogTitle, DialogHeader } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
@@ -22,27 +22,25 @@ import { dataTableFeatures, type AppTableFeatures } from './lib/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input as TextField } from '@/components/ui/input'
+import { Login } from './components/login'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Form } from '@/components/ui/form'
+import { Field, CheckboxField } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+
+import { Select as SelectMenu, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
+import { MetricStripSkeleton, Skeleton, TableRowsSkeleton } from '@/components/ui/skeleton'
+import { PageActiveContext, usePageActive } from '@/hooks/page-active'
+import { accessiblePage, parsePage, type Page } from '@/lib/navigation'
 
-type Page = 'queue' | 'profile' | 'printers' | 'fake-printer' | 'users' | 'reports' | 'users-reports' | 'settings'
+type SettingsSection = 'general' | 'account' | 'policy' | 'diagnostics'
 type Theme = 'light' | 'dark' | 'system'
 type PreviewVariant = 'shadcn'
-
-const TYPES = [
-  { id: 'geist', short: 'Geist', blurb: 'Geometric sans' },
-  { id: 'dmsans', short: 'DM Sans', blurb: 'Default interface sans' },
-  { id: 'fira', short: 'Fira Code', blurb: 'Monospace' },
-  { id: 'jetbrains', short: 'JetBrains Mono', blurb: 'Monospace' },
-] as const
-type TypeId = typeof TYPES[number]['id']
 
 const previewUser: CurrentUser = { id: 'preview', email: 'alex@printle.local', displayName: 'Alex Rivera', role: 'ADMIN' }
 const previewQuota: Quota = { limit: 200, used: 42, pending: 76, remaining: 82, exempt: false }
@@ -66,28 +64,38 @@ const previewPrinters: Printer[] = [
 
 export default function App() {
   const preview = usePreview()
-  const typeface = useTypeface()
   const [user, setUser] = useState<CurrentUser | null>()
-  const [page, setPage] = useState<Page>('queue')
+  const [sessionNotice, setSessionNotice] = useState('')
+  const [quota, setQuota] = useState<Quota | undefined>(preview.on ? previewQuota : undefined)
+  const [selectedPage, setPage] = useState<Page>(() => storedPage(preview.on))
+  const page = user ? accessiblePage(selectedPage, user.role) : selectedPage
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
   const theme = useTheme()
   const sidebar = useSidebar()
+  useEffect(() => onSessionExpired(() => { setUser(null); setSessionNotice('Your session ended. Sign in again.') }), [])
   useEffect(() => {
     document.documentElement.dataset.layout = preview.variant
     return () => { delete document.documentElement.dataset.layout }
   }, [preview.variant])
   useEffect(() => {
-    if (preview.on) { setUser(previewUser); return }
-    api.me().then(setUser).catch(() => setUser(null))
+    if (preview.on) { setUser(previewUser); setQuota(previewQuota); setSessionNotice(''); return }
+    api.me().then(account => { setUser(account); setSessionNotice('') }).catch(() => setUser(null))
+    api.quota().then(setQuota).catch(() => setQuota(undefined))
   }, [preview.on])
-  if (user === undefined) return <main className="center"><div className="spinner" aria-label="Loading" /></main>
-  if (!user) return <Login onLogin={() => api.me().then(setUser)} theme={theme} />
+  useEffect(() => {
+    if (!user || preview.on) return
+    setPage(page)
+    localStorage.setItem('printle-page', page)
+  }, [page, user, preview.on])
+  if (user === undefined) return <BootSkeleton />
+  if (!user) return <Login onLogin={() => api.me().then(account => { setUser(account); setSessionNotice('') })} theme={theme} notice={sessionNotice} />
   const sidebarGroups: SidebarNavGroup[] = [
     {
       label: 'Workspace',
       items: [
         { page: 'queue', title: 'Print queue', icon: 'queue' },
         { page: 'profile', title: 'My profile', icon: 'profile' },
-        { page: 'settings', title: 'Settings', icon: 'settings' },
       ],
     },
     ...((user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on)
@@ -112,10 +120,10 @@ export default function App() {
         page={page}
         onNavigate={setPage}
         user={user}
+        quota={quota}
         onProfile={() => setPage('profile')}
-        onSettings={() => setPage('settings')}
-        onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => setUser(null))}
-        themeControl={<ThemeButton theme={theme} />}
+        onSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
+        onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => { setSessionNotice(''); setUser(null) })}
         renderIcon={(name) => <NavIcon name={name} />}
         brandMark={<Mark />}
       />}
@@ -123,69 +131,49 @@ export default function App() {
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
             <span className="role-badge">{user.role.toLowerCase()}</span>
       </>}
-      notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it in Settings.</div> : undefined}
+      notice={user.passwordChangeRequired ? <div className="security-notice">Your password is temporary. Change it on My profile.</div> : undefined}
     >
-          {page === 'queue' ? <Queue preview={preview.on} organized variant={preview.variant} /> : page === 'profile' ? <Profile user={user} preview={preview.on} onManage={() => setPage('settings')} /> : page === 'printers' ? <PrinterAdmin preview={preview.on} /> : page === 'fake-printer' ? <FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /> : (page === 'users-reports' || page === 'users' || page === 'reports') ? <UsersReports preview={preview.on} /> : <Settings typeface={typeface} user={user} preview={preview.on} onPasswordChanged={() => setUser(current => current ? { ...current, passwordChangeRequired: false } : current)} />}
+          <KeepAlive page="queue" current={page}><Queue preview={preview.on} organized variant={preview.variant} /></KeepAlive>
+          <KeepAlive page="profile" current={page}><Profile user={user} preview={preview.on} onManage={() => { setSettingsSection('account'); setSettingsOpen(true) }} /></KeepAlive>
+          {(user.role === 'ADMIN' || preview.on) && <KeepAlive page="printers" current={page}><PrinterAdmin preview={preview.on} /></KeepAlive>}
+          {(user.role === 'ADMIN' || preview.on) && <KeepAlive page="fake-printer" current={page}><FakePrinter preview={preview.on} onPrinters={() => setPage('printers')} /></KeepAlive>}
+          {(user.role === 'ADMIN' || user.role === 'MANAGER' || preview.on) && <KeepAlive page="users-reports" current={page}><UsersReports preview={preview.on} /></KeepAlive>}
+          {settingsOpen && <SettingsMenu user={user} preview={preview.on} theme={theme} section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsOpen(false)} onProfile={() => { setSettingsOpen(false); setPage('profile') }} onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => { setSessionNotice(''); setUser(null) })} />}
     </AppShell>
 }
 
-function Login({ onLogin, theme }: { onLogin: () => Promise<void>; theme: ReturnType<typeof useTheme> }) {
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError('')
-    const data = new FormData(event.currentTarget)
-    try { await api.login(String(data.get('email')), String(data.get('password'))); await onLogin() }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in') } finally { setBusy(false) }
-  }
-  return <main className="grid min-h-dvh lg:grid-cols-2">
-    <section className="login-hero relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex">
-      <img src="/printle-logo.svg" alt="printLe" className="h-10 w-auto" />
-      <div className="max-w-lg space-y-4">
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight">Print what you need.<br />Pick it up when you&rsquo;re ready.</h1>
-        <p className="text-sm leading-relaxed text-white/70">A private web print queue for your team. Upload a PDF, then release it at the printer.</p>
+function storedPage(preview: boolean): Page {
+  if (preview || typeof localStorage === 'undefined') return 'queue'
+  return parsePage(localStorage.getItem('printle-page'))
+}
+
+function KeepAlive({ page, current, children }: { page: Page; current: Page; children: ReactNode }) {
+  const [seen, setSeen] = useState(page === current)
+  useEffect(() => { if (page === current) setSeen(true) }, [page, current])
+  if (!seen) return null
+  return <PageActiveContext.Provider value={page === current}><div hidden={page !== current}>{children}</div></PageActiveContext.Provider>
+}
+
+function BootSkeleton() {
+  return <main className="page grid gap-6" aria-busy="true" aria-label="Loading">
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="mt-2 h-4 w-72" />
+        </div>
       </div>
-      <p className="text-xs text-white/50">Private web print queue · release at the printer</p>
-    </section>
-    <section className="flex items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <img src="/printle-logo.svg" alt="printLe" className="h-8 w-auto lg:hidden" />
-          <CardDescription className="text-xs font-medium tracking-widest uppercase">Welcome back</CardDescription>
-          <CardTitle asChild><h2 className="text-xl tracking-tight">Sign in to printLe</h2></CardTitle>
-          <CardDescription>Use the account provided by your administrator.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4" onSubmit={submit}>
-            <div className="grid gap-2">
-              <Label htmlFor="login-email">Email</Label>
-              <TextField id="login-email" name="email" type="email" autoComplete="username" required autoFocus />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="login-password">Password</Label>
-              <TextField id="login-password" name="password" type="password" autoComplete="current-password" required />
-            </div>
-            {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
-            <Button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-          </form>
-        </CardContent>
-        <CardFooter className="justify-between">
-          <div className="flex w-full items-center justify-between text-sm text-muted-foreground">
-          <a href="#preview" className="hover:text-foreground underline-offset-4 hover:underline">Open dashboard preview</a>
-          <ThemeButton theme={theme} />
-          </div>
-        </CardFooter>
-      </Card>
-    </section>
+      <MetricStripSkeleton label="Loading allowance" />
+    </div>
+    <Skeleton className="h-36 w-full" />
+    <TableRowsSkeleton />
   </main>
 }
 
 function PreviewBanner() {
-  return <div className="preview-banner">
-    <span className="preview-blurb"><strong>printLe preview</strong></span>
-    <span className="preview-actions">
-      <button type="button" onClick={() => { location.hash = '' }}>Leave preview</button>
-    </span>
-  </div>
+  return <button type="button" className="preview-badge" onClick={() => { location.hash = '' }}>
+    Preview
+  </button>
 }
 
 type QueueModel = {
@@ -201,8 +189,8 @@ type QueueModel = {
   limit: number
   usedPct: number
   busy: boolean
+  ready: boolean
   error: string
-  loadError: string
   printers: Printer[]
   upload: (event: FormEvent<HTMLFormElement>) => void
   cancel: (id: string) => void
@@ -221,11 +209,13 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const [confirmFlip, setConfirmFlip] = useState<Job>()
   const [notice, setNotice] = useState('')
   const [error, setError] = useState(''); const [loadError, setLoadError] = useState(''); const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(preview)
   const fetchQueue = useCallback(async () => {
     // Wait for every request, including failures, before allowing another batch.
     const results = await Promise.allSettled([api.jobs(), api.quota(), api.printers()])
     const [j, q, p] = results
     const failure = results.find(result => result.status === 'rejected')
+    setReady(true)
     if (failure?.status === 'rejected') {
       setLoadError(message(failure.reason))
       return false
@@ -236,7 +226,8 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
     }
     return false
   }, [])
-  const load = useQueueRefresh(fetchQueue, !preview)
+  const queueActive = usePageActive()
+  const load = useQueueRefresh(fetchQueue, !preview && queueActive)
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) return
     setBusy(true); setError(''); setLoadError(''); const element = event.currentTarget; const form = new FormData(element)
@@ -262,7 +253,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   }
   async function retry(id: string) { if (preview) { setJobs(current => current.map(j => j.id === id ? { ...j, status: 'QUEUED', attempt: j.attempt + 1 } : j)); return } setError(''); setLoadError(''); try { await api.retry(id); await load() } catch (e) { setError(message(e)) } }
   async function flip(id: string) { const target = jobs.find(job => job.id === id); if (target) setConfirmFlip(target) }
-  async function confirmManualFlip(reverse: boolean) {
+  async function confirmManualFlip(reverse = false) {
     if (!confirmFlip) return
     const id = confirmFlip.id
     setConfirmFlip(undefined)
@@ -275,7 +266,7 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - used - pendingPages)
   const usedPct = quota?.exempt || limit <= 0 ? 0 : Math.min(100, Math.round(((used + pendingPages) / limit) * 100))
-  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, error, loadError, printers, upload, cancel, release, retry, flip }
+  const model: QueueModel = { preview, organized, variant, jobs, quota, held, remaining, pendingPages, used, limit, usedPct, busy, ready, error: error || loadError, printers, upload, cancel, release, retry, flip }
   const selectedJob = jobs.find(job => job.id === selectedJobId)
   return <>
     <LayoutLedger model={model} onInspect={job => setSelectedJobId(job.id)} />
@@ -287,13 +278,9 @@ function Queue({ preview, organized = false, variant = 'shadcn' }: { preview: bo
   </>
 }
 
-function PageHeader({ eyebrow, title, copy, actions }: { eyebrow?: string; title: string; copy?: string; actions?: ReactNode }) {
-  return <div className="page-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{copy && <p>{copy}</p>}</div>{actions}</div>
-}
-
 function Metrics({ model }: { model: QueueModel }) {
   const { quota, remaining, limit, held, pendingPages, used, usedPct } = model
-  if (!quota) return null
+  if (!quota) return model.ready ? null : <MetricStripSkeleton label="Loading quota" />
   return <section className="metrics quota-strip" aria-label="Quota">
     <MetricCard label="Pages left" value={quota.exempt ? '∞' : remaining} hint={quota.exempt ? 'Unlimited' : `of ${limit} this month`} meter={quota.exempt ? undefined : usedPct} />
     <MetricCard label="Waiting" value={held.length} hint="jobs held at printer" />
@@ -303,22 +290,22 @@ function Metrics({ model }: { model: QueueModel }) {
 }
 
 function DropBox({ model }: { model: QueueModel }) {
-  return <form className="upload-zone" onSubmit={model.upload}>
+  return <div className="upload-zone"><Form onSubmit={model.upload}>
     <label className="zone-target">
-      <span className="upload-icon" aria-hidden="true"><Upload /></span>
+      <span className="upload-icon" aria-hidden="true">↑</span>
       <strong>Drop PDF here</strong>
       <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
     <div className="zone-row">
-      <label className="zone-field zone-pages">Pages<input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></label>
-      <label className="zone-field">Copies<input name="copies" type="number" min="1" max="100" defaultValue="1" /></label>
-      <label className="zone-field">Color<Select name="colorMode" defaultValue="MONOCHROME"><option value="MONOCHROME">Grayscale</option><option value="COLOR">Color</option></Select></label>
-      <label className="zone-field">Sides<Select name="duplexMode" defaultValue="ONE_SIDED"><option value="ONE_SIDED">One-sided</option><option value="TWO_SIDED_LONG_EDGE">Two-sided · long edge</option><option value="TWO_SIDED_SHORT_EDGE">Two-sided · short edge</option><option value="MANUAL">Manual flip</option></Select></label>
-      <Button type="submit" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
+      <div className="zone-field"><Field>Pages<Input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></Field></div>
+      <div className="zone-field"><Field>Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></Field></div>
+      <div className="zone-field"><Field>Color<Select name="colorMode" defaultValue="MONOCHROME" options={[{ value: "MONOCHROME", label: "Grayscale" }, { value: "COLOR", label: "Color" }]} /></Field></div>
+      <div className="zone-field"><Field>Sides<Select name="duplexMode" defaultValue="ONE_SIDED" options={[{ value: "ONE_SIDED", label: "One-sided" }, { value: "TWO_SIDED_LONG_EDGE", label: "Two-sided · long edge" }, { value: "TWO_SIDED_SHORT_EDGE", label: "Two-sided · short edge" }, { value: "MANUAL", label: "Manual flip" }]} /></Field></div>
+      <Button type="submit" variant="default" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
     </div>
-    {model.error && <Alert variant="destructive"><AlertDescription>{model.error}</AlertDescription></Alert>}
-  </form>
+    {model.error && <p className="error" role="alert">{model.error}</p>}
+  </Form></div>
 }
 
 function JobStatus({ job }: { job: Job }) {
@@ -329,13 +316,14 @@ function JobStatus({ job }: { job: Job }) {
 }
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
-  const held = job.status === 'HELD'
-  const active = ['QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'HELD_FOR_AUTHENTICATION', 'STOPPED', 'AWAITING_FLIP', 'SUBMISSION_UNKNOWN'].includes(job.status)
-  if (held) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRelease(job.id)}>Print</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  if (job.status === 'AWAITING_FLIP' && onFlip) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onFlip(job.id)}>Stack flipped</button><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  if (job.status === 'ABORTED' && onRetry) return <span className="job-actions"><button type="button" className="release-text" onClick={() => onRetry(job.id)}>Retry</button></span>
-  if (active) return <span className="job-actions"><button type="button" className="danger-text mark-cancel" onClick={() => onCancel(job.id)} aria-label="Cancel"><X aria-hidden="true" /></button></span>
-  return <span className="job-actions" />
+  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const action = job.status === 'HELD' ? { label: 'Print', run: onRelease }
+    : job.status === 'AWAITING_FLIP' && onFlip ? { label: 'Stack flipped', run: onFlip }
+      : job.status === 'ABORTED' && onRetry ? { label: 'Retry', run: onRetry } : undefined
+  return <span className="job-actions">
+    {action && <Button variant="outline" size="sm" onClick={() => action.run(job.id)}>{action.label}</Button>}
+    {canCancel && <Button variant="ghost-destructive" size="icon-sm" onClick={() => onCancel(job.id)} aria-label="Cancel" title="Cancel job"><X aria-hidden="true" /></Button>}
+  </span>
 }
 
 function statusLabel(status: string) {
@@ -372,34 +360,33 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
   })
   const states = [...new Set(model.jobs.map(job => job.status))]
   return <main className="page ledger-page">
-    <PageHeader eyebrow="Workspace" title="Print queue" copy="Upload a PDF, then release it when you are at the printer." />
-    {model.loadError && <Alert variant="destructive"><AlertDescription>{model.loadError}</AlertDescription></Alert>}
-    {model.organized && <Metrics model={model} />}
+    {model.organized && <div className="quota-block">
+      <div className="alt-content-heading"><div><h1>Print dashboard</h1><p>Queue activity and print service health</p></div><nav aria-label="Breadcrumb"><span>Home</span><b>/</b><strong>Dashboard</strong></nav></div>
+      <Metrics model={model} />
+    </div>}
     <DropBox model={model} />
-    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<label className="queue-search"><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs, printers, or IDs" /></label>} filters={<div className="filter-pills">
+    <DataTableFrame title="Queue" description="Held jobs, printer state, and release actions." actions={<div className="queue-search"><Field><span className="sr-only">Search print jobs</span><Input type="search" value={query} onChange={event => { setQuery(event.target.value); table.setPageIndex(0) }} placeholder="Search jobs…" /></Field></div>} filters={<div className="filter-pills">
           {[['all', 'All'], ...states.map(state => [state, statusLabel(state)])].map(([id, label]) => (
             <button key={id} type="button" aria-pressed={statusFilter === id} className={statusFilter === id ? 'active' : ''} onClick={() => { setStatusFilter(id); table.setPageIndex(0) }}>{label}<small>{id === 'all' ? model.jobs.length : model.jobs.filter(job => job.status === id).length}</small></button>
           ))}
         </div>} footer={<TablePagination table={table} noun="jobs" />}>
-      {model.jobs.length === 0 ? <Empty /> : <DataTable table={table} className="queue-data-table" empty={<Empty />} />}
+      {!model.ready ? <TableRowsSkeleton /> : model.jobs.length === 0 ? <Empty /> : <DataTable table={table} variant="queue" empty={<Empty />} />}
     </DataTableFrame>
   </main>
 }
 
 function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { job: Job; onClose: () => void; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry: (id: string) => void; onFlip: (id: string) => void }) {
   const terminal = ['COMPLETED', 'CANCELED', 'ABORTED', 'EXPIRED'].includes(job.status)
-  return <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose() }}>
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="drawer-backdrop" />
-      <DialogPrimitive.Content role="complementary" className="detail-drawer" aria-label="Print job details" aria-describedby={undefined}>
-        <div className="drawer-title"><div><p className="eyebrow">Print job</p><h2>{job.filename}</h2><p className="mono-id">{job.id}</p></div><Button type="button" variant="outline" size="sm" onClick={onClose}>Close</Button></div>
+  return <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
+      <SheetContent variant="details" showCloseButton={false} aria-labelledby={undefined} aria-label="Print job details" aria-describedby={undefined}>
+        <div className="drawer-title"><div><p className="eyebrow">Print job</p><SheetTitle>{job.filename}</SheetTitle><p className="mono-id">{job.id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
       <section className="drawer-section current-state">
         <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
         <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
         {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical printer reason</summary><code>{job.ippStateReasons}</code></details>}
       </section>
       <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
-        <div><dt>Pages</dt><dd>{job.pages}{job.pageRange ? ` · ${job.pageRange}` : ''}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
+        <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
         <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
         <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
         <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
@@ -412,14 +399,13 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </ol></section>
       <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>IPP URL</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
       <div className="drawer-actions">
-        {job.status === 'HELD' && <Button type="button" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
-        {job.status === 'AWAITING_FLIP' && <Button type="button" onClick={() => { onClose(); onFlip(job.id) }}>Stack flipped—continue</Button>}
-        {job.status === 'ABORTED' && <Button type="button" onClick={() => onRetry(job.id)}>Retry job</Button>}
-        {!terminal && <Button type="button" variant="destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
+        {job.status === 'HELD' && <Button variant="default" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
+        {job.status === 'AWAITING_FLIP' && <Button variant="default" onClick={() => onFlip(job.id)}>Stack flipped—continue</Button>}
+        {job.status === 'ABORTED' && <Button variant="default" onClick={() => onRetry(job.id)}>Retry job</Button>}
+        {!terminal && <Button variant="outline-destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
       </div>
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
-  </DialogPrimitive.Root>
+      </SheetContent>
+  </Sheet>
 }
 
 function TimelineItem({ label, time, complete = false, active = false }: { label: string; time?: string; complete?: boolean; active?: boolean }) {
@@ -427,19 +413,19 @@ function TimelineItem({ label, time, complete = false, active = false }: { label
 }
 
 function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <Dialog className="modal confirm-modal" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><h2 id="confirm-title">{title}</h2><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button type="button" variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button type="button" variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></Dialog>
+  return <AppDialog size="compact" role="alertdialog" labelledBy="confirm-title" onClose={onClose}><p className="eyebrow">Please confirm</p><DialogTitle id="confirm-title">{title}</DialogTitle><p className="muted confirm-copy">{copy}</p><div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Keep job</Button><Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm}>{confirm}</Button></div></AppDialog>
 }
 
 function FlipDialog({ job, onClose, onConfirm }: { job: Job; onClose: () => void; onConfirm: (reverse: boolean) => void }) {
   const [reverse, setReverse] = useState(false)
-  return <Dialog className="modal flip-modal" labelledBy="flip-title" onClose={onClose}>
-    <p className="eyebrow">Manual duplex · step 2 of 2</p><h2 id="flip-title">Reload the printed stack</h2>
+  return <AppDialog labelledBy="flip-title" onClose={onClose}>
+    <p className="eyebrow">Manual duplex · step 2 of 2</p><DialogTitle id="flip-title">Reload the printed stack</DialogTitle>
     <p className="muted">The odd pages of <strong>{job.filename}</strong> have finished. Do not continue until the stack is back in the input tray.</p>
     <ol className="flip-steps"><li>Take the printed stack without changing its page order.</li><li>Turn the stack over along the long edge.</li><li>Reload it into the same input tray, printed side facing as your printer requires.</li></ol>
-    <label className="check-row"><input type="checkbox" checked={reverse} onChange={event => setReverse(event.target.checked)} />Pages came out face down. Reverse the even-page order.</label>
     <p className="warning-copy">Continuing twice could duplicate the even pages. printLe records this confirmation before submitting them.</p>
-    <div className="confirm-actions"><Button type="button" variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button type="button" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
-  </Dialog>
+    <CheckboxField checked={reverse} onCheckedChange={checked => setReverse(checked === true)}>Reverse the even-page order for this printer</CheckboxField>
+    <div className="confirm-actions"><Button variant="outline" autoFocus onClick={onClose}>Not ready</Button><Button variant="default" onClick={() => onConfirm(reverse)}>Continue printing</Button></div>
+  </AppDialog>
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -452,32 +438,27 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   </ToastPrimitive.Provider>
 }
 
-function releaseBlockReason(job: Job, printer: Printer) {
-  if (!printer.enabled || printer.status === 'OFFLINE' || printer.status === 'UNCONFIGURED') return 'Unavailable'
-  if (printer.maintenance) return 'Maintenance'
-  if (printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK') return humanizeReason(printer.stateReasons || 'error')
-  if (job.colorMode === 'COLOR' && !printer.colorCapable) return 'No color'
-  if ((job.duplexMode === 'TWO_SIDED_LONG_EDGE' || job.duplexMode === 'TWO_SIDED_SHORT_EDGE') && !printer.duplexCapable) return 'No duplex'
-  return ''
-}
-
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
-  return <Dialog className="modal release-modal" label="Choose a printer" onClose={onClose}>
-      <div className="modal-title"><div><p className="eyebrow">Release job</p><h2>Choose a printer</h2><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button type="button" variant="outline" onClick={onClose}>Close</Button></div>
+  const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
+    && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
+    && !(job.duplexMode === 'MANUAL' && printer.ippUri)
+    && (job.colorMode !== 'COLOR' || printer.colorCapable)
+    && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
+  return <AppDialog size="compact" label="Choose a printer" onClose={onClose}>
+      <DialogHeader layout="split"><div><p className="eyebrow">Release job</p><DialogTitle>Choose a printer</DialogTitle><p className="muted">{job.filename} · {job.pages * job.copies} printed pages</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></DialogHeader>
       <div className="release-printers">
         {printers.map(printer => {
-          const blocked = releaseBlockReason(job, printer)
-          const ready = !blocked
-          const detail = blocked || (printer.stateReasons && printer.stateReasons !== 'none' ? humanizeReason(printer.stateReasons) : `${printer.location || 'Ready'}`)
-          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{detail}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
+          const ready = compatible(printer)
+          let reason = printer.status === 'OFFLINE' || !printer.enabled ? 'Unavailable' : printer.maintenance ? 'Maintenance' : job.colorMode === 'COLOR' && !printer.colorCapable ? 'No color' : job.duplexMode.startsWith('TWO_SIDED') && !printer.duplexCapable ? 'No duplex' : printer.stateReasons && printer.stateReasons !== 'none' ? printer.stateReasons : `${printer.location || printer.ippUri || 'Printer'} · ready`
+          return <button className="printer-choice" key={printer.id} disabled={!ready} onClick={() => onChoose(printer)}><span><strong>{printer.name}</strong><small>{reason}</small></span><span className={`status ${ready ? 'active' : 'suspended'}`}>{ready ? 'Select' : 'Blocked'}</span></button>
         })}
         {printers.length === 0 && <p className="muted">No accessible printers. Ask an administrator to add an IPP printer.</p>}
       </div>
-  </Dialog>
+  </AppDialog>
 }
 
 function Empty() {
-  return <EmptyState title="Your queue is empty" description="PDFs you upload will wait here until you release or cancel them." />
+  return <div className="empty"><Mark/><h3>Your queue is empty</h3><p>PDFs you upload will wait here until you release or cancel them.</p></div>
 }
 
 const previewUsers: ManagedUser[] = [
@@ -493,20 +474,32 @@ const previewGroups: Group[] = [
 
 function Profile({ user, preview, onManage }: { user: CurrentUser; preview: boolean; onManage: () => void }) {
   const [quota, setQuota] = useState<Quota | undefined>(preview ? previewQuota : undefined)
+  const [ready, setReady] = useState(preview)
   const [error, setError] = useState('')
+  const [passwordNotice, setPasswordNotice] = useState('')
+  const [passwordOpen, setPasswordOpen] = useState(false)
   useEffect(() => {
     if (preview) return
-    api.quota().then(setQuota).catch(e => setError(message(e)))
+    api.quota().then(setQuota).catch(e => setError(message(e))).finally(() => setReady(true))
   }, [preview])
   const limit = quota?.limit ?? 100
   const remaining = quota?.exempt ? null : quota?.remaining ?? Math.max(0, limit - (quota?.used ?? 0) - (quota?.pending ?? 0))
   const usedPct = quota && !quota.exempt && quota.limit > 0 ? Math.min(100, Math.round(((quota.used + (quota.pending ?? 0)) / quota.limit) * 100)) : 0
   const identifier = String([...user.id].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) % 10000, 0)).padStart(4, '0')
   return <main className="page grid gap-6">
-    <PageHeader eyebrow="Account" title="My profile" copy="Your identity, role, and current print allowance." />
-    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">My profile</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Your identity, role, and current print allowance.</p>
+        </div>
+        <nav aria-label="Breadcrumb"><span>Account</span><b>/</b><strong>My profile</strong></nav>
+      </div>
 
-    {quota && <section className="metrics quota-strip" aria-label="Allowance overview">
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {passwordNotice && <Alert variant="success"><AlertDescription>{passwordNotice}</AlertDescription></Alert>}
+
+      {!ready ? <MetricStripSkeleton label="Loading allowance" /> : quota && <section className="metrics quota-strip" aria-label="Allowance overview">
       <MetricCard
         label="Pages left"
         value={quota.exempt ? '∞' : remaining}
@@ -514,21 +507,23 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
         meter={quota.exempt ? undefined : usedPct}
       />
       <MetricCard
-        label="Printed this month"
+        label="Printed"
         value={quota.used}
         hint="pages processed"
       />
       <MetricCard
-        label="Reserved in queue"
+        label="Reserved"
         value={quota.pending ?? 0}
         hint="pages awaiting release"
       />
       <MetricCard
-        label="Account role"
+        className="max-[800px]:basis-full!"
+        label="Role"
         value={statusLabel(user.role)}
         hint={user.role === 'ADMIN' ? 'Full administrative access' : 'Standard printing access'}
       />
-    </section>}
+      </section>}
+    </div>
 
     <Card>
       <CardHeader>
@@ -543,8 +538,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
           </Badge>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
+      <CardContent className="grid gap-8 lg:grid-cols-[400px_1fr] lg:gap-0">
         <div className="lg:pr-10">
           <div className="print-pass">
             <PassFlourish />
@@ -572,11 +566,21 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
             </div>
             <Progress value={usedPct} aria-label="Quota used" />
           </div>
-          <div><Button variant="outline" onClick={onManage}>Manage profile settings</Button></div>
-        </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPasswordOpen(true)}>Change password</Button>
+            <Button variant="outline" onClick={onManage}>Manage profile settings</Button>
+          </div>
         </div>
       </CardContent>
     </Card>
+    {passwordOpen && (
+      <ChangePasswordDialog
+        email={user.email}
+        preview={preview}
+        onClose={() => setPasswordOpen(false)}
+        onChanged={() => { setPasswordOpen(false); setPasswordNotice('Password changed.') }}
+      />
+    )}
 
     <div className="grid gap-6 md:grid-cols-2">
       <Card>
@@ -642,6 +646,76 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
   </main>
 }
 
+function ChangePasswordDialog({
+  email,
+  preview,
+  onClose,
+  onChanged,
+}: {
+  email: string
+  preview: boolean
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const next = String(data.get('newPassword'))
+    if (next !== String(data.get('confirmPassword'))) {
+      setError('New passwords do not match')
+      return
+    }
+    if (next.length < 12) {
+      setError('Use at least 12 characters')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: next })
+      onChanged()
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <AppDialog labelledBy="change-password-title" onClose={onClose}>
+      <Form noValidate onSubmit={submit}>
+        <div className="grid gap-1.5">
+          <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Account</p>
+          <DialogTitle id="change-password-title">Change password</DialogTitle>
+          <p className="text-muted-foreground m-0 text-sm">Use at least 12 characters. This updates the password for {email}.</p>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-current-password">Current password</Label>
+          <Input id="profile-current-password" name="currentPassword" type="password" autoComplete="current-password" required autoFocus />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-new-password">New password</Label>
+          <Input id="profile-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="profile-confirm-password">Confirm new password</Label>
+          <Input id="profile-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+        </div>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</Button>
+        </div>
+      </Form>
+    </AppDialog>
+  )
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return <div className="flex items-center justify-between gap-4 border-b border-border py-2.5 last:border-0">
     <dt className="text-muted-foreground text-sm">{label}</dt>
@@ -671,12 +745,12 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   const [users, setUsers] = useState<ManagedUser[]>(preview ? previewUsers : [])
   const [groups, setGroups] = useState<Group[]>(preview ? previewGroups : [])
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(preview)
   const load = useCallback(async () => {
     if (preview) { setPrinters(previewPrinters); return }
-    try { const [p, u, g] = await Promise.all([api.printers(), api.users(), api.groups()]); setPrinters(p); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
+    try { const [p, u, g, report] = await Promise.all([api.printers(), api.users(), api.groups(), api.report()]); setPrinters(p); setUsers(u); setGroups(g); setUsage(report); setError('') } catch (e) { setError(message(e)) } finally { setReady(true) }
   }, [preview])
   useEffect(() => { void load() }, [load])
-  useEffect(() => { if (!preview) api.report().then(setUsage).catch(e => setError(message(e))) }, [preview])
   async function sync() { setBusy(true); setError(''); try { if (!preview) setPrinters(await api.syncPrinters()) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
   async function addIpp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -705,6 +779,7 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
   }
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const visiblePrinters = useMemo(() => printers.filter(printer => {
     const needle = query.trim().toLocaleLowerCase()
     const matchesQuery = !needle || [printer.name, printer.location, printer.ippUri].some(value => value?.toLocaleLowerCase().includes(needle))
@@ -714,8 +789,14 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     return matchesQuery && matchesStatus && matchesCapability
   }), [printers, query, statusFilter, capabilityFilter])
   const columns = useMemo<ColumnDef<AppTableFeatures, Printer>[]>(() => [
+    {
+      id: 'select',
+      header: ({ table }) => <Checkbox aria-label="Select all printers" checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? 'indeterminate' : false} onCheckedChange={value => table.toggleAllPageRowsSelected(Boolean(value))} />,
+      cell: ({ row }) => <Checkbox aria-label={`Select ${row.original.name}`} checked={row.getIsSelected()} onCheckedChange={value => row.toggleSelected(Boolean(value))} />,
+      enableSorting: false,
+    },
     { id: 'connection', accessorFn: printer => printer.ippUri || '', header: 'Connection', cell: ({ row }) => <span><small>{row.original.ippUri ? 'IPP' : 'Not configured'}</small><br /><code title={row.original.ippUri}>{row.original.ippUri || 'unassigned'}</code></span> },
-    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || 'No location'}</small></span> },
+    { accessorKey: 'name', header: 'Printer', cell: ({ row }) => <span className="printer-name-cell"><strong>{row.original.name}</strong><small>{row.original.location || row.original.ippUri || 'No location'}</small></span> },
     {
       id: 'state',
       accessorFn: printer => printer.maintenance ? 'MAINTENANCE' : printer.enabled ? printer.status : 'DISABLED',
@@ -760,51 +841,71 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
     features: dataTableFeatures,
     data: visiblePrinters,
     columns,
-    state: { sorting, pagination },
+    state: { sorting, pagination, rowSelection },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
     getRowId: printer => printer.id,
+    enableRowSelection: true,
   })
   const statuses = ['ALL', 'ONLINE', 'OFFLINE', 'ERROR', 'MAINTENANCE', 'DISABLED'] as const
 
   return <main className="page grid gap-6">
-    <PageHeader eyebrow="Printer fleet" title="Printers" copy="IPP printers, capabilities, and page pricing." actions={<div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={sync}>{busy ? 'Refreshing…' : 'Refresh printers'}</Button><Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>Add IPP printer</Button></div>} />
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Printers</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Discovered queues, hardware identity, capabilities, policy, and pricing.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={busy} onClick={sync}>
+            <Activity className="mr-1.5 size-3.5" />
+            {busy ? 'Refreshing…' : 'Refresh printers'}
+          </Button>
+          <Button size="sm" onClick={() => { setIppError(''); setAddingIpp(true) }}>
+            Add IPP printer
+          </Button>
+        </div>
+      </div>
 
-    <section className="metrics quota-strip" aria-label="Fleet metrics">
+      {!ready ? <MetricStripSkeleton label="Loading fleet" /> : (
+      <section className="metrics quota-strip" aria-label="Fleet metrics">
       <MetricCard
-        label="Active fleet"
+        label="Active"
         value={printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length}
         hint={`of ${printers.length} registered printers`}
         meter={printers.length > 0 ? Math.round((printers.filter(p => p.enabled && !p.maintenance && p.status === 'ONLINE').length / printers.length) * 100) : 0}
       />
       <MetricCard
-        label="Color capable"
+        label="Color"
         value={printers.filter(p => p.colorCapable).length}
         hint="support full-spectrum color"
       />
       <MetricCard
-        label="Duplex hardware"
+        label="Duplex"
         value={printers.filter(p => p.duplexCapable).length}
         hint="two-sided printing enabled"
       />
       <MetricCard
-        label="Fleet volume"
-        value={`${usage.printedPages} pages`}
+        label="Pages"
+        value={usage.printedPages}
         hint={`${usage.completedJobs} completed jobs`}
       />
-    </section>
+      </section>
+      )}
+    </div>
 
-    {addingIpp && <Dialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
-      <div className="modal-title"><h2>Add IPP printer</h2><button type="button" className="quiet" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</button></div>
+    {addingIpp && <AppDialog label="Add IPP printer" onClose={() => { if (!connectingIpp) setAddingIpp(false) }}>
+      <DialogHeader layout="split"><DialogTitle>Add IPP printer</DialogTitle><Button size="sm" type="button" variant="outline" disabled={connectingIpp} onClick={() => setAddingIpp(false)}>Close</Button></DialogHeader>
       <p>Connect to a printer that accepts PDFs over IPP. One-sided, hardware duplex, and manual flip printing are supported.</p>
-      <form onSubmit={addIpp}>
-        <label>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></label>
-        <label>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></label>
+      <Form onSubmit={addIpp}>
+        <Field>Name<Input name="name" required maxLength={120} placeholder="Office printer" /></Field>
+        <Field>Printer URL<Input name="uri" required maxLength={1024} placeholder="ipp://192.168.1.50/ipp/print" /></Field>
         <p className="muted">Use ipp:// or ipps://. Secure connections require a trusted certificate. Printers requiring a login are not supported yet.</p>
-        {ippError && <Alert variant="destructive"><AlertDescription>{ippError}</AlertDescription></Alert>}
-        <Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button>
-      </form>
-    </Dialog>}
+        {ippError && <p className="error" role="alert">{ippError}</p>}
+        <DialogFooter><Button type="submit" disabled={connectingIpp}>{connectingIpp ? 'Checking printer…' : 'Check and add printer'}</Button></DialogFooter>
+      </Form>
+    </AppDialog>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
     <DataTableFrame
@@ -812,14 +913,9 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       title="Printer fleet"
       description="Monitor IPP printers, capabilities, health, and page pricing."
       actions={<div className="printer-table-controls">
-        <label className="sr-only" htmlFor="printer-search">Search printers</label>
+        <Field className="sr-only" htmlFor="printer-search">Search printers</Field>
         <Input id="printer-search" type="search" placeholder="Search printers..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-        <Select aria-label="Filter by capability" value={capabilityFilter} onChange={event => { setCapabilityFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-          <option value="ALL">All capabilities</option>
-          <option value="COLOR">Color</option>
-          <option value="MONO">Mono</option>
-          <option value="DUPLEX">Duplex</option>
-        </Select>
+        <Select aria-label="Filter by capability" value={capabilityFilter} onValueChange={value => { setCapabilityFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "All capabilities" }, { value: "COLOR", label: "Color" }, { value: "MONO", label: "Mono" }, { value: "DUPLEX", label: "Duplex" }]} />
       </div>}
       filters={<div className="filter-pills">
         {statuses.map(status => {
@@ -841,27 +937,27 @@ function PrinterAdmin({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="printers" />}
     >
-      <DataTable table={table} className="printer-data-table" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="printers" empty={<EmptyState title="No printers found" description="No printers match the current search and filters." />} />}
     </DataTableFrame>
-    {selected && <Dialog className="modal modal-wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
-      <div className="modal-title"><div><p className="eyebrow">Printer policy</p><h2>{selected.name}</h2></div><button className="quiet" onClick={() => setSelected(undefined)}>Close</button></div>
+    {selected && <AppDialog size="wide" label={`Printer policy for ${selected.name}`} onClose={() => setSelected(undefined)}>
+      <DialogHeader layout="split"><div><p className="eyebrow">Printer policy</p><DialogTitle>{selected.name}</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></DialogHeader>
       <div className="printer-overview"><div><span>Status</span><strong>{selected.maintenance ? 'Maintenance' : statusLabel(selected.status)}</strong></div><div><span>{'IPP URL'}</span><strong>{selected.ippUri || 'Not connected'}</strong></div><div><span>Last seen</span><strong>{formatDate(selected.lastSeenAt)}</strong></div><div><span>State reason</span><strong>{selected.stateReasons && selected.stateReasons !== 'none' ? humanizeReason(selected.stateReasons) : 'Ready'}</strong></div></div>
-      <form onSubmit={save}>
-        <div className="form-grid"><label>Name<input name="name" defaultValue={selected.name} required /></label><label>Location<input name="location" defaultValue={selected.location} /></label><label>Mono price / page<input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></label><label>Color price / page<input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></label></div>
-        <label>Description<input name="description" defaultValue={selected.description} /></label>
-        <label>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy}><option value="ALLOW">Allow</option><option value="WARN">Warn</option><option value="BLOCK">Block</option></Select></label>
-        <div className="check-row"><label><input name="enabled" type="checkbox" defaultChecked={selected.enabled} />Enabled</label><label><input name="maintenance" type="checkbox" defaultChecked={selected.maintenance} />Maintenance mode</label></div>
-        <div className="rule-heading"><strong>Access rules</strong><Button type="button" variant="outline" size="sm" onClick={addRule}>Add rule</Button></div>
-        <p className="muted">No rules means every signed-in person can view and release to this printer. Submit, release, and manage also allow releasing that person's own jobs. View does not.</p>
+      <Form onSubmit={save}>
+        <div className="form-grid"><Field>Name<Input name="name" defaultValue={selected.name} required /></Field><Field>Location<Input name="location" defaultValue={selected.location} /></Field><Field>Mono price / page<Input name="monoPageRate" type="number" min="0" step="0.0001" defaultValue={selected.monoPageRate} required /></Field><Field>Color price / page<Input name="colorPageRate" type="number" min="0" step="0.0001" defaultValue={selected.colorPageRate} required /></Field></div>
+        <Field>Description<Input name="description" defaultValue={selected.description} /></Field>
+        <Field>Error handling<Select name="errorPolicy" defaultValue={selected.errorPolicy} options={[{ value: "ALLOW", label: "Allow" }, { value: "WARN", label: "Warn" }, { value: "BLOCK", label: "Block" }]} /></Field>
+        <div className="check-row"><CheckboxField name="enabled" defaultChecked={selected.enabled}>Enabled</CheckboxField><CheckboxField name="maintenance" defaultChecked={selected.maintenance}>Maintenance mode</CheckboxField></div>
+        <div className="rule-heading"><strong>Access rules</strong><Button size="sm" type="button" variant="outline" onClick={addRule}>Add rule</Button></div>
+        <p className="muted">No rules means all authenticated users can view and release to this printer.</p>
         {rules.map((rule, index) => <div className="acl-row" key={`${index}-${rule.principalId}`}>
-          <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: e.target.value as AclRule['principalType'], principalId: e.target.value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))}><option value="USER">User</option><option value="GROUP">Group</option></Select>
-          <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: e.target.value } : r))}>{(rule.principalType === 'USER' ? users : groups).map(item => <option key={item.id} value={item.id}>{'displayName' in item ? item.displayName : item.name}</option>)}</Select>
-          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onChange={e => setRules(current => current.map((r, i) => i === index ? { ...r, permission: e.target.value as AclRule['permission'] } : r))}><option value="VIEW">View</option><option value="SUBMIT">Submit and release</option><option value="RELEASE_OWN">Release</option><option value="RELEASE_ANY">Release (own jobs)</option><option value="MANAGE">Manage and release</option></Select>
-          <button type="button" className="danger-text" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</button>
+          <Select aria-label={`Principal type ${index + 1}`} value={rule.principalType} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, principalType: value as AclRule['principalType'], principalId: value === 'USER' ? users[0]?.id || '' : groups[0]?.id || '' } : r))} options={[{ value: "USER", label: "User" }, { value: "GROUP", label: "Group" }]} />
+          <Select aria-label={`Principal ${index + 1}`} value={rule.principalId} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, principalId: value } : r))} options={(rule.principalType === 'USER' ? users : groups).map(item => ({ value: item.id, label: 'displayName' in item ? item.displayName : item.name }))} />
+          <Select aria-label={`Permission ${index + 1}`} value={rule.permission} onValueChange={value => setRules(current => current.map((r, i) => i === index ? { ...r, permission: value as AclRule['permission'] } : r))} options={['VIEW', 'SUBMIT', 'RELEASE_OWN', 'RELEASE_ANY', 'MANAGE'].map(p => ({ value: p, label: p }))} />
+          <Button size="sm" type="button" variant="ghost-destructive" onClick={() => setRules(current => current.filter((_, i) => i !== index))}>Remove</Button>
         </div>)}
-        <Button type="submit">Save printer</Button>
-      </form>
-    </Dialog>}
+        <DialogFooter><Button type="submit" variant="default">Save printer</Button></DialogFooter>
+      </Form>
+    </AppDialog>}
   </main>
 }
 
@@ -876,25 +972,13 @@ function UsersSection({ preview }: { preview: boolean }) {
   const [roleFilter, setRoleFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [groupFilter, setGroupFilter] = useState('ALL')
-  const [open, setOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [accountFocus, setAccountFocus] = useState<'account' | 'quota' | 'password'>('account'); const [error, setError] = useState('')
+  const [open, setOpen] = useState(false); const [groupOpen, setGroupOpen] = useState(false); const [selected, setSelected] = useState<ManagedUser>(); const [error, setError] = useState('')
+  const [ready, setReady] = useState(preview)
   const load = useCallback(async () => {
     if (preview) { setUsers(previewUsers); setGroups(previewGroups); return }
-    try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) }
+    try { const [u, g] = await Promise.all([api.users(), api.groups()]); setUsers(u); setGroups(g); setError('') } catch (e) { setError(message(e)) } finally { setReady(true) }
   }, [preview])
   useEffect(() => { void load() }, [load])
-  useEffect(() => {
-    if (!selected) return
-    document.getElementById(`account-${accountFocus}`)?.scrollIntoView({ block: 'center' })
-  }, [selected, accountFocus])
-  async function setAccountStatus(user: ManagedUser) {
-    const status = user.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
-    const body = { email: user.email, displayName: user.displayName, role: user.role, status, monthlyPageQuota: user.monthlyPageQuota, quotaExempt: user.quotaExempt }
-    try {
-      if (preview) setUsers(current => current.map(item => item.id === user.id ? { ...item, status } : item))
-      else { await api.updateUser(user.id, body); await load() }
-      setError('')
-    } catch (e) { setError(message(e)) }
-  }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (preview) { setOpen(false); return }
     const data = Object.fromEntries(new FormData(event.currentTarget))
@@ -1033,7 +1117,7 @@ function UsersSection({ preview }: { preview: boolean }) {
             </Badge>
           </div>
           <span className="text-xs text-muted-foreground">
-            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'MANAGER' ? 'Reports' : 'Standard printing'}
+            {row.original.role === 'ADMIN' ? 'Full administration' : row.original.role === 'OPERATOR' ? 'Print operations' : row.original.role === 'MANAGER' ? 'Reports and users' : 'Standard access'}
           </span>
         </div>
       ),
@@ -1081,15 +1165,15 @@ function UsersSection({ preview }: { preview: boolean }) {
       cell: ({ row }) => <DropdownMenu>
         <DropdownMenuTrigger className="row-menu-trigger" aria-label={`Manage ${row.original.displayName}`}><MoreHorizontal /></DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onSelect={() => { setAccountFocus('account'); setSelected(row.original) }}>Edit account</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => { setAccountFocus('quota'); setSelected(row.original) }}>Adjust quota</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => { setAccountFocus('password'); setSelected(row.original) }}>Reset password</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Edit account</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Adjust quota</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSelected(row.original)}>Reset password</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem danger onSelect={() => { void setAccountStatus(row.original) }}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
+          <DropdownMenuItem danger onSelect={() => setSelected(row.original)}>{row.original.status === 'SUSPENDED' ? 'Activate user' : 'Suspend user'}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
     },
-  ], [groups, setAccountStatus])
+  ], [groups])
   const table = useTable({
     features: dataTableFeatures,
     data: visibleUsers,
@@ -1102,29 +1186,31 @@ function UsersSection({ preview }: { preview: boolean }) {
     enableRowSelection: true,
   })
   return <>
+    {!ready ? <MetricStripSkeleton label="Loading directory" /> : (
     <section className="metrics quota-strip" aria-label="Directory metrics">
       <MetricCard
-        label="Total members"
+        label="Members"
         value={users.length}
         hint={`${users.filter(u => u.status === 'ACTIVE').length} active accounts`}
         meter={users.length > 0 ? Math.round((users.filter(u => u.status === 'ACTIVE').length / users.length) * 100) : 0}
       />
       <MetricCard
-        label="Administrators"
+        label="Admins"
         value={users.filter(u => u.role === 'ADMIN').length}
         hint="full administration"
       />
       <MetricCard
-        label="Access groups"
+        label="Groups"
         value={groups.length}
         hint={`${groups.filter(g => !g.builtIn).length} custom policy groups`}
       />
       <MetricCard
-        label="Quota exempt"
+        label="Exempt"
         value={users.filter(u => u.quotaExempt).length}
         hint="unlimited page allowance"
       />
     </section>
+    )}
 
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
@@ -1133,10 +1219,10 @@ function UsersSection({ preview }: { preview: boolean }) {
       title="Users"
       description="Manage organization members and their printing access."
       actions={<div className="flex items-center gap-2">
-        <label className="user-search">
+        <div className="user-search"><Field>
           <span className="sr-only">Search users</span>
           <Input type="search" placeholder="Search users..." value={query} onChange={event => { setQuery(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }} />
-        </label>
+        </Field></div>
         <Button size="sm" onClick={() => setOpen(true)}>+ Add user</Button>
       </div>}
       filters={<div className="space-y-3">
@@ -1158,32 +1244,22 @@ function UsersSection({ preview }: { preview: boolean }) {
         </div>
         <div className="user-filter-row">
           <div className="flex flex-wrap items-center gap-2">
-            <Select aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-              <option value="ALL">Role: All</option>
-              <option value="ADMIN">Admin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="OPERATOR">Operator</option>
-              <option value="USER">User</option>
-            </Select>
-            <Select aria-label="Filter by group" value={groupFilter} onChange={event => { setGroupFilter(event.target.value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
-              <option value="ALL">Group: All</option>
-              {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </Select>
-            {selectedCount > 0 && <Select aria-label="Add selected users to a group" defaultValue="" onChange={event => { void addSelectedToGroup(event.target.value); event.currentTarget.value = '' }}>
-              <option value="" disabled>Add selected to group…</option>
-              {groups.filter(group => !group.builtIn).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </Select>}
+            <Select aria-label="Filter by role" value={roleFilter} onValueChange={value => { setRoleFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Role: All" }, { value: "ADMIN", label: "Admin" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "USER", label: "User" }]} />
+            <Select aria-label="Filter by status" value={statusFilter} onValueChange={value => { setStatusFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Status: All" }, { value: "ACTIVE", label: "Active" }, { value: "SUSPENDED", label: "Suspended" }]} />
+            <Select aria-label="Filter by group" value={groupFilter} onValueChange={value => { setGroupFilter(value); setPagination(current => ({ ...current, pageIndex: 0 })) }} className="w-auto" options={[{ value: "ALL", label: "Group: All" }, ...groups.map(group => ({ value: group.id, label: group.name }))]} />
+            {selectedCount > 0 && <Select aria-label="Add selected users to a group" value="" onValueChange={value => { void addSelectedToGroup(value) }} placeholder="Add selected to group…" className="w-auto" options={groups.filter(group => !group.builtIn).map(group => ({ value: group.id, label: group.name }))} />}
           </div>
           <Badge variant="muted">
-            {selectedCount} selected
+            {selectedCount > 0 && `${selectedCount} selected`}
           </Badge>
         </div>
       </div>}
       footer={<TablePagination table={table} noun="users" />}
     >
-      <DataTable table={table} className="user-data-table" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="users" empty={<EmptyState title="No users found" description="No users match the current search and filters." />} />}
     </DataTableFrame>
 
+    <div className="mt-6">
     <DataTableFrame
       title="Groups"
       description="Named sets for printer access and shared page quotas."
@@ -1236,10 +1312,7 @@ function UsersSection({ preview }: { preview: boolean }) {
                 <TableCell className="text-right">
                   {!group.builtIn && (
                     <div className="flex items-center justify-end gap-2">
-                      <Select aria-label={`Add member to ${group.name}`} defaultValue="" onChange={event => { void addMember(group, event.target.value); event.currentTarget.value = '' }}>
-                        <option value="" disabled>Add member…</option>
-                        {available.map(user => <option key={user.id} value={user.id}>{user.displayName}</option>)}
-                      </Select>
+                      <Select aria-label={`Add member to ${group.name}`} value="" onValueChange={value => { void addMember(group, value) }} placeholder="Add member…" className="w-auto" options={available.map(user => ({ value: user.id, label: user.displayName }))} />
                       <Button variant="ghost-destructive" size="sm" onClick={() => void removeGroup(group)}>
                         Delete
                       </Button>
@@ -1252,28 +1325,29 @@ function UsersSection({ preview }: { preview: boolean }) {
         </TableBody>
       </Table>
     </DataTableFrame>
-    {open && <Dialog className="modal" label="Add a user" onClose={() => setOpen(false)}>
-        <div className="modal-title"><div><p className="eyebrow">New account</p><h2>Add a user</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Close</Button></div>
-        <form onSubmit={create}>
-          <label>Name<input name="displayName" required maxLength={120}/></label>
-          <label>Email<input name="email" type="email" required/></label>
-          <label>Temporary password<input name="password" type="password" minLength={12} required/></label>
-          <label>Role<Select name="role" defaultValue="USER"><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label>
-          <Button type="submit">Create user</Button>
-        </form>
-    </Dialog>}
-    {selected && <Dialog className="modal modal-wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><div className="modal-title"><div><p className="eyebrow">Account</p><h2>{selected.displayName}</h2><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button type="button" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></div>
-      <form id="account-account" onSubmit={updateUser}><div className="form-grid"><label>Name<input name="displayName" defaultValue={selected.displayName} required /></label><label>Email<input name="email" type="email" defaultValue={selected.email} required /></label><label>Role<Select name="role" defaultValue={selected.role}><option value="USER">User</option><option value="MANAGER">Manager</option><option value="OPERATOR">Operator</option><option value="ADMIN">Admin</option></Select></label><label>Status<Select name="status" defaultValue={selected.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></Select></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></label></div><div className="check-row"><label><input name="quotaExempt" type="checkbox" defaultChecked={selected.quotaExempt} />Exempt from quota</label></div>
-        <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <label key={group.id}><input type="checkbox" name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn} />{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</label>)}</fieldset>
-        <Button type="submit" size="sm">Save account</Button></form>
-      <div className="modal-divider" />
-      <form id="account-quota" onSubmit={adjust}><div className="form-grid"><label>Quota adjustment<input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></label><label>Reason<input name="reason" required maxLength={255} /></label></div><Button type="submit" variant="outline">Record adjustment</Button></form>
-      <div className="modal-divider" />
-      <form id="account-password" onSubmit={resetPassword}><label>Temporary password<input name="temporaryPassword" type="password" minLength={12} required /></label><p className="muted">The user will be prompted to replace this after signing in.</p><Button type="submit" variant="outline">Reset password</Button></form>
-    </Dialog>}
-    {groupOpen && <Dialog className="modal" label="Add a group" onClose={() => setGroupOpen(false)}><div className="modal-title"><div><p className="eyebrow">Access policy</p><h2>Add a group</h2></div><Button type="button" variant="outline" size="sm" onClick={() => setGroupOpen(false)}>Close</Button></div>
-      <form onSubmit={createGroup}><label>Name<input name="name" required maxLength={120} /></label><label>Monthly quota override<input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></label><Button type="submit">Create group</Button></form>
-    </Dialog>}
+    </div>
+    {open && <AppDialog label="Add a user" onClose={() => setOpen(false)}>
+        <DialogHeader layout="split"><div><p className="eyebrow">New account</p><DialogTitle>Add a user</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button></DialogHeader>
+        <Form onSubmit={create}>
+          <Field>Name<Input name="displayName" required maxLength={120}/></Field>
+          <Field>Email<Input name="email" type="email" required/></Field>
+          <Field>Temporary password<Input name="password" type="password" minLength={12} required/></Field>
+          <Field>Role<Select name="role" defaultValue="USER" options={[{ value: "USER", label: "User" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "ADMIN", label: "Admin" }]} /></Field>
+          <DialogFooter><Button type="submit" variant="default">Create user</Button></DialogFooter>
+        </Form>
+    </AppDialog>}
+    {selected && <AppDialog size="wide" label={`Manage ${selected.displayName}`} onClose={() => setSelected(undefined)}><DialogHeader layout="split"><div><p className="eyebrow">Account</p><DialogTitle>{selected.displayName}</DialogTitle><p className="muted">Created {new Date(selected.createdAt).toLocaleDateString()} · last sign-in {selected.lastSignedInAt ? new Date(selected.lastSignedInAt).toLocaleString() : 'never'}</p></div><Button size="sm" variant="outline" onClick={() => setSelected(undefined)}>Close</Button></DialogHeader>
+      <Form onSubmit={updateUser}><div className="form-grid"><Field>Name<Input name="displayName" defaultValue={selected.displayName} required /></Field><Field>Email<Input name="email" type="email" defaultValue={selected.email} required /></Field><Field>Role<Select name="role" defaultValue={selected.role} options={[{ value: "USER", label: "User" }, { value: "MANAGER", label: "Manager" }, { value: "OPERATOR", label: "Operator" }, { value: "ADMIN", label: "Admin" }]} /></Field><Field>Status<Select name="status" defaultValue={selected.status} options={[{ value: "ACTIVE", label: "Active" }, { value: "SUSPENDED", label: "Suspended" }]} /></Field><Field>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" defaultValue={selected.monthlyPageQuota ?? ''} placeholder="Use group or instance policy" /></Field></div><div className="check-row"><CheckboxField name="quotaExempt" defaultChecked={selected.quotaExempt}>Exempt from quota</CheckboxField></div>
+        <fieldset className="group-membership"><legend>Groups</legend>{groups.map(group => <CheckboxField key={group.id} name={`group-${group.id}`} defaultChecked={group.members.some(member => member.id === selected.id)} disabled={group.builtIn}>{group.name}{group.monthlyPageQuota != null ? ` · ${group.monthlyPageQuota} pages/month` : ''}{group.builtIn ? ' · built in' : ''}</CheckboxField>)}</fieldset>
+        <DialogFooter><Button type="submit" variant="default">Save account</Button></DialogFooter></Form>
+      <Separator className="my-5" />
+      <Form onSubmit={adjust}><div className="form-grid"><Field>Quota adjustment<Input name="pages" type="number" min="-100000" max="100000" required placeholder="Positive or negative pages" /></Field><Field>Reason<Input name="reason" required maxLength={255} /></Field></div><DialogFooter><Button type="submit" variant="outline">Record adjustment</Button></DialogFooter></Form>
+      <Separator className="my-5" />
+      <Form onSubmit={resetPassword}><Field>Temporary password<Input name="temporaryPassword" type="password" minLength={12} required /></Field><p className="muted">The user will be prompted to replace this after signing in.</p><DialogFooter><Button type="submit" variant="outline">Reset password</Button></DialogFooter></Form>
+    </AppDialog>}
+    {groupOpen && <AppDialog label="Add a group" onClose={() => setGroupOpen(false)}><DialogHeader layout="split"><div><p className="eyebrow">Access policy</p><DialogTitle>Add a group</DialogTitle></div><Button size="sm" variant="outline" onClick={() => setGroupOpen(false)}>Close</Button></DialogHeader>
+      <Form onSubmit={createGroup}><Field>Name<Input name="name" required maxLength={120} /></Field><Field>Monthly quota override<Input name="monthlyPageQuota" type="number" min="0" placeholder="Use the system default" /></Field><DialogFooter><Button type="submit" variant="default">Create group</Button></DialogFooter></Form>
+    </AppDialog>}
   </>
 }
 
@@ -1287,9 +1361,10 @@ function ReportsSection({ preview }: { preview: boolean }) {
   const [report, setReport] = useState<Report>(preview ? previewReport : { completedJobs: 0, printedPages: 0, estimatedCost: 0, jobs: [] })
   const [range, setRange] = useState('all')
   const [error, setError] = useState('')
+  const [ready, setReady] = useState(preview)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'completedAt', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
-  useEffect(() => { if (!preview) api.report().then(value => { setReport(value); setError('') }).catch(e => setError(message(e))) }, [preview])
+  useEffect(() => { if (!preview) api.report().then(value => { setReport(value); setError('') }).catch(e => setError(message(e))).finally(() => setReady(true)) }, [preview])
   const jobs = useMemo(() => filterReportJobs(report.jobs, range), [report.jobs, range])
   const totals = useMemo(() => ({
     completedJobs: jobs.length,
@@ -1373,44 +1448,62 @@ function ReportsSection({ preview }: { preview: boolean }) {
   })
   return <>
     <Separator className="my-2" />
-    <div className="alt-content-heading">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
-        <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Reports</h2>
+          <p className="text-muted-foreground mt-1 text-sm">Completed print volume and estimated cost. Pricing is informational; there are no balances or credits.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" asChild>
+            <a href={preview ? '#preview' : '/api/admin/reports/jobs.csv'} download={!preview}>
+              <Download aria-hidden="true" className="size-3.5" />
+              Export CSV
+            </a>
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <Button type="button" variant="outline" size="sm" onClick={() => downloadReport(jobs)}><Download aria-hidden="true" className="size-3.5" />Export CSV</Button>
-      </div>
-    </div>
-    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <section aria-label="Usage" className="metrics quota-strip">
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {!ready ? <MetricStripSkeleton label="Loading usage" /> : (
+      <section aria-label="Usage" className="metrics quota-strip">
       <MetricCard
-        label="Completed jobs"
+        label="Jobs"
         value={totals.completedJobs}
         hint={range === 'all' ? 'all retained history' : 'in selected range'}
         meter={report.jobs.length > 0 ? Math.round((totals.completedJobs / report.jobs.length) * 100) : 0}
       />
       <MetricCard
-        label="Printed pages"
+        label="Pages"
         value={totals.printedPages}
         hint="copies included"
       />
       <MetricCard
-        label="Estimated cost"
+        label="Cost"
         value={money(totals.estimatedCost)}
         hint="at the recorded rate"
       />
       <MetricCard
-        label="Color jobs"
+        label="Color"
         value={totals.colorJobs}
         hint={totals.completedJobs > 0 ? `${Math.round((totals.colorJobs / totals.completedJobs) * 100)}% of completed` : '0% of completed'}
         meter={totals.completedJobs > 0 ? Math.round((totals.colorJobs / totals.completedJobs) * 100) : 0}
       />
-    </section>
+      </section>
+      )}
+    </div>
     <DataTableFrame
       className="report-table"
       title="Completed jobs"
       description="Volume and estimated cost by user and printer."
+      actions={<SelectMenu value={range} onValueChange={value => { setRange(value); setPagination(current => ({ ...current, pageIndex: 0 })) }}>
+        <SelectTrigger className="w-40" aria-label="Report date range"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All time</SelectItem>
+          <SelectItem value="month">This month</SelectItem>
+          <SelectItem value="30">Last 30 days</SelectItem>
+          <SelectItem value="7">Last 7 days</SelectItem>
+        </SelectContent>
+      </SelectMenu>}
       filters={<div className="space-y-3">
         <div className="filter-pills">
           {([
@@ -1436,27 +1529,25 @@ function ReportsSection({ preview }: { preview: boolean }) {
       </div>}
       footer={<TablePagination table={table} noun="jobs" />}
     >
-      <DataTable table={table} className="report-data-table" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />
+      {!ready ? <TableRowsSkeleton /> : <DataTable table={table} variant="reports" empty={<EmptyState title="No completed jobs" description="No jobs match the selected date range." />} />}
     </DataTableFrame>
   </>
-}
-
-function downloadReport(jobs: ReportJob[]) {
-  const lines = ['job_id,completed_at,user,printer,pages,color_mode,estimated_cost,rate_version', ...jobs.map(job => [job.id, job.completedAt, job.user, job.printer || '', job.printedPages, job.colorMode, job.estimatedCost, job.rateVersion ?? ''].map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))]
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'printle-jobs.csv'
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 function UsersReports({ preview }: { preview: boolean }) {
   return (
     <main className="page users-page grid gap-6">
-      <PageHeader eyebrow="Manage" title="Users & Reports" copy="Organization members, printing allowances, access policy groups, and print accounting reports." />
+      <div className="quota-block">
+        <div className="alt-content-heading">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Users & Reports</h1>
+            <p className="text-muted-foreground mt-1 text-sm">Organization members, printing allowances, access policy groups, and print accounting reports.</p>
+          </div>
+          <nav aria-label="Breadcrumb"><span>Admin</span><b>/</b><strong>Users & Reports</strong></nav>
+        </div>
 
-      <UsersSection preview={preview} />
+        <UsersSection preview={preview} />
+      </div>
 
       <ReportsSection preview={preview} />
     </main>
@@ -1478,115 +1569,116 @@ function filterReportJobs(jobs: ReportJob[], range: string) {
 
 const previewSettings: InstanceSettings = { defaultMonthlyPageQuota: 200, quotaTimezone: 'UTC', heldJobTtlHours: 24, completedRetentionHours: 720, failedRetentionHours: 168, maxCopies: 100, maxPagesPerJob: 1000, colorPrintingAllowed: true, updatedAt: new Date().toISOString() }
 
-function Settings({ typeface, user, preview, onPasswordChanged }: { typeface: ReturnType<typeof useTypeface>; user: CurrentUser; preview: boolean; onPasswordChanged: () => void }) {
-  const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
-  const [diagnostics, setDiagnostics] = useState<Diagnostics>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : { database: 'checking', storage: 'checking', printing: 'checking', registeredPrinters: 0 })
-  const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
-  const [notice, setNotice] = useState(''); const [error, setError] = useState('')
-  useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
-  useEffect(() => { if (!preview && user.role === 'ADMIN') Promise.all([api.settings(), api.diagnostics()]).then(([s, d]) => { setSettings(s); setDiagnostics(d); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
-  async function savePolicy(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: colorAllowed }
-    try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }
-  }
-  async function changePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form)
-    if (data.get('newPassword') !== data.get('confirmPassword')) { setError('New passwords do not match'); return }
-    try { if (!preview) await api.changePassword({ currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword') }); form.reset(); onPasswordChanged(); setNotice('Password changed.'); setError('') } catch (e) { setError(message(e)) }
-  }
-  return <main className="page grid gap-6">
-    <PageHeader eyebrow="Management" title="Settings" copy="Personal appearance, account security, and instance print policy." />
+function SettingsMenu({ user, preview, theme, section, onSection, onClose, onProfile, onSignOut }: { user: CurrentUser; preview: boolean; theme: ReturnType<typeof useTheme>; section: SettingsSection; onSection: (section: SettingsSection) => void; onClose: () => void; onProfile: () => void; onSignOut: () => void }) {
+  const admin = user.role === 'ADMIN'
+  const items: { id: SettingsSection; label: string; icon: ReactNode }[] = [
+    { id: 'general', label: 'General', icon: <Settings2 className="size-4" /> },
+    { id: 'account', label: 'Account', icon: <UserRound className="size-4" /> },
+    ...(admin ? [
+      { id: 'policy' as const, label: 'Print policy', icon: <Shield className="size-4" /> },
+      { id: 'diagnostics' as const, label: 'Diagnostics', icon: <Activity className="size-4" /> },
+    ] : []),
+  ]
+  return <AppDialog variant="settings" label="Settings" onClose={onClose}>
+    <div className="settings-menu-nav">
+      <DialogTitle>Settings</DialogTitle>
+      <nav aria-label="Settings sections">
+        {items.map(item => (
+          <Button key={item.id} variant="ghost" className="justify-start" aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)}>
+            {item.icon}
+            {item.label}
+          </Button>
+        ))}
+      </nav>
+      <Button variant="ghost" className="mt-auto justify-start" onClick={onSignOut}>
+        <LogOut className="size-4" />
+        Sign out
+      </Button>
+    </div>
+    <div className="settings-menu-pane">
+      <header>
+        <h2>{items.find(item => item.id === section)?.label}</h2>
+        <Button variant="ghost" size="icon-sm" aria-label="Close settings" onClick={onClose}><X className="size-4" /></Button>
+      </header>
+      {section === 'general' && <SettingsGeneral theme={theme} />}
+      {section === 'account' && <SettingsAccount user={user} onProfile={onProfile} />}
+      {section === 'policy' && admin && <SettingsPolicy user={user} preview={preview} />}
+      {section === 'diagnostics' && admin && <SettingsDiagnostics user={user} preview={preview} />}
+    </div>
+  </AppDialog>
+}
+
+function SettingsGeneral({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  return <section className="settings-panel" aria-label="Appearance">
+    <h3>Appearance</h3>
+    <div className="settings-row">
+      <span>Mode</span>
+      <div className="flex gap-1 rounded-md bg-muted p-1" role="group" aria-label="Theme">
+        {(['light', 'dark', 'system'] as const).map(value => (
+          <Button key={value} variant={theme.value === value ? 'default' : 'ghost'} size="icon-sm" aria-pressed={theme.value === value} aria-label={value === 'light' ? 'Light' : value === 'dark' ? 'Dark' : 'System'} onClick={() => theme.set(value)}>
+            {value === 'light' ? <Sun className="size-4" /> : value === 'dark' ? <Moon className="size-4" /> : <Monitor className="size-4" />}
+          </Button>
+        ))}
+      </div>
+    </div>
+  </section>
+}
+
+function SettingsAccount({ user, onProfile }: { user: CurrentUser; onProfile: () => void }) {
+  return <section className="settings-panel" aria-label="Account">
+    <button type="button" className="settings-link" onClick={onProfile}>
+      <UserRound className="size-4" />
+      <span><strong>My profile</strong><small>{user.email}</small></span>
+    </button>
+  </section>
+}
+
+function SettingsDiagnostics({ user, preview }: { user: CurrentUser; preview: boolean }) {
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | undefined>(preview ? { database: 'ok', storage: 'ok', printing: 'IPP', registeredPrinters: 5 } : undefined)
+  const [error, setError] = useState('')
+  useEffect(() => { if (!preview && user.role === 'ADMIN') api.diagnostics().then(value => { setDiagnostics(value); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
+  return <div className="grid gap-4">
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
-    {user.role === 'ADMIN' && (
+    {!diagnostics ? <MetricStripSkeleton label="Loading system status" /> : (
       <section aria-label="System status" className="metrics quota-strip">
         <MetricCard
           label="Database"
-          value={<Badge variant={diagnostics.database === 'ok' ? 'success' : 'warning'} mono>{diagnostics.database}</Badge>}
+          value={diagnostics.database}
           hint="PostgreSQL connection"
         />
         <MetricCard
-          label="Job storage"
-          value={<Badge variant={diagnostics.storage === 'ok' ? 'success' : 'warning'} mono>{diagnostics.storage}</Badge>}
+          label="Storage"
+          value={diagnostics.storage}
           hint="Spool file storage"
         />
         <MetricCard
-          label="Printing protocol"
-          value={<Badge variant={diagnostics.printing === 'IPP' ? 'success' : 'warning'} mono>{diagnostics.printing}</Badge>}
+          label="Protocol"
+          value={diagnostics.printing}
           hint="Direct printer connection"
         />
         <MetricCard
-          label="Registered printers"
+          label="Printers"
           value={diagnostics.registeredPrinters}
           hint="Configured IPP endpoints"
         />
       </section>
     )}
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle asChild><h2 className="text-base font-semibold">Typeface</h2></CardTitle>
-            <CardDescription className="mt-1">DM Sans is the default. Your selection is saved locally.</CardDescription>
-          </div>
-          <Badge variant="outline">Appearance</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <RadioGroup className="sm:grid-cols-2" value={typeface.value} onValueChange={value => typeface.set(value as TypeId)} aria-label="Typeface">
-          {TYPES.map(item => (
-            <Label
-              key={item.id}
-              htmlFor={`typeface-${item.id}`}
-              variant="choice"
-              data-selected={typeface.value === item.id ? 'true' : undefined}
-            >
-              <RadioGroupItem id={`typeface-${item.id}`} value={item.id} className="mt-1" />
-              <div className="grid gap-0.5">
-                <div className="flex items-center gap-2">
-                  <strong className="text-sm font-semibold tracking-tight">{item.short.replace(/^\d+ /, '')}</strong>
-                  {item.id === 'dmsans' && <Badge variant="secondary">Default</Badge>}
-                </div>
-                <small className="text-muted-foreground text-xs leading-relaxed">{item.blurb}</small>
-              </div>
-            </Label>
-          ))}
-        </RadioGroup>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle asChild><h2 className="text-base font-semibold">Password</h2></CardTitle>
-            <CardDescription className="mt-1">Use at least 12 characters.</CardDescription>
-          </div>
-          <Lock className="size-4 text-muted-foreground" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-4" onSubmit={changePassword}>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="current-password">Current password</Label>
-              <TextField id="current-password" name="currentPassword" type="password" autoComplete="current-password" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-password">New password</Label>
-              <TextField id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="confirm-password">Confirm new password</Label>
-              <TextField id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
-            </div>
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button type="submit" size="sm">Change password</Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-    {user.role === 'ADMIN' && (
+  </div>
+}
+
+function SettingsPolicy({ user, preview }: { user: CurrentUser; preview: boolean }) {
+  const [settings, setSettings] = useState<InstanceSettings>(previewSettings)
+  const [colorAllowed, setColorAllowed] = useState(settings.colorPrintingAllowed)
+  const [notice, setNotice] = useState(''); const [error, setError] = useState('')
+  useEffect(() => { setColorAllowed(settings.colorPrintingAllowed) }, [settings.colorPrintingAllowed])
+  useEffect(() => { if (!preview && user.role === 'ADMIN') api.settings().then(value => { setSettings(value); setError('') }).catch(e => setError(message(e))) }, [preview, user.role])
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget); const body = { defaultMonthlyPageQuota: Number(data.get('defaultMonthlyPageQuota')), quotaTimezone: data.get('quotaTimezone'), heldJobTtlHours: Number(data.get('heldJobTtlHours')), completedRetentionHours: Number(data.get('completedRetentionHours')), failedRetentionHours: Number(data.get('failedRetentionHours')), maxCopies: Number(data.get('maxCopies')), maxPagesPerJob: Number(data.get('maxPagesPerJob')), colorPrintingAllowed: colorAllowed }
+    try { if (!preview) setSettings(await api.updateSettings(body)); setNotice('Instance policy saved.'); setError('') } catch (e) { setError(message(e)) }
+  }
+  return <div className="grid gap-4">
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
       <Card key={settings.updatedAt}>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1598,35 +1690,35 @@ function Settings({ typeface, user, preview, onPasswordChanged }: { typeface: Re
           </div>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-5" onSubmit={savePolicy}>
+          <Form onSubmit={savePolicy}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-2">
                 <Label htmlFor="policy-quota">Default monthly pages</Label>
-                <TextField id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
+                <Input id="policy-quota" name="defaultMonthlyPageQuota" type="number" min="1" defaultValue={settings.defaultMonthlyPageQuota} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-timezone">Quota timezone</Label>
-                <TextField id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
+                <Input id="policy-timezone" name="quotaTimezone" defaultValue={settings.quotaTimezone} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-ttl">Held job lifetime (hours)</Label>
-                <TextField id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
+                <Input id="policy-ttl" name="heldJobTtlHours" type="number" min="1" defaultValue={settings.heldJobTtlHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-completed">Completed retention (hours)</Label>
-                <TextField id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
+                <Input id="policy-completed" name="completedRetentionHours" type="number" min="1" defaultValue={settings.completedRetentionHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-failed">Failed retention (hours)</Label>
-                <TextField id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
+                <Input id="policy-failed" name="failedRetentionHours" type="number" min="1" defaultValue={settings.failedRetentionHours} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-copies">Maximum copies</Label>
-                <TextField id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
+                <Input id="policy-copies" name="maxCopies" type="number" min="1" max="100" defaultValue={settings.maxCopies} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="policy-pages">Maximum pages per job</Label>
-                <TextField id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
+                <Input id="policy-pages" name="maxPagesPerJob" type="number" min="1" max="10000" defaultValue={settings.maxPagesPerJob} required />
               </div>
             </div>
             <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3.5 sm:max-w-md bg-muted/20">
@@ -1639,18 +1731,10 @@ function Settings({ typeface, user, preview, onPasswordChanged }: { typeface: Re
             <div className="flex justify-end pt-1">
               <Button type="submit" size="sm">Save instance policy</Button>
             </div>
-          </form>
+          </Form>
         </CardContent>
       </Card>
-    )}
-  </main>
-}
-
-function ThemeButton({ theme }: { theme: ReturnType<typeof useTheme> }) {
-  const next = theme.value === 'light' ? 'dark' : theme.value === 'dark' ? 'system' : 'light'
-  return <button className="icon-button" title={`Theme: ${theme.value}`} aria-label={`Theme ${theme.value}`} onClick={() => theme.set(next)}>
-    {theme.resolved === 'dark' ? <Moon /> : <Sun />}
-  </button>
+  </div>
 }
 
 function QueueDate({ value }: { value: string }) {
@@ -1676,18 +1760,6 @@ function usePreview() {
     return () => window.removeEventListener('hashchange', sync)
   }, [])
   return preview
-}
-
-function useTypeface() {
-  const [value, setValue] = useState<TypeId>(() => {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('printle-typeface') : null
-    return TYPES.some(item => item.id === saved) ? saved as TypeId : 'dmsans'
-  })
-  useEffect(() => {
-    document.documentElement.dataset.type = value
-    localStorage.setItem('printle-typeface', value)
-  }, [value])
-  return { value, set: setValue }
 }
 
 function useSidebar() {
@@ -1716,10 +1788,15 @@ function useTheme() {
 
 function Mark() { return <svg className="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 16V6h20v10M11 29H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-4"/><path d="M10 24h20v11H10z"/><circle cx="30" cy="20" r="1.5"/></svg> }
 function NavIcon({ name }: { name: 'queue' | 'profile' | 'printer' | 'users' | 'reports' | 'users-reports' | 'settings' | 'logout' }) {
-  const Icon = { queue: List, profile: UserRound, printer: PrinterIcon, users: UsersIcon, reports: BarChart3, 'users-reports': UsersIcon, settings: SettingsIcon, logout: LogOut }[name]
-  return <Icon aria-hidden="true" />
+  if (name === 'queue') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
+  if (name === 'printer') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+  if (name === 'profile') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+  if (name === 'users' || name === 'users-reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  if (name === 'reports') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+  if (name === 'settings') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></svg>
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 }
-function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports', users: 'Users & Reports', reports: 'Users & Reports', settings: 'Settings' })[page] }
+function pageTitle(page: Page) { return ({ queue: 'Print queue', profile: 'My profile', printers: 'Printers', 'fake-printer': 'Fake Printer', 'users-reports': 'Users & Reports' })[page] }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong' }
 function money(value: number) { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value) }
@@ -1731,7 +1808,7 @@ function jobStatusCopy(status: string) {
   return ({
     HELD: 'Waiting for you to choose a printer.',
     EXPIRED: 'The held job expired before it was released.',
-    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Cancel it after you check the printer, or wait for printLe to find the job.',
+    SUBMISSION_UNKNOWN: 'Delivery could not be confirmed. Check the printer before submitting another copy.',
     PENDING: 'The printer accepted the job and is waiting to print it.',
     PENDING_HELD: 'The printer is holding the submitted job.',
     PROCESSING: 'The printer is currently processing this job.',

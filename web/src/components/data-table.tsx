@@ -1,6 +1,7 @@
 import { flexRender } from '@tanstack/react-table'
 import { ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { OptionSelect as Select } from '@/components/ui/select'
 
 type AnyTable = {
@@ -20,57 +21,55 @@ type AnyTable = {
 
 export function DataTable({
   table,
-  className,
+  variant,
   empty,
-  rowClassName,
 }: {
   table: AnyTable
-  className?: string
+  variant?: React.ComponentProps<typeof Table>['variant']
   empty?: ReactNode
-  rowClassName?: (row: any) => string | undefined
 }) {
   const rows = table.getRowModel().rows
   const columns = table.getVisibleLeafColumns().length
-  return <table className={cn('ui-table', className)}>
-    <thead>
+  return <Table variant={variant}>
+    <TableHeader>
       {table.getHeaderGroups().map(group => (
-        <tr key={group.id}>
+        <TableRow key={group.id}>
           {group.headers.map((header: any) => <SortableHeader key={header.id} header={header} />)}
-        </tr>
+        </TableRow>
       ))}
-    </thead>
-    <tbody>
+    </TableHeader>
+    <TableBody>
       {rows.length ? rows.map(row => (
-        <tr key={row.id} className={rowClassName?.(row)} data-state={row.getIsSelected() ? 'selected' : undefined}>
+        <TableRow key={row.id} data-state={row.getIsSelected() ? 'selected' : undefined}>
           {row.getVisibleCells().map((cell: any) => (
-            <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+            <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
           ))}
-        </tr>
+        </TableRow>
       )) : (
-        <tr className="ui-table-empty-row">
-          <td colSpan={Math.max(1, columns)}>{empty ?? <p className="empty-table">No results.</p>}</td>
-        </tr>
+        <TableRow>
+          <TableCell colSpan={Math.max(1, columns)}>{empty ?? <p className="empty-table">No results.</p>}</TableCell>
+        </TableRow>
       )}
-    </tbody>
-  </table>
+    </TableBody>
+  </Table>
 }
 
 function SortableHeader({ header }: { header: any }) {
   const sorted = header.column.getIsSorted()
   const canSort = header.column.getCanSort()
   const label = flexRender(header.column.columnDef.header, header.getContext())
-  return <th
+  return <TableHead
     colSpan={header.colSpan}
     aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
     onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
   >
     {header.isPlaceholder ? null : canSort ? (
-      <button type="button" className={sorted ? 'sorted' : undefined}>
+      <Button variant="ghost" size="inline">
         {label}
         {sorted ? <span className="sort-mark" aria-hidden="true">{sorted === 'asc' ? '↑' : '↓'}</span> : null}
-      </button>
+      </Button>
     ) : label}
-  </th>
+  </TableHead>
 }
 
 export function TablePagination({
@@ -89,20 +88,15 @@ export function TablePagination({
   const pages = pageNumbers(currentPage, pageCount)
   return <>
     <span>Viewing {visible} out of {filtered} {noun}</span>
-    <span className="table-page-size">Rows per page <Select aria-label="Rows per page" value={String(pageSize)} onChange={event => table.setPageSize(Number(event.target.value))}>
-      <option value="5">5</option>
-      <option value="10">10</option>
-      <option value="25">25</option>
-      <option value="50">50</option>
-    </Select></span>
-    <nav aria-label={`${noun} pages`}>
-      <button type="button" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>‹ Previous</button>
+    <span className="ml-auto inline-flex items-center gap-2">Rows per page <Select aria-label="Rows per page" value={String(pageSize)} onValueChange={value => table.setPageSize(Number(value))} size="sm" className="w-20" options={[{ value: "5", label: "5" }, { value: "10", label: "10" }, { value: "25", label: "25" }, { value: "50", label: "50" }]} /></span>
+    <nav className="flex items-center gap-1" aria-label={`${noun} pages`}>
+      <Button variant="ghost" size="sm" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>‹ Previous</Button>
       {pages[0] > 1 && <span className="page-ellipsis">…</span>}
       {pages.map(page => (
-        <button type="button" key={page} className={page === currentPage ? 'current' : undefined} onClick={() => table.setPageIndex(page - 1)}>{page}</button>
+        <Button key={page} variant={page === currentPage ? 'outline' : 'ghost'} size="sm" aria-current={page === currentPage ? 'page' : undefined} onClick={() => table.setPageIndex(page - 1)}>{page}</Button>
       ))}
       {pages[pages.length - 1] < pageCount && <span className="page-ellipsis">…</span>}
-      <button type="button" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>Next ›</button>
+      <Button variant="ghost" size="sm" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>Next ›</Button>
     </nav>
   </>
 }

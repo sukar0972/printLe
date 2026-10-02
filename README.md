@@ -22,7 +22,7 @@ The current build includes:
 - Usage reports and CSV export
 - Append-only audit records for authentication, administration, and print operations
 - PostgreSQL migrations with Flyway
-- A responsive React interface with light/dark/system themes and selectable local fonts
+- A responsive React interface with light/dark/system themes and DM Sans
 - Configurable print/retention policy and dependency diagnostics
 - Application-consistent backup tooling for PostgreSQL and job files
 - Backend and frontend integration tests
@@ -44,7 +44,7 @@ Edit `.env` and replace both placeholder passwords. Start the application:
 docker compose up -d --build
 ```
 
-Open [http://localhost:8080](http://localhost:8080) and sign in with the bootstrap administrator configured in `.env`.
+Open [http://localhost:8080](http://localhost:8080). If the user table is empty, complete **Getting started** in the small setup window (first account is administrator). You can skip that by setting a real `PRINTLE_BOOTSTRAP_ADMIN_PASSWORD` (12+ characters, not a placeholder) before the first start.
 
 The bootstrap administrator is created only when the user table is empty. Changing its environment variables later does not change the existing account.
 
@@ -129,6 +129,13 @@ Back up the database and job files together. See [`docs/backup-and-restore.md`](
 - The web service is the only published container. PostgreSQL and the API stay on an internal Compose network.
 - There is no public registration endpoint.
 
+Login limits use the socket peer address unless `PRINTLE_TRUSTED_PROXIES` names
+trusted proxy IPs or hostnames (comma-separated). Compose trusts only the `web`
+service. Its nginx configuration overwrites `X-Forwarded-For` with the client
+address; a custom proxy must do the same. Keep the backend private when trusting
+a proxy. Rate-limit entries expire after two idle minutes and are bounded;
+new keys share an overflow limit when the store is full.
+
 The project license is still undecided. Do not accept outside contributions until the community and commercial licensing model is settled.
 
 ### IPP printers
@@ -136,6 +143,11 @@ The project license is still undecided. Do not accept outside contributions unti
 In Printers, choose Add IPP printer and enter the printer's `ipp://` or `ipps://`
 endpoint. The printer must accept PDF documents. The backend connects directly;
 CUPS, USB passthrough, and the Python print-node are no longer part of the stack.
+Plain `http://` and `https://` URLs are rejected, as are loopback, link-local, and
+cloud-metadata hosts. Credentials in the URL are rejected too.
+DNS answers are checked when a connection opens, including every IPv4 and IPv6
+destination. The connection uses those checked addresses and preserves the
+original hostname for TLS certificate verification.
 
 The connection check requires native PDF support and either Print-Job or
 Create-Job plus Send-Document, along with Get-Job-Attributes and Cancel-Job.

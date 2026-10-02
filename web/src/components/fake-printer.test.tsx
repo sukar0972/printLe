@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
+import { PageActiveContext } from '@/hooks/page-active'
 import { api, type FakePrinterSnapshot } from '../api'
 import { FakePrinter } from './fake-printer'
 
@@ -43,6 +44,18 @@ test('shows received document evidence and changes a job outcome', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Clear log' }))
   await waitFor(() => expect(clear).toHaveBeenCalledOnce())
   expect(screen.getByText('#12 · printLe-test')).toBeInTheDocument()
+})
+
+test('stops polling when the page is hidden and resumes when it is shown', async () => {
+  const load = vi.spyOn(api, 'fakePrinter').mockResolvedValue(snapshot())
+  const { rerender } = render(<PageActiveContext.Provider value><FakePrinter preview={false} onPrinters={() => {}} /></PageActiveContext.Provider>)
+  await screen.findByLabelText('IPP address for this printLe instance')
+  expect(load).toHaveBeenCalledOnce()
+  rerender(<PageActiveContext.Provider value={false}><FakePrinter preview={false} onPrinters={() => {}} /></PageActiveContext.Provider>)
+  await new Promise(resolve => setTimeout(resolve, 50))
+  expect(load).toHaveBeenCalledOnce()
+  rerender(<PageActiveContext.Provider value><FakePrinter preview={false} onPrinters={() => {}} /></PageActiveContext.Provider>)
+  await waitFor(() => expect(load.mock.calls.length).toBeGreaterThan(1))
 })
 
 test('reports failures and keeps the simulator out of preview mode', async () => {

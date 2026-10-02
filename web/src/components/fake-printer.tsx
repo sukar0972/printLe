@@ -1,3 +1,4 @@
+import { CheckboxField } from '@/components/ui/field'
 import { useCallback, useEffect, useState } from 'react'
 import { api, type FakePrinterSnapshot } from '../api'
 import { Button } from './ui/button'
@@ -7,6 +8,8 @@ import { Label } from './ui/label'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
 import { MetricCard } from '@/components/ui/metric-card'
+import { MetricStripSkeleton, TableRowsSkeleton } from '@/components/ui/skeleton'
+import { usePageActive } from '@/hooks/page-active'
 import { Check, Copy, Pause, Play, Power, Printer as PrinterIcon, Trash2 } from 'lucide-react'
 
 export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrinters: () => void }) {
@@ -18,25 +21,29 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
   const [paused, setPaused] = useState(false)
   const [showPolls, setShowPolls] = useState(true)
   const [copied, setCopied] = useState(false)
+  const active = usePageActive()
   const load = useCallback(async () => {
     const snapshot = await api.fakePrinter()
     setData(snapshot); setPollError('')
   }, [])
 
   useEffect(() => {
-    if (preview) return
-    let active = true
+    if (preview || !active) return
+    let alive = true
     let timer: ReturnType<typeof setTimeout>
     async function poll() {
+      if (!alive || document.hidden) return
       try {
         const snapshot = await api.fakePrinter()
-        if (active) { setData(snapshot); setPollError('') }
-      } catch (e) { if (active) setPollError(message(e)) }
-      if (active && !paused) timer = setTimeout(poll, 2000)
+        if (alive) { setData(snapshot); setPollError('') }
+      } catch (e) { if (alive) setPollError(message(e)) }
+      if (alive && !paused && !document.hidden) timer = setTimeout(poll, 2000)
     }
+    const onVisible = () => { if (!document.hidden) void poll() }
+    document.addEventListener('visibilitychange', onVisible)
     void poll()
-    return () => { active = false; clearTimeout(timer) }
-  }, [preview, paused])
+    return () => { alive = false; clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
+  }, [preview, paused, active])
 
   async function act(action: () => Promise<unknown>, success: string) {
     setBusy(true); setError(''); setNotice('')
@@ -47,26 +54,40 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
 
   const events = data?.events.filter(event => showPolls || !['Get-Job-Attributes', 'Get-Printer-Attributes'].includes(event.operation)) ?? []
 
+  const statusStrip = data
+    ? (
+      <section aria-label="Fake printer status" className="metrics quota-strip">
+        <MetricCard label="Listener" value={data.enabled ? 'Online' : 'Offline'} hint="Local IPP daemon" />
+        <MetricCard label="Jobs" value={data.jobs.length} hint="Active in-memory queue" />
+        <MetricCard label="Events" value={data.events.length} hint="Logged operations" />
+        <MetricCard label="Refresh" value={paused ? 'Paused' : '2s'} hint={paused ? 'Updates suspended' : 'Polling live snapshot'} />
+      </section>
+    )
+    : pollError ? null : <MetricStripSkeleton label="Loading fake printer" />
+
   return <main className="page grid gap-6">
-    <div className="alt-content-heading">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Fake Printer</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Receive real IPP requests and inspect what printLe sends.</p>
+    <div className="quota-block">
+      <div className="alt-content-heading">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Fake Printer</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Receive real IPP requests and inspect what printLe sends.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <nav aria-label="Breadcrumb"><span>Diagnostics</span><b>/</b><strong>Fake Printer</strong></nav>
+          {data && (
+            <Button
+              disabled={busy}
+              variant={data.enabled ? 'outline' : 'default'}
+              size="sm"
+              onClick={() => void act(() => api.enableFakePrinter(!data.enabled), data.enabled ? 'Fake printer disabled.' : 'Fake printer enabled. Add its address in Printers.')}
+            >
+              <Power className="size-3.5 mr-1.5" />
+              {data.enabled ? 'Disable fake printer' : 'Enable fake printer'}
+            </Button>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <nav aria-label="Breadcrumb"><span>Diagnostics</span><b>/</b><strong>Fake Printer</strong></nav>
-        {data && (
-          <Button
-            disabled={busy}
-            variant={data.enabled ? 'outline' : 'default'}
-            size="sm"
-            onClick={() => void act(() => api.enableFakePrinter(!data.enabled), data.enabled ? 'Fake printer disabled.' : 'Fake printer enabled. Add its address in Printers.')}
-          >
-            <Power className="size-3.5 mr-1.5" />
-            {data.enabled ? 'Disable fake printer' : 'Enable fake printer'}
-          </Button>
-        )}
-      </div>
+      {!preview && statusStrip}
     </div>
     {preview ? (
       <Card variant="dashed">
@@ -106,34 +127,14 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
         {(error || pollError) && <Alert variant="destructive"><AlertDescription>{error || pollError}</AlertDescription></Alert>}
         {notice && <Alert variant="success"><AlertDescription>{notice}</AlertDescription></Alert>}
         {!data ? (
-          <div className="flex items-center gap-3 py-6">
-            <p className="text-sm text-muted-foreground">{pollError ? 'Could not load the fake printer.' : 'Loading fake printer…'}</p>
-            {pollError && <Button variant="outline" size="sm" onClick={() => void act(load, '')}>Try again</Button>}
-          </div>
+          pollError ? (
+            <div className="flex items-center gap-3 py-6">
+              <p className="text-sm text-muted-foreground">Could not load the fake printer.</p>
+              <Button variant="outline" size="sm" onClick={() => void act(load, '')}>Try again</Button>
+            </div>
+          ) : <TableRowsSkeleton rows={4} />
         ) : (
           <>
-            <section aria-label="Fake printer status" className="metrics quota-strip">
-              <MetricCard
-                label="Listener status"
-                value={<Badge variant={data.enabled ? 'success' : 'secondary'} mono>{data.enabled ? 'Online' : 'Offline'}</Badge>}
-                hint="Local IPP daemon"
-              />
-              <MetricCard
-                label="Jobs received"
-                value={data.jobs.length}
-                hint="Active in-memory queue"
-              />
-              <MetricCard
-                label="Action events"
-                value={data.events.length}
-                hint="Logged operations"
-              />
-              <MetricCard
-                label="Auto-refresh"
-                value={paused ? 'Paused' : 'Every 2s'}
-                hint={paused ? 'Updates suspended' : 'Polling live snapshot'}
-              />
-            </section>
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -225,10 +226,9 @@ export function FakePrinter({ preview, onPrinters }: { preview: boolean; onPrint
                     </Button>
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm pt-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={showPolls} onChange={event => setShowPolls(event.target.checked)} className="rounded border-border" />
+                <CheckboxField checked={showPolls} onCheckedChange={checked => setShowPolls(checked === true)}>
                   Show discovery and status polls
-                </label>
+                </CheckboxField>
               </CardHeader>
               <CardContent className="grid gap-2">
                 {events.length === 0 && <p className="text-sm text-muted-foreground py-2">{data.events.length ? 'No actions match this filter.' : 'No actions yet. Printer discovery will appear as Get-Printer-Attributes.'}</p>}

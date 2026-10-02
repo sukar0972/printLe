@@ -15,17 +15,19 @@ import java.util.Map;
 public class LoginRateLimitFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final ObjectMapper objectMapper;
+    private final ClientAddressResolver addresses;
 
-    public LoginRateLimitFilter(RateLimitService rateLimitService, ObjectMapper objectMapper) {
+    public LoginRateLimitFilter(RateLimitService rateLimitService, ObjectMapper objectMapper, ClientAddressResolver addresses) {
         this.rateLimitService = rateLimitService;
         this.objectMapper = objectMapper;
+        this.addresses = addresses;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         if ("POST".equalsIgnoreCase(request.getMethod()) && "/api/auth/login".equals(request.getRequestURI())) {
-            String ip = clientIp(request);
+            String ip = addresses.resolve(request);
             String email = request.getParameter("email");
             var result = rateLimitService.tryLogin(ip, email);
             if (!result.allowed()) {
@@ -39,11 +41,4 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
-    }
 }

@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -24,6 +25,20 @@ class AuthIntegrationTest {
         mvc.perform(formLogin("/api/auth/login").user("email", "admin@test.local").password("password", "test-password-123"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.authenticated").value(true));
+    }
+
+    @Test void setupIsNotRequiredWhenAnAdminExists() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/auth/setup"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.required").value(false));
+    }
+
+    @Test void setupIsRejectedWhenAnAdminExists() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/auth/setup")
+                .with(csrf())
+                .contentType("application/json")
+                .content("{\"email\":\"new@test.local\",\"displayName\":\"New Admin\",\"password\":\"another-password-123\"}"))
+            .andExpect(status().isConflict());
     }
 }
 

@@ -26,6 +26,7 @@ services:
       PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA: ${PRINTLE_DEFAULT_MONTHLY_PAGE_QUOTA:-100}
       PRINTLE_STORAGE_PATH: /var/lib/printle/jobs
       PRINTLE_SECURE_COOKIES: ${PRINTLE_SECURE_COOKIES:-false}
+      PRINTLE_TRUSTED_PROXIES: web
     volumes: [job_data:/var/lib/printle/jobs]
     depends_on:
       postgres: { condition: service_healthy }
