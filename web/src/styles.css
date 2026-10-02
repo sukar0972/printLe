@@ -90,10 +90,10 @@
   --danger: var(--destructive);
   --danger-bg: #fef3f2;
   --shadow: none;
-  --radius: 10px;
+  --radius: 8px;
   --sidebar-width: 256px;
   --sidebar-collapsed: 72px;
-  --card-gradient: none;
+  --card-gradient: linear-gradient(to bottom, color-mix(in srgb, var(--primary) 3%, var(--card)) 0 1px, transparent 36px), linear-gradient(to top, color-mix(in srgb, var(--primary) 4%, var(--card)) 0%, color-mix(in srgb, var(--primary) 1%, var(--card)) 42%, var(--card) 100%);
   --pass-gradient: linear-gradient(168deg, #262626 0%, #111111 40%, #050505 100%);
   --control-sm: 32px;
   --control-md: 40px;
@@ -387,7 +387,7 @@ html[data-sidebar="collapsed"] .brand-logo { display: none; }
 .print-settings > span { color: var(--ink); font-size: 14px; line-height: 20px; font-weight: 400; }
 .print-settings > small { color: var(--subtle); font-size: 12px; line-height: 16px; font-weight: 400; }
 .meter { height: 4px; background: var(--muted); border-radius: 99px; overflow: hidden; }
-.meter i { display: block; height: 100%; width: var(--meter); background: var(--ink); }
+.meter i { display: block; height: 100%; background: var(--ink); }
 .status {
   display: inline-flex; align-items: center; width: max-content; padding: 3px 8px; border-radius: 999px;
   background: var(--muted); color: var(--subtle); font-size: 11px; font-weight: 600; text-transform: capitalize;

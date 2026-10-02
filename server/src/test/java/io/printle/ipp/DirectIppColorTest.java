@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DirectIppColorTest {
-    private final String endpoint = "ipp://localhost/ipp/print";
+    private final String endpoint = "ipp://192.0.2.10/ipp/print";
 
     private DirectIppClient client(boolean color, List<String> modes) {
-        var client = spy(new DirectIppClient());
+        var client = spy(new DirectIppClient(mock(IppTransport.class)));
         doReturn(new DirectIppClient.Capabilities("Printer", "", "ONLINE", true, color,
             List.of("one-sided"), List.of(), List.of(), modes, 10, List.of(2)))
             .when(client).inspect(endpoint);
