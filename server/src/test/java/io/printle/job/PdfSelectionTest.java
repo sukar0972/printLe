@@ -27,6 +27,19 @@ class PdfSelectionTest {
         assertThrows(ResponseStatusException.class, () -> PdfSelection.select(pdf(), "0, 8"));
         assertThrows(ResponseStatusException.class, () -> PdfSelection.select(pdf(), "3-1"));
     }
+    @Test void selectsOddAndEvenPages() throws Exception {
+        assertEquals(java.util.List.of(0, 2, 4), PdfSelection.indices("odd", 5));
+        assertEquals(java.util.List.of(1, 3), PdfSelection.indices("EVEN", 5));
+        assertEquals(java.util.List.of(0, 2), PdfSelection.indices("odd 1-4", 5));
+        assertEquals(java.util.List.of(1), PdfSelection.indices("even 2", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("even 1", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("odd 8", 5));
+        try (var doc = Loader.loadPDF(PdfSelection.select(pdf(), "odd"))) {
+            assertEquals(3, doc.getNumberOfPages());
+            assertEquals(100, doc.getPage(0).getMediaBox().getWidth());
+            assertEquals(500, doc.getPage(2).getMediaBox().getWidth());
+        }
+    }
     @Test void manualDuplexExpandsCopiesAndPadsOddDocuments() throws Exception {
         try (var odd = Loader.loadPDF(PdfSelection.manualPass(pdf(), false, 2, false));
              var even = Loader.loadPDF(PdfSelection.manualPass(pdf(), true, 2, true))) {

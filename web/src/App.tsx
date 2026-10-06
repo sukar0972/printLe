@@ -23,6 +23,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Login } from './components/login'
+import { PageSelect } from './components/page-select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Field, CheckboxField } from '@/components/ui/field'
@@ -297,12 +298,14 @@ function DropBox({ model }: { model: QueueModel }) {
       <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
       <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
     </label>
-    <div className="zone-row">
-      <div className="zone-field"><Field>Pages<Input name="pages" type="text" placeholder="All pages" aria-label="Pages to print" title="Leave blank for all pages, or enter a range such as 1-3, 5" /></Field></div>
-      <div className="zone-field"><Field>Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></Field></div>
-      <div className="zone-field"><Field>Color<Select name="colorMode" defaultValue="MONOCHROME" options={[{ value: "MONOCHROME", label: "Grayscale" }, { value: "COLOR", label: "Color" }]} /></Field></div>
-      <div className="zone-field"><Field>Sides<Select name="duplexMode" defaultValue="ONE_SIDED" options={[{ value: "ONE_SIDED", label: "One-sided" }, { value: "TWO_SIDED_LONG_EDGE", label: "Two-sided · long edge" }, { value: "TWO_SIDED_SHORT_EDGE", label: "Two-sided · short edge" }, { value: "MANUAL", label: "Manual flip" }]} /></Field></div>
-      <Button type="submit" variant="default" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
+    <div className="zone-controls">
+      <PageSelect />
+      <div className="zone-row">
+        <div className="zone-field"><Field>Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></Field></div>
+        <div className="zone-field"><Field>Color<Select name="colorMode" defaultValue="MONOCHROME" options={[{ value: "MONOCHROME", label: "Grayscale" }, { value: "COLOR", label: "Color" }]} /></Field></div>
+        <div className="zone-field"><Field>Sides<Select name="duplexMode" defaultValue="ONE_SIDED" options={[{ value: "ONE_SIDED", label: "One-sided" }, { value: "TWO_SIDED_LONG_EDGE", label: "Two-sided · long edge" }, { value: "TWO_SIDED_SHORT_EDGE", label: "Two-sided · short edge" }, { value: "MANUAL", label: "Manual flip" }]} /></Field></div>
+        <Button type="submit" variant="default" disabled={model.busy}>{model.busy ? 'Uploading…' : 'Add to queue'}</Button>
+      </div>
     </div>
     {model.error && <p className="error" role="alert">{model.error}</p>}
   </Form></div>
@@ -343,7 +346,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
     { id: 'added', accessorFn: job => new Date(job.createdAt).getTime(), header: 'Added', cell: ({ row }) => <QueueDate value={row.original.createdAt} /> },
     { id: 'icon', header: '', enableSorting: false, cell: () => <div className="doc-icon">PDF</div> },
     { id: 'file', accessorFn: job => job.filename, header: 'File', cell: ({ row }) => <button type="button" className="job-name job-link" onClick={() => onInspect(row.original)}>{row.original.filename}</button> },
-    { accessorKey: 'pages', header: 'Pages', cell: ({ row }) => row.original.pages },
+    { accessorKey: 'pages', header: 'Pages', cell: ({ row }) => row.original.pageRange ? <span className="print-settings"><span>{row.original.pages}</span><small className="page-range-label" title={row.original.pageRange}>{row.original.pageRange}</small></span> : row.original.pages },
     { accessorKey: 'copies', header: 'Copies', cell: ({ row }) => row.original.copies },
     { id: 'color', accessorFn: job => `${job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'} ${duplexLabel(job.duplexMode)}`, header: 'Color / sides', cell: ({ row }) => <span className="print-settings"><span>{row.original.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</span><small>{duplexLabel(row.original.duplexMode)}</small></span> },
     { accessorKey: 'status', header: 'Status', filterFn: 'equalsString', cell: ({ row }) => <JobStatus job={row.original} /> },
@@ -387,6 +390,7 @@ function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { jo
       </section>
       <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
         <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
+        {job.pageRange && <div className="detail-span"><dt>Selection</dt><dd>{job.pageRange}</dd></div>}
         <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
         <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
         <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
