@@ -202,6 +202,38 @@ test('requires confirmation before canceling a job', async () => {
   expect(within(row).getByText('Canceled')).toBeInTheDocument()
 })
 
+test('allows unconfirmed delivery to be canceled from job details after confirmation', async () => {
+  let canceled = false
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+    const path = String(input)
+    if (path === '/api/auth/me') return json({ id: 'user', email: 'user@example.com', displayName: 'User', role: 'USER' })
+    if (path === '/api/auth/csrf') return json({ token: 'csrf' })
+    if (path === '/api/jobs/quota') return json({ limit: 100, used: 0, pending: canceled ? 0 : 4, remaining: canceled ? 100 : 96, exempt: false })
+    if (path === '/api/printers') return json([])
+    if (path === '/api/jobs') return json([{ id: 'unknown', filename: 'unconfirmed.pdf', sizeBytes: 100, pages: 4, copies: 1, colorMode: 'MONOCHROME', duplexMode: 'ONE_SIDED', status: canceled ? 'CANCELED' : 'SUBMISSION_UNKNOWN', createdAt: '2026-10-13T00:00:00Z', attempt: 0 }])
+    if (path === '/api/jobs/unknown' && options?.method === 'DELETE') {
+      canceled = true
+      return new Response(null, { status: 204 })
+    }
+    return new Response('{}', { status: 404 })
+  })
+  const deleteRequests = () => fetchMock.mock.calls.filter(([path, options]) => path === '/api/jobs/unknown' && options?.method === 'DELETE')
+  render(<App />)
+  const job = await screen.findByRole('button', { name: 'unconfirmed.pdf' })
+  const row = job.closest('tr')!
+  expect(within(row).getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  await userEvent.click(job)
+  await userEvent.click(within(screen.getByRole('dialog', { name: 'Print job details' })).getByRole('button', { name: 'Cancel job' }))
+  expect(screen.queryByRole('dialog', { name: 'Print job details' })).not.toBeInTheDocument()
+  const confirmation = screen.getByRole('alertdialog', { name: 'Cancel this print job?' })
+  expect(deleteRequests()).toHaveLength(0)
+  await userEvent.click(within(confirmation).getByRole('button', { name: 'Cancel job' }))
+  expect(await screen.findByText('Print job canceled.')).toBeInTheDocument()
+  await waitFor(() => expect(within(row).getByText('Canceled')).toBeInTheDocument())
+  expect(deleteRequests()).toHaveLength(1)
+  expect(within(row).queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+})
+
 test('shows IPP endpoints and enrollment instead of transport discovery', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })

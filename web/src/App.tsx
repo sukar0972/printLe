@@ -317,7 +317,7 @@ function JobStatus({ job }: { job: Job }) {
 }
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
-  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP', 'SUBMISSION_UNKNOWN'].includes(job.status)
   const action = job.status === 'HELD' ? { label: 'Print', run: onRelease }
     : job.status === 'AWAITING_FLIP' && onFlip ? { label: 'Stack flipped', run: onFlip }
       : job.status === 'ABORTED' && onRetry ? { label: 'Retry', run: onRetry } : undefined
@@ -377,7 +377,7 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
 }
 
 function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { job: Job; onClose: () => void; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry: (id: string) => void; onFlip: (id: string) => void }) {
-  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP', 'SUBMISSION_UNKNOWN'].includes(job.status)
   const hasActions = canCancel || job.status === 'ABORTED'
   const reason = job.ippStateReasons && job.ippStateReasons !== 'none' ? job.ippStateReasons : undefined
   const act = (action: (id: string) => void) => { onClose(); action(job.id) }

@@ -44,7 +44,8 @@ export function pageSelection(state: PageSelection): string {
 
 export function selectionError(mode: PageMode, custom: string, kind: PageKind = 'all'): string {
   const value = custom.trim()
-  if (mode !== 'range' || !value) return ''
+  if (mode !== 'range') return ''
+  if (!value) return custom ? 'Enter a page range' : ''
   if (value.length + (kind === 'all' ? 0 : kind.length + 1) > 1000) return 'Page selection is too long'
   if (!CUSTOM_RANGE.test(value)) return 'Use pages such as 1-3, 5'
   for (const span of value.split(',')) {
@@ -74,6 +75,11 @@ function ScrubField({
   active?: boolean
 }) {
   const drag = useRef<{ x: number; v: number } | null>(null)
+  const [empty, setEmpty] = useState(false)
+  const updateValue = (next: number) => {
+    setEmpty(false)
+    onChange(next)
+  }
   return (
     <div className={active ? 'page-tune-scrub is-active' : 'page-tune-scrub'}>
       <span
@@ -91,7 +97,7 @@ function ScrubField({
         }}
         onPointerMove={(event) => {
           if (!drag.current) return
-          onChange(clamp(drag.current.v + (event.clientX - drag.current.x) / 2, min, max))
+          updateValue(clamp(drag.current.v + (event.clientX - drag.current.x) / 2, min, max))
         }}
         onPointerUp={() => { drag.current = null }}
         onPointerCancel={() => { drag.current = null }}
@@ -99,10 +105,10 @@ function ScrubField({
           const step = event.shiftKey ? 10 : 1
           if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
             event.preventDefault()
-            onChange(clamp(value + step, min, max))
+            updateValue(clamp(value + step, min, max))
           } else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
             event.preventDefault()
-            onChange(clamp(value - step, min, max))
+            updateValue(clamp(value - step, min, max))
           }
         }}
       >
@@ -112,10 +118,12 @@ function ScrubField({
         inputMode="numeric"
         autoComplete="off"
         aria-label={`${label} value`}
-        value={value}
+        required
+        value={empty ? '' : value}
         onChange={(event) => {
           const digits = event.target.value.replace(/[^\d]/g, '')
-          onChange(clamp(digits ? Number(digits) : min, min, max))
+          if (!digits) setEmpty(true)
+          else updateValue(clamp(Number(digits), min, max))
         }}
       />
     </div>

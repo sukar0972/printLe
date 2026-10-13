@@ -24,6 +24,7 @@ test('submits original page numbers with optional odd/even filtering', () => {
   expect(selectionError('range', '1-3, 5')).toBe('')
   expect(selectionError('range', '0, 5')).toBe('Use positive page numbers and ascending ranges')
   expect(selectionError('range', '3-1')).toBe('Use positive page numbers and ascending ranges')
+  expect(selectionError('range', '   ')).toBe('Enter a page range')
   expect(selectionError('all', 'abc')).toBe('')
   const longList = Array(499).fill('1').join(',')
   expect(selectionError('range', longList)).toBe('')
@@ -96,4 +97,50 @@ test('blocks malformed ranges and permits a corrected list', async () => {
   expect(input).toBeValid()
   await user.click(screen.getByRole('button', { name: 'Add' }))
   expect(submit).toHaveBeenCalledWith('2, 4-6')
+})
+
+test('lets users clear and replace a single page without submitting an empty field', async () => {
+  const user = userEvent.setup()
+  const submit = vi.fn()
+  render(<form onSubmit={event => { event.preventDefault(); submit(new FormData(event.currentTarget).get('pages')) }}>
+    <PageSelect /><button type="submit">Add</button>
+  </form>)
+  await user.click(screen.getByRole('button', { name: 'Single' }))
+  const input = screen.getByRole('textbox', { name: 'Page number value' })
+  await user.clear(input)
+  expect(input).toHaveValue('')
+  await user.click(screen.getByRole('button', { name: 'Add' }))
+  expect(submit).not.toHaveBeenCalled()
+  await user.type(input, '5')
+  expect(input).toHaveValue('5')
+  expect(pagesInput()).toHaveValue('5')
+  await user.click(screen.getByRole('button', { name: 'Add' }))
+  expect(submit).toHaveBeenCalledWith('5')
+
+  await user.clear(input)
+  const slider = screen.getByRole('slider', { name: 'Page number' })
+  slider.focus()
+  await user.keyboard('{ArrowUp}')
+  expect(input).toHaveValue('6')
+  expect(pagesInput()).toHaveValue('6')
+})
+
+test('rejects whitespace-only ranges before submitting the form', async () => {
+  const user = userEvent.setup()
+  const submit = vi.fn()
+  render(<form onSubmit={event => { event.preventDefault(); submit(new FormData(event.currentTarget).get('pages')) }}>
+    <PageSelect /><button type="submit">Add</button>
+  </form>)
+  await user.click(screen.getByRole('button', { name: 'Range' }))
+  const input = screen.getByRole('textbox', { name: 'Page range' })
+  await user.type(input, '   ')
+  expect(input).toBeInvalid()
+  expect(screen.getByRole('alert')).toHaveTextContent('Enter a page range')
+  await user.click(screen.getByRole('button', { name: 'Add' }))
+  expect(submit).not.toHaveBeenCalled()
+  await user.clear(input)
+  await user.type(input, ' 2-4 ')
+  expect(input).toBeValid()
+  await user.click(screen.getByRole('button', { name: 'Add' }))
+  expect(submit).toHaveBeenCalledWith('2-4')
 })
