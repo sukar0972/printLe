@@ -1,0 +1,39 @@
+// The word follows currentColor so the sidebar and login flip with the theme.
+// The rule stays brand blue. The print pass sets color to #171717.
+
+const WORD = [
+  { x: 9, d: 'M535 236Q535 140 484.5 65.0Q434 -10 329 -10Q232 -10 188 60V-129H277V-213H14V-129H81V367H11V449H188V360Q207 400 243.5 429.0Q280 458 342 458Q428 458 481.5 399.5Q535 341 535 236ZM424 225Q424 297 391.0 334.5Q358 372 307 372Q253 372 222.0 331.0Q191 290 189 235L188 200Q188 144 220.5 110.0Q253 76 304 76Q361 76 392.5 116.0Q424 156 424 225Z' },
+  { x: 542, d: 'M303 456Q348 456 387 431L406 291L323 281L306 358Q286 368 272 368Q244 368 223.5 345.0Q203 322 203 281V82H292V0H29V82H96V366H26V449H195V365Q207 403 233.5 429.5Q260 456 303 456Z' },
+  { x: 945, d: 'M94 542V660H203V542ZM273 0H33V82H100V366H29V449H206V82H273Z' },
+  { x: 1207, d: 'M575 0H335V82H401V258Q401 322 378.0 348.5Q355 375 314 375Q263 375 233.5 342.0Q204 309 203 261V82H270V0H29V82H96V366H26V449H203V376Q250 458 352 458Q416 458 462.0 419.0Q508 380 508 297V82H575Z' },
+  { x: 1763, d: 'M391 132Q372 -10 233 -10Q161 -10 118.5 28.0Q76 66 76 134V370H10V449H76V588H183V449H350V370H183V151Q183 80 245 80Q262 80 283.0 92.5Q304 105 312 157Z' },
+  { x: 2121, d: 'M521 0H40V95H115V555H40V650H323V555H226V95H426L446 230L541 222Z' },
+  { x: 2644, d: 'M452 137Q446 78 394.0 34.0Q342 -10 251 -10Q153 -10 90.0 47.5Q27 105 27 217Q27 320 84.5 389.0Q142 458 245 458Q338 458 392.5 402.5Q447 347 448 262Q448 234 442 202H139Q148 76 259 76Q311 76 333.5 101.0Q356 126 363 154ZM338 268Q342 308 319.5 343.5Q297 379 244 379Q196 379 171.0 347.0Q146 315 140 268Z' },
+]
+
+export function PrintleLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 3128 913" role="img" aria-label="printLe" preserveAspectRatio="xMinYMid meet">
+      <g fill="currentColor">
+        {WORD.map(glyph => (
+          <g key={glyph.x} transform={`translate(${glyph.x} 680) scale(1 -1)`}>
+            <path d={glyph.d} />
+          </g>
+        ))}
+      </g>
+      <rect fill="var(--color-brand)" x="2149" y="725" width="959" height="62" rx="31" />
+    </svg>
+  )
+}
+
+export function PrintleMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 26 26" aria-hidden="true">
+      <g fill="currentColor" transform="translate(2.144 18.57) scale(0.02139 -0.02139)">
+        <path d="M521 0H40V95H115V555H40V650H323V555H226V95H426L446 230L541 222Z" />
+        <path d="M452 137Q446 78 394.0 34.0Q342 -10 251 -10Q153 -10 90.0 47.5Q27 105 27 217Q27 320 84.5 389.0Q142 458 245 458Q338 458 392.5 402.5Q447 347 448 262Q448 234 442 202H139Q148 76 259 76Q311 76 333.5 101.0Q356 126 363 154ZM338 268Q342 308 319.5 343.5Q297 379 244 379Q196 379 171.0 347.0Q146 315 140 268Z" transform="translate(523 0)" />
+      </g>
+      <rect fill="var(--color-brand)" x="2.743" y="19.42" width="20.513" height="1.7" rx="0.85" />
+    </svg>
+  )
+}

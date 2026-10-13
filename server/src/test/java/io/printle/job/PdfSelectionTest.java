@@ -40,6 +40,19 @@ class PdfSelectionTest {
             assertEquals(500, doc.getPage(2).getMediaBox().getWidth());
         }
     }
+    @Test void filtersListedRangesWithoutChangingOriginalPageOrder() throws Exception {
+        assertEquals(java.util.List.of(4, 0, 2), PdfSelection.indices("odd 5, 1-3, 5", 5));
+        assertEquals(java.util.List.of(1, 3), PdfSelection.indices("even 1-2, 4-5, 2", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("even 1, 3, 5", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("odd 1, 6", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("odd 3-1, 5", 5));
+        assertThrows(ResponseStatusException.class, () -> PdfSelection.indices("odd even 1-3", 5));
+        try (var doc = Loader.loadPDF(PdfSelection.select(pdf(), "even 1-3, 5, 4"))) {
+            assertEquals(2, doc.getNumberOfPages());
+            assertEquals(200, doc.getPage(0).getMediaBox().getWidth());
+            assertEquals(400, doc.getPage(1).getMediaBox().getWidth());
+        }
+    }
     @Test void manualDuplexExpandsCopiesAndPadsOddDocuments() throws Exception {
         try (var odd = Loader.loadPDF(PdfSelection.manualPass(pdf(), false, 2, false));
              var even = Loader.loadPDF(PdfSelection.manualPass(pdf(), true, 2, true))) {

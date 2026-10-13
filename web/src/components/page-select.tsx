@@ -4,81 +4,53 @@ import { useEffect, useId, useRef, useState } from 'react'
    Number fields scrub: drag the label, use arrow keys (shift for ×10), or type. */
 
 export type PageMode = 'all' | 'page' | 'range'
-export type PageKind = 'all' | 'odd' | 'even' | 'custom'
+export type PageKind = 'all' | 'odd' | 'even'
 
 export type PageSelection = {
   mode: PageMode
   page: number
-  from: number
-  to: number
   kind: PageKind
   custom: string
 }
 
 const MODES: { id: PageMode; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'page', label: 'Page' },
+  { id: 'page', label: 'Single' },
   { id: 'range', label: 'Range' },
 ]
 
-const CUSTOM_RANGE = /^(?:odd|even)(?:\s+\d+(?:\s*-\s*\d+)?)?$|^\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*$/i
+const CUSTOM_RANGE = /^\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*$/
 
 export function kindsFor(mode: PageMode): { id: PageKind; label: string }[] {
-  if (mode === 'page') return [
-    { id: 'all', label: 'This page' },
-    { id: 'custom', label: 'Custom list' },
-  ]
-  if (mode === 'range') return [
-    { id: 'all', label: 'Full range' },
-    { id: 'odd', label: 'Odd pages' },
-    { id: 'even', label: 'Even pages' },
-    { id: 'custom', label: 'Custom list' },
-  ]
+  if (mode === 'page') return []
   return [
-    { id: 'all', label: 'Every page' },
+    { id: 'all', label: 'All pages' },
     { id: 'odd', label: 'Odd pages' },
     { id: 'even', label: 'Even pages' },
-    { id: 'custom', label: 'Custom list' },
   ]
 }
 
 export function pageSelection(state: PageSelection): string {
-  if (state.kind === 'custom') return state.custom.trim()
   if (state.mode === 'page') return String(state.page)
   if (state.mode === 'range') {
-    const start = Math.min(state.from, state.to)
-    const end = Math.max(state.from, state.to)
-    const span = start === end ? String(start) : `${start}-${end}`
-    if (state.kind === 'odd') return `odd ${span}`
-    if (state.kind === 'even') return `even ${span}`
-    return span
+    const selection = state.custom.trim()
+    if (!selection) return ''
+    return state.kind === 'all' ? selection : `${state.kind} ${selection}`
   }
   if (state.kind === 'odd') return 'odd'
   if (state.kind === 'even') return 'even'
   return ''
 }
 
-function prettySpan(span: string) {
-  return span.replace(/(\d+)\s*-\s*(\d+)/g, '$1–$2')
-}
-
-export function describeSelection(value: string, mode: PageMode, kind: PageKind): string {
-  if (kind === 'custom' && !value) return 'Enter pages such as 1-3, 5'
-  if (value === 'odd') return 'Odd pages'
-  if (value === 'even') return 'Even pages'
-  const parity = value.match(/^(odd|even)\s+(.+)$/i)
-  if (parity) return `${parity[1].toLowerCase() === 'even' ? 'Even' : 'Odd'} · ${prettySpan(parity[2])}`
-  if (!value) return 'All pages'
-  if (mode === 'page') return `Page ${value}`
-  if (mode === 'range' && /^\d+$/.test(value)) return `Pages ${value}–${value}`
-  return prettySpan(value)
-}
-
-export function selectionError(kind: PageKind, custom: string): string {
+export function selectionError(mode: PageMode, custom: string, kind: PageKind = 'all'): string {
   const value = custom.trim()
-  if (kind !== 'custom' || !value) return ''
-  if (value.length > 1000) return 'Page selection is too long'
+  if (mode !== 'range' || !value) return ''
+  if (value.length + (kind === 'all' ? 0 : kind.length + 1) > 1000) return 'Page selection is too long'
   if (!CUSTOM_RANGE.test(value)) return 'Use pages such as 1-3, 5'
+  for (const span of value.split(',')) {
+    const [first, last = first] = span.split('-').map(Number)
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first) return 'Use positive page numbers and ascending ranges'
+  }
   return ''
 }
 
@@ -151,15 +123,14 @@ function ScrubField({
 }
 
 export function PageSelect() {
-  const hintId = useId()
+  const errorId = useId()
   const listId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLButtonElement>(null)
+  const rangeRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<PageMode>('all')
   const [kind, setKind] = useState<PageKind>('all')
   const [page, setPage] = useState(1)
-  const [from, setFrom] = useState(1)
-  const [to, setTo] = useState(1)
   const [custom, setCustom] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -170,8 +141,6 @@ export function PageSelect() {
       setMode('all')
       setKind('all')
       setPage(1)
-      setFrom(1)
-      setTo(1)
       setCustom('')
       setMenuOpen(false)
     }
@@ -198,83 +167,54 @@ export function PageSelect() {
   }, [menuOpen])
 
   const options = kindsFor(mode)
-  const kindLabel = options.find(item => item.id === kind)?.label ?? options[0].label
-  const value = pageSelection({ mode, page, from, to, kind, custom })
-  const error = selectionError(kind, custom)
-  const summary = describeSelection(value, mode, kind)
-  const edited = mode !== 'all' || kind !== 'all'
-  const modeIndex = MODES.findIndex(item => item.id === mode)
+  const kindLabel = options.find(item => item.id === kind)?.label ?? 'All pages'
+  const value = pageSelection({ mode, page, kind, custom })
+  const error = selectionError(mode, custom, kind)
+
+  useEffect(() => { rangeRef.current?.setCustomValidity(error) }, [mode, error])
 
   const selectMode = (next: PageMode) => {
     setMode(next)
     setMenuOpen(false)
-    setKind(current => kindsFor(next).some(item => item.id === current) ? current : 'all')
   }
 
-  const fields = kind === 'custom' ? [] : mode === 'page'
-    ? [{ key: 'page', label: 'Page', value: page, onChange: setPage, origin: 1 }]
-    : mode === 'range'
-      ? [
-          { key: 'from', label: 'From', value: from, onChange: setFrom, origin: 1 },
-          { key: 'to', label: 'To', value: to, onChange: setTo, origin: 1 },
-        ]
-      : []
-
   return (
-    <div ref={rootRef} className="page-tune" role="group" aria-label="Pages to print" aria-describedby={hintId}>
+    <div ref={rootRef} className="page-tune" role="group" aria-label="Pages to print">
       <input type="hidden" name="pages" value={value} />
       <div className="page-tune-bar">
         <span className="page-tune-title">Pages</span>
-        {edited ? (
-          <span className="page-tune-status is-edited">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            Edited
-          </span>
-        ) : <span className="page-tune-status">Adjust</span>}
       </div>
       <div className="page-tune-body">
         <div className="page-tune-segments" role="group" aria-label="Page selection">
-          <span className="page-tune-thumb" aria-hidden="true" style={{ transform: `translateX(${modeIndex * 100}%)` }} />
+          <span className="page-tune-thumb" aria-hidden="true" data-mode={mode} />
           {MODES.map(item => (
             <button key={item.id} type="button" aria-pressed={item.id === mode} onClick={() => selectMode(item.id)}>
               {item.label}
             </button>
           ))}
         </div>
-        {(kind === 'custom' || fields.length > 0) && <div className="page-tune-slot">
-          {kind === 'custom' ? (
+        {mode !== 'all' && <div className="page-tune-slot">
+          {mode === 'range' ? (
             <input
+              ref={rangeRef}
               className="page-tune-custom"
-              aria-label="Custom pages"
+              aria-label="Page range"
               aria-invalid={error ? true : undefined}
-              aria-describedby={hintId}
+              aria-describedby={error ? errorId : undefined}
               placeholder="1-3, 5"
               autoComplete="off"
+              required
               value={custom}
               onChange={event => setCustom(event.target.value)}
             />
-          ) : fields.length > 0 && (
-            <div className={fields.length === 1 ? 'page-tune-fields is-single' : 'page-tune-fields'}>
-              {fields.map(field => (
-                <ScrubField
-                  key={field.key}
-                  label={field.label}
-                  value={field.value}
-                  onChange={field.onChange}
-                  min={1}
-                  max={9999}
-                  active={field.value !== field.origin}
-                />
-              ))}
-            </div>
+          ) : (
+            <ScrubField label="Page number" value={page} onChange={setPage} min={1} max={9999} active={page !== 1} />
           )}
         </div>}
-        <p id={hintId} className={error ? 'page-tune-error' : 'page-tune-summary'}>{error || summary}</p>
+        {error && <p id={errorId} className="page-tune-error" role="alert">{error}</p>}
       </div>
-      <div className="page-tune-foot">
-        <span className="page-tune-label">Which</span>
+      {mode !== 'page' && <div className="page-tune-foot">
+        <span className="page-tune-label">Include</span>
         <div className="page-tune-menu">
           <button
             ref={filterRef}
@@ -285,7 +225,7 @@ export function PageSelect() {
             onClick={() => setMenuOpen(open => !open)}
           >
             <span>{kindLabel}</span>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: menuOpen ? 'rotate(180deg)' : undefined }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 9l6 6 6-6" />
             </svg>
           </button>
@@ -299,7 +239,7 @@ export function PageSelect() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

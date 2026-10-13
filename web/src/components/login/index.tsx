@@ -6,6 +6,7 @@ import { Input as TextField } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthSplit } from './auth-split'
 import { SetupDialog, looksLikeEmail } from './setup-dialog'
+import { PrintleLogo } from '@/components/logo'
 import { ThemeToggle } from './theme-toggle'
 import type { LoginProps } from './types'
 
@@ -68,7 +69,9 @@ export function Login({ onLogin, theme, notice }: LoginProps) {
     <main className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="topbar">
         <div>
-          <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
+          <span className="brand-logo h-7 w-auto">
+            <PrintleLogo />
+          </span>
         </div>
         <ThemeToggle theme={theme} />
       </header>

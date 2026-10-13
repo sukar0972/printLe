@@ -1,10 +1,9 @@
 import { useQueueRefresh } from './hooks/use-queue-refresh'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import * as ToastPrimitive from '@radix-ui/react-toast'
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ColumnDef, PaginationState, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useTable } from '@tanstack/react-table'
-import { Activity, CheckCircle2, Download, FileText, Key, LogOut, Monitor, Moon, MoreHorizontal, Printer as PrinterIcon, Settings2, Shield, Sun, UserRound, X } from 'lucide-react'
+import { Activity, BookOpen, CheckCircle2, Copy, Download, FileText, Key, Layers, LogOut, Monitor, Moon, MoreHorizontal, Palette, Printer as PrinterIcon, Settings2, Shield, Sun, UserRound, X } from 'lucide-react'
 import { AclRule, api, CurrentUser, Diagnostics, Group, InstanceSettings, Job, ManagedUser, onSessionExpired, Printer, Quota, Report, ReportJob } from './api'
 import { AppShell } from './components/app-shell'
 import { FakePrinter } from './components/fake-printer'
@@ -23,7 +22,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Login } from './components/login'
+import { PrintleLogo, PrintleMark } from './components/logo'
 import { PageSelect } from './components/page-select'
+import { JobStatusBadge } from './components/job-status'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Field, CheckboxField } from '@/components/ui/field'
@@ -126,7 +127,7 @@ export default function App() {
         onSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         onSignOut={() => preview.on ? (location.hash = '') : api.logout().then(() => { setSessionNotice(''); setUser(null) })}
         renderIcon={(name) => <NavIcon name={name} />}
-        brandMark={<Mark />}
+        brandMark={<PrintleMark className="logo-mark" />}
       />}
       header={<>
             <div><span className="mobile-brand">printLe</span><strong>{pageTitle(page)}</strong></div>
@@ -292,13 +293,13 @@ function Metrics({ model }: { model: QueueModel }) {
 
 function DropBox({ model }: { model: QueueModel }) {
   return <div className="upload-zone"><Form onSubmit={model.upload}>
-    <label className="zone-target">
-      <span className="upload-icon" aria-hidden="true">↑</span>
-      <strong>Drop PDF here</strong>
-      <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
-      <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
-    </label>
     <div className="zone-controls">
+      <label className="zone-target">
+        <span className="upload-icon" aria-hidden="true">↑</span>
+        <strong>Drop PDF here</strong>
+        <span className="drop-hint">Click or drag · up to 25 MB · held until you release it</span>
+        <input name="file" type="file" accept="application/pdf,.pdf" required={!model.preview} />
+      </label>
       <PageSelect />
       <div className="zone-row">
         <div className="zone-field"><Field>Copies<Input name="copies" type="number" min="1" max="100" defaultValue="1" /></Field></div>
@@ -312,10 +313,7 @@ function DropBox({ model }: { model: QueueModel }) {
 }
 
 function JobStatus({ job }: { job: Job }) {
-  return <span className={`status status-plain ${job.status.toLowerCase()}`} title={job.ippStateReasons || undefined}>
-    <i className="status-dot" aria-hidden="true" />
-    {statusLabel(job.status)}
-  </span>
+  return <JobStatusBadge status={job.status} reason={job.ippStateReasons} />
 }
 
 function JobActions({ job, onCancel, onRelease, onRetry, onFlip }: { job: Job; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry?: (id: string) => void; onFlip?: (id: string) => void }) {
@@ -379,41 +377,49 @@ function LayoutLedger({ model, onInspect }: { model: QueueModel; onInspect: (job
 }
 
 function JobDetails({ job, onClose, onCancel, onRelease, onRetry, onFlip }: { job: Job; onClose: () => void; onCancel: (id: string) => void; onRelease: (id: string) => void; onRetry: (id: string) => void; onFlip: (id: string) => void }) {
-  const terminal = ['COMPLETED', 'CANCELED', 'ABORTED', 'EXPIRED'].includes(job.status)
-  return <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent variant="details" showCloseButton={false} aria-labelledby={undefined} aria-label="Print job details" aria-describedby={undefined}>
-        <div className="drawer-title"><div><p className="eyebrow">Print job</p><SheetTitle>{job.filename}</SheetTitle><p className="mono-id">{job.id}</p></div><Button size="sm" variant="outline" onClick={onClose}>Close</Button></div>
-      <section className="drawer-section current-state">
-        <span className={`status status-plain ${job.status.toLowerCase()}`}><i className="status-dot" />{statusLabel(job.status)}</span>
-        <p>{job.ippStateReasons && job.ippStateReasons !== 'none' ? humanizeReason(job.ippStateReasons) : jobStatusCopy(job.status)}</p>
-        {job.ippStateReasons && job.ippStateReasons !== 'none' && <details><summary>Technical printer reason</summary><code>{job.ippStateReasons}</code></details>}
+  const canCancel = ['HELD', 'QUEUED', 'PROCESSING', 'PENDING', 'PENDING_HELD', 'PROCESSING_STOPPED', 'AWAITING_FLIP'].includes(job.status)
+  const hasActions = canCancel || job.status === 'ABORTED'
+  const reason = job.ippStateReasons && job.ippStateReasons !== 'none' ? job.ippStateReasons : undefined
+  const act = (action: (id: string) => void) => { onClose(); action(job.id) }
+  const shortDate = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return <AppDialog size="compact" label="Print job details" onClose={onClose}>
+    <div className="job-details">
+      <div className="job-details-bar"><span>Print job</span><Button variant="ghost" size="icon-sm" aria-label="Close job details" onClick={onClose}><X /></Button></div>
+      <section className="job-summary">
+        <header className="job-summary-header">
+          <div className="job-file-icon" aria-hidden="true"><FileText /></div>
+          <div className="job-identity"><DialogTitle>{job.filename}</DialogTitle><time dateTime={job.createdAt} title={formatDate(job.createdAt)}>{shortDate(job.createdAt)}</time></div>
+          <div className="job-summary-end">{job.estimatedCost != null && <div className="job-price"><strong>{money(job.estimatedCost)}</strong><small>estimated</small></div>}<JobStatus job={job} /></div>
+        </header>
+        <div className="job-options"><span><Layers aria-hidden="true" />{job.pages} {job.pages === 1 ? 'page' : 'pages'}</span><span><Copy aria-hidden="true" />{job.copies} {job.copies === 1 ? 'copy' : 'copies'}</span><span><Palette aria-hidden="true" />{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</span><span><BookOpen aria-hidden="true" />{job.duplexMode === 'ONE_SIDED' ? 'One-sided' : job.duplexMode === 'MANUAL' ? 'Manual duplex' : 'Two-sided'}</span></div>
+        <div className="job-destination"><PrinterIcon aria-hidden="true" /><div><strong>{job.printerName || 'Printer not selected'}</strong>{job.submittedAt && <time dateTime={job.submittedAt} title={formatDate(job.submittedAt)}>Sent {shortDate(job.submittedAt)}</time>}</div></div>
+        {['AWAITING_FLIP', 'SUBMISSION_UNKNOWN'].includes(job.status) && <p className="job-instruction">{jobStatusCopy(job.status)}</p>}
+        {reason && <p className="job-instruction">{humanizeReason(reason)}</p>}
+        {hasActions && <div className="job-details-actions">
+          {job.status === 'HELD' && <Button size="sm" onClick={() => act(onRelease)}>Choose printer</Button>}
+          {job.status === 'AWAITING_FLIP' && <Button size="sm" onClick={() => act(onFlip)}>Stack reloaded</Button>}
+          {job.status === 'ABORTED' && <Button size="sm" onClick={() => act(onRetry)}>Retry job</Button>}
+          {canCancel && <Button size="sm" variant="ghost-destructive" onClick={() => act(onCancel)}>Cancel job</Button>}
+        </div>}
       </section>
-      <section className="drawer-section"><h3>Job details</h3><dl className="detail-grid">
-        <div><dt>Pages</dt><dd>{job.pages}</dd></div><div><dt>Copies</dt><dd>{job.copies}</dd></div>
-        {job.pageRange && <div className="detail-span"><dt>Selection</dt><dd>{job.pageRange}</dd></div>}
-        <div><dt>Color</dt><dd>{job.colorMode === 'COLOR' ? 'Color' : 'Grayscale'}</dd></div><div><dt>Sides</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
-        <div><dt>Size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div><div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
-        <div><dt>Printer</dt><dd>{job.printerName || 'Not assigned'}</dd></div><div><dt>Estimated price</dt><dd>{job.estimatedCost == null ? 'Not priced' : money(job.estimatedCost)}</dd></div>
-      </dl></section>
-      <section className="drawer-section"><h3>Lifecycle</h3><ol className="job-timeline">
-        <TimelineItem label="Created and held" time={job.createdAt} complete />
-        <TimelineItem label={job.ippJobId ? `Submitted to printer · job ${job.ippJobId}` : 'Not submitted to printer'} time={job.submittedAt} complete={Boolean(job.submittedAt)} />
-        {job.duplexMode === 'MANUAL' && <TimelineItem label={job.manualPhase === 'EVEN' ? `Even pages submitted · job ${job.evenIppJobId}` : job.status === 'AWAITING_FLIP' ? 'Odd pages complete · waiting for stack flip' : `Manual duplex · odd job ${job.oddIppJobId || 'pending'}`} complete={Boolean(job.oddIppJobId)} />}
-        <TimelineItem label={terminal ? statusLabel(job.status) : `Current · ${statusLabel(job.status)}`} time={job.completedAt} complete={terminal} active={!terminal} />
-      </ol></section>
-      <section className="drawer-section"><h3>Delivery</h3><dl className="detail-grid"><div><dt>IPP URL</dt><dd>{job.ippUri || '—'}</dd></div><div><dt>Rate version</dt><dd>{job.costRateVersion ?? '—'}</dd></div><div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div></dl></section>
-      <div className="drawer-actions">
-        {job.status === 'HELD' && <Button variant="default" onClick={() => { onClose(); onRelease(job.id) }}>Choose printer</Button>}
-        {job.status === 'AWAITING_FLIP' && <Button variant="default" onClick={() => onFlip(job.id)}>Stack flipped—continue</Button>}
-        {job.status === 'ABORTED' && <Button variant="default" onClick={() => onRetry(job.id)}>Retry job</Button>}
-        {!terminal && <Button variant="outline-destructive" onClick={() => { onClose(); onCancel(job.id) }}>Cancel job</Button>}
-      </div>
-      </SheetContent>
-  </Sheet>
-}
-
-function TimelineItem({ label, time, complete = false, active = false }: { label: string; time?: string; complete?: boolean; active?: boolean }) {
-  return <li className={complete ? 'complete' : active ? 'active' : ''}><i /><span><strong>{label}</strong>{time && <time dateTime={time}>{new Date(time).toLocaleString()}</time>}</span></li>
+      <details className="job-more"><summary>More details</summary><p>{jobStatusCopy(job.status)}</p><dl>
+        <div><dt>Added</dt><dd>{formatDate(job.createdAt)}</dd></div>
+        {job.submittedAt && <div><dt>Sent to printer</dt><dd>{formatDate(job.submittedAt)}</dd></div>}
+        {job.completedAt && <div><dt>{statusLabel(job.status)}</dt><dd>{formatDate(job.completedAt)}</dd></div>}
+        {job.expiresAt && <div><dt>Expires</dt><dd>{formatDate(job.expiresAt)}</dd></div>}
+        <div><dt>File size</dt><dd>{formatBytes(job.sizeBytes)}</dd></div>
+        <div><dt>Page selection</dt><dd>{job.pageRange || 'All pages'}</dd></div>
+        <div><dt>Double-sided mode</dt><dd>{duplexLabel(job.duplexMode)}</dd></div>
+        <div><dt>Job ID</dt><dd>{job.id}</dd></div>
+        <div><dt>Attempt</dt><dd>{job.attempt}</dd></div>
+        <div><dt>IPP address</dt><dd>{job.ippUri || 'Not submitted'}</dd></div>
+        <div><dt>Printer job ID</dt><dd>{job.ippJobId ?? 'Not submitted'}</dd></div>
+        <div><dt>Rate version</dt><dd>{job.costRateVersion ?? 'Not priced'}</dd></div>
+        {job.duplexMode === 'MANUAL' && <><div><dt>Manual phase</dt><dd>{job.manualPhase || 'Not started'}</dd></div><div><dt>Odd-page job ID</dt><dd>{job.oddIppJobId ?? 'Not submitted'}</dd></div><div><dt>Even-page job ID</dt><dd>{job.evenIppJobId ?? 'Not submitted'}</dd></div></>}
+        {reason && <div><dt>Printer reason</dt><dd>{reason}</dd></div>}
+      </dl></details>
+    </div>
+  </AppDialog>
 }
 
 function ConfirmDialog({ title, copy, confirm, danger, onClose, onConfirm }: { title: string; copy: string; confirm: string; danger?: boolean; onClose: () => void; onConfirm: () => void }) {
@@ -546,7 +552,7 @@ function Profile({ user, preview, onManage }: { user: CurrentUser; preview: bool
         <div className="lg:pr-10">
           <div className="print-pass">
             <PassFlourish />
-            <div className="pass-brand"><img src="/printle-logo.svg" alt="printLe" /></div>
+            <div className="pass-brand"><PrintleLogo /></div>
             <i className="pass-chip" aria-hidden="true" />
             <div className="pass-number">•••• &nbsp;•••• &nbsp;PL&nbsp;{identifier}</div>
             <div className="pass-meta">

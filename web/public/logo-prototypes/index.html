@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>printLe logo studies</title>
+<style>
+  @font-face { font-family: "DM Sans"; font-style: normal; font-weight: 100 1000; font-display: swap; src: url("fonts/dm-sans.woff2") format("woff2"); }
+  @font-face { font-family: "Fraunces"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("fonts/fraunces.woff2") format("woff2"); }
+  @font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("fonts/instrument-sans.woff2") format("woff2"); }
+  @font-face { font-family: "Newsreader"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("fonts/newsreader.woff2") format("woff2"); }
+  @font-face { font-family: "Outfit"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("fonts/outfit.woff2") format("woff2"); }
+  @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 100 700; font-display: swap; src: url("fonts/plex-sans.woff2") format("woff2"); }
+  @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/plex-mono-500.woff2") format("woff2"); }
+  @font-face { font-family: "Zilla Slab"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/zilla-slab-600.woff2") format("woff2"); }
+
+  :root {
+    --blue: #4d70ca;
+    --ink: #171717;
+    --stage: #ffffff;
+    --paper: #efece6;
+    --card: #f7f5f1;
+    --line: #e3ded6;
+    --muted: #6d6860;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: #1c1b19;
+    font-family: "DM Sans", sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 42px 28px 88px; }
+  header.top { max-width: 720px; }
+  .kicker {
+    margin: 0 0 8px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+  h1 { margin: 0; font-size: 42px; line-height: 1; font-weight: 560; letter-spacing: -0.045em; }
+  .lede { margin: 14px 0 0; color: var(--muted); font-size: 16px; max-width: 62ch; }
+  .swatch {
+    display: inline-block; width: 0.72em; height: 0.72em; margin: 0 0.2em -0.08em;
+    background: var(--blue); border-radius: 2px; vertical-align: baseline;
+  }
+  h2.band {
+    margin: 36px 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: #3f3c38;
+  }
+  .scan-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 12px; }
+  .scan-cell { display: grid; gap: 6px; text-decoration: none; color: inherit; }
+  .scan-cell .n {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; color: var(--blue); font-weight: 500;
+  }
+  .scan-cell .nm { font-size: 12px; color: var(--muted); }
+  .scan-slot, .slot {
+    width: 112px; height: 38px;
+    display: flex; align-items: center; overflow: hidden;
+  }
+  .scan-slot {
+    background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 0 4px;
+    --stage: #fff; --ink: #171717;
+  }
+  .scan-grid.dark .scan-slot { background: #171717; border-color: #262626; --stage: #171717; --ink: #fafafa; color: #fafafa; }
+  .scan-slot.clips, .slot.clips { box-shadow: inset 0 0 0 1.5px #b42318; }
+
+  .study { padding: 26px 0 8px; border-top: 1px solid var(--line); margin-top: 22px; }
+  .study-head { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; align-items: start; margin-bottom: 12px; }
+  .study-head h2 { margin: 0; font-size: 22px; letter-spacing: -0.03em; font-weight: 600; }
+  .study-head p { margin: 3px 0 0; color: var(--muted); max-width: 68ch; }
+  .study-head .n { padding-top: 6px; }
+
+  .stages { display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 10px; }
+  .stage {
+    min-height: 196px; border-radius: 14px;
+    display: grid; place-items: center; padding: 28px 20px;
+    background: #fff; border: 1px solid var(--line);
+    --stage: #fff; --ink: #171717;
+  }
+  .stage.on-dark { background: #0a0a0a; border-color: #0a0a0a; --stage: #0a0a0a; --ink: #fafafa; color: #fafafa; }
+
+  .uses { display: flex; flex-wrap: wrap; gap: 14px 18px; margin-top: 12px; align-items: flex-start; }
+  .use-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .sb {
+    width: 256px; background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; overflow: hidden;
+    color: #171717; --stage: #fff; --ink: #171717;
+  }
+  .sb.on-dark { background: #171717; border-color: #262626; color: #fafafa; --stage: #171717; --ink: #fafafa; }
+  .sb-head { height: 56px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #e5e5e5; }
+  .sb.on-dark .sb-head { border-bottom-color: #262626; }
+  .sb-nav { padding: 8px 0 10px; }
+  .sb-item {
+    height: 32px; display: flex; align-items: center; margin: 2px 8px; padding: 0 10px;
+    border-radius: 8px; font-size: 14px;
+  }
+  .sb-item.on { background: #f5f5f5; font-weight: 600; }
+  .sb.on-dark .sb-item.on { background: #262626; }
+  .mini-pair { display: flex; gap: 8px; }
+  .mini-mount {
+    width: 42px; height: 42px; display: grid; place-items: center;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    --stage: #fff; --ink: #171717;
+  }
+  .mini-mount.on-dark { background: #171717; border-color: #262626; --stage: #171717; --ink: #fafafa; color: #fafafa; }
+
+  .logo { color: var(--ink, #171717); font-size: var(--hero, 72px); line-height: 1; white-space: nowrap; }
+  .logo .full { display: inline-flex; align-items: center; gap: 0.26em; }
+  .logo.is-mini .full { display: none; }
+  .logo:not(.is-mini) .mini { display: none; }
+  .logo.is-mini { font-size: 16px; }
+  .w {
+    font-family: var(--face);
+    font-weight: var(--wght, 560);
+    letter-spacing: var(--track, -0.04em);
+    line-height: 1;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    font-variation-settings: var(--axes, normal);
+    color: inherit;
+  }
+  .sym { width: 0.92em; height: 0.92em; display: block; flex: none; }
+  .mini svg.mark, .mini .mark { width: 26px; height: 26px; display: block; }
+
+  .chip {
+    width: 26px; height: 26px; border-radius: 7px;
+    display: grid; place-items: center;
+    background: var(--blue); color: #fff;
+    font-family: var(--face, "DM Sans");
+    font-weight: 640;
+    font-size: 16px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .chip.ink { background: #171717; }
+  .on-dark .chip.ink, .scan-slot.on-dark .chip.ink, .mini-mount.on-dark .chip.ink { background: #fafafa; color: #171717; }
+  .chip.ghost { background: transparent; color: var(--blue); font-size: 22px; }
+  .chip .bar {
+    position: absolute;
+  }
+
+  /* 02 rule under Le */
+  .l02 .le { position: relative; }
+  .l02 .le::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0.055em;
+    height: 0.055em;
+    background: var(--blue);
+    border-radius: 1px;
+  }
+
+  /* 05 geometric L. The foot sits just under the baseline so it does not cut the e. */
+  .l05lock { display: inline-flex; align-items: flex-end; gap: 0.07em; }
+  .l05lock .stem {
+    display: block;
+    width: 0.13em; height: 0.7em; flex: none;
+    margin-bottom: 0.145em;
+    background: var(--blue); border-radius: 0.02em 0.02em 0 0;
+  }
+  .l05lock .tail { position: relative; display: inline-block; }
+  .l05lock .foot {
+    position: absolute; left: -0.2em; right: -0.26em; bottom: 0.145em;
+    height: 0.13em; background: var(--blue); border-radius: 0 0.02em 0.02em 0;
+  }
+
+  /* 06 crop marks */
+  .crop { position: relative; display: inline-block; padding: 0.34em 0.4em 0.26em; }
+  .crop i {
+    position: absolute; width: 0.22em; height: 0.22em;
+    border: 0 solid var(--blue);
+  }
+  .crop .tl { top: 0; left: 0; border-top-width: max(1.25px, 0.028em); border-left-width: max(1.25px, 0.028em); }
+  .crop .tr { top: 0; right: 0; border-top-width: max(1.25px, 0.028em); border-right-width: max(1.25px, 0.028em); }
+  .crop .bl { bottom: 0; left: 0; border-bottom-width: max(1.25px, 0.028em); border-left-width: max(1.25px, 0.028em); }
+  .crop .br { bottom: 0; right: 0; border-bottom-width: max(1.25px, 0.028em); border-right-width: max(1.25px, 0.028em); }
+
+  /* 15 quad */
+  .quad { display: inline-flex; align-items: center; gap: 0.2em; }
+  .quad .sq {
+    width: 0.6em; height: 0.6em; flex: none; display: block;
+    background: var(--blue);
+    transform: translateY(-0.08em);
+  }
+
+  /* 16 tittle */
+  .idot { position: relative; display: inline-block; }
+  .idot svg {
+    position: absolute;
+    width: 0.36em; height: 0.44em;
+    left: 50%; bottom: 0.7em;
+    transform: translateX(-50%);
+  }
+  .keychip { position: relative; }
+  .keychip i {
+    position: absolute; left: 0; top: 5px; bottom: 5px; width: 3px;
+    background: var(--blue); border-radius: 1px;
+  }
+
+  /* 17 18 plates */
+  .plate {
+    display: inline-flex; align-items: center;
+    height: 1.18em;
+    padding: 0 0.38em 0.03em;
+    border-radius: 0.16em;
+    line-height: 1;
+    color: #fff;
+    background: var(--blue);
+  }
+  .plate.ink { background: #171717; }
+  .on-dark .plate.ink, .scan-slot.on-dark .plate.ink { background: #fafafa; color: #171717; }
+
+  /* 19 ticket */
+  .ticket {
+    position: relative;
+    display: inline-flex; align-items: center;
+    height: 1.32em;
+    padding: 0 0.5em 0 0.78em;
+    background: #fff;
+    color: #171717;
+    border: 1px solid #e4e0d8;
+    border-radius: 0.12em;
+  }
+  .on-dark .ticket, .scan-slot.on-dark .ticket { background: #141414; color: #fafafa; border-color: #333; }
+  .ticket .holes {
+    position: absolute; left: 0; top: 0.08em; bottom: 0.08em;
+    display: flex; flex-direction: column; justify-content: space-evenly;
+  }
+  .ticket .holes i {
+    width: 0.22em; height: 0.22em; border-radius: 50%;
+    background: var(--stage); margin-left: -0.11em;
+    box-shadow: 0 0 0 1px #ddd8d0;
+  }
+  .on-dark .ticket .holes i, .scan-slot.on-dark .ticket .holes i { box-shadow: 0 0 0 1px #3a3a3a; }
+  .ticket .tear {
+    position: absolute; left: 0.36em; top: 0.18em; bottom: 0.18em;
+    border-left: max(1px, 0.02em) dashed var(--blue);
+  }
+
+  /* 20 keyline */
+  .key i {
+    width: 0.085em; height: 0.74em; flex: none;
+    background: var(--blue); border-radius: 1px;
+    transform: translateY(-0.02em);
+  }
+
+  .sheet { display: none; }
+  body.view-sheet { background: #efece6; }
+  body.view-sheet .review { display: none; }
+  body.view-sheet .sheet { display: block; }
+  body.view-sheet .wrap { max-width: none; width: 1560px; padding: 36px 36px 48px; }
+  .sheet-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 18px; }
+  .sheet-head h1 { font-size: 32px; }
+  .sheet-head p { margin: 0; color: var(--muted); max-width: 54ch; text-align: right; }
+  .sheet-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cell {
+    margin: 0; background: #fff; border-radius: 14px; border: 1px solid #e6e1d8;
+    min-height: 248px; padding: 14px 14px 16px;
+    display: grid; grid-template-rows: auto 1fr auto; gap: 8px;
+    --stage: #fff; --ink: #171717;
+  }
+  .cell .cell-logo { display: grid; place-items: center; min-height: 150px; }
+  .cell figcaption { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .cell .cn { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--blue); font-weight: 500; }
+  .cell .ct { font-size: 14px; font-weight: 600; letter-spacing: -0.02em; }
+  .cell .cd { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+  #font-warn { display: none; margin-top: 12px; color: #b42318; font-size: 13px; }
+  #font-warn.show { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="review">
+    <header class="top">
+      <p class="kicker">Logo studies</p>
+      <h1>printLe</h1>
+      <p class="lede">Twenty directions. The spelling stays printLe, and the blue stays the current brand <span class="swatch"></span>#4d70ca. Each one is shown large, on the dark canvas, and in the 112×38 sidebar slot the app uses. A red outline means it does not fit that slot.</p>
+      <p id="font-warn"></p>
+    </header>
+
+    <h2 class="band">Sidebar slot, on white</h2>
+    <div class="scan-grid" id="scan-light"></div>
+    <h2 class="band">Sidebar slot, on the dark sidebar</h2>
+    <div class="scan-grid dark" id="scan-dark"></div>
+
+    <div id="studies"></div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <p class="kicker">Logo studies</p>
+        <h1>printLe</h1>
+      </div>
+      <p>Twenty wordmarks and marks. The name is always printLe. Blue is #4d70ca, the color of the current Rockwell wordmark.</p>
+    </div>
+    <div class="sheet-grid" id="sheet"></div>
+  </div>
+</div>
+
+<script>
+const BLUE = "#4d70ca";
+
+const icons = {
+  reg: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="7.15" fill="none" stroke="currentColor" stroke-width="1.7"/><path stroke="currentColor" stroke-width="1.7" d="M16 1.8v6.2M16 24v6.2M1.8 16h6.2M24 16h6.2"/><circle cx="16" cy="16" r="2.05" fill="var(--blue)"/></svg>`,
+  dog: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M8 6.5h10L24.5 13V25a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2z"/><path fill="var(--blue)" d="M18.15 7.15 23.7 12.7h-5.55z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M18 6.6V13h6.3"/></svg>`,
+  queue: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><rect x="13.5" y="3.2" width="13" height="15.2" rx="1.7" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="9.2" y="7.4" width="13" height="15.2" rx="1.7" fill="var(--stage)" stroke="currentColor" stroke-width="1.6"/><rect x="5" y="11.6" width="13" height="15.2" rx="1.7" fill="var(--stage)" stroke="currentColor" stroke-width="1.7"/><rect x="7.1" y="10.7" width="4.6" height="2.3" rx="0.4" fill="var(--blue)"/></svg>`,
+  half: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><path fill="var(--blue)" d="M9.15 6.7H16V25H9.15a1.35 1.35 0 0 1-1.35-1.35V8.05a1.35 1.35 0 0 1 1.35-1.35z"/><rect x="7" y="5" width="18" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.75"/></svg>`,
+  release: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><rect x="11" y="3.2" width="10" height="13" rx="1.5" fill="var(--blue)"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" d="M6.4 20.3h19.2M8.3 20.3v4a1.8 1.8 0 0 0 1.8 1.8h11.8a1.8 1.8 0 0 0 1.8-1.8v-4"/></svg>`,
+  halfone: `<svg class="sym" viewBox="0 0 28 32" aria-hidden="true"><g fill="currentColor"><circle cx="2.4" cy="2.4" r="2.05"/><circle cx="6.7" cy="2.4" r="2.05"/><circle cx="11" cy="2.4" r="2.05"/><circle cx="15.3" cy="2.4" r="2.05"/><circle cx="19.6" cy="2.4" r="2.05"/><circle cx="2.4" cy="6.7" r="2.05"/><circle cx="2.4" cy="11" r="2.05"/><circle cx="2.4" cy="15.3" r="2.05"/><circle cx="6.7" cy="15.3" r="2.05"/><circle cx="11" cy="15.3" r="2.05"/><circle cx="15.3" cy="15.3" r="2.05"/><circle cx="2.4" cy="19.6" r="2.05"/><circle cx="2.4" cy="23.9" r="2.05"/><circle cx="2.4" cy="28.2" r="2.05"/></g><g fill="var(--blue)"><circle cx="23.9" cy="2.4" r="2.05"/><circle cx="23.9" cy="6.7" r="2.05"/><circle cx="23.9" cy="11" r="2.05"/><circle cx="19.6" cy="15.3" r="2.05"/></g></svg>`,
+  mono: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--blue)"/><g fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="square" stroke-linejoin="miter"><path d="M10 25.2V12.4"/><path d="M10 12.4A4.05 4.05 0 0 1 10 20.5"/><path d="M19.5 7.8V21.2H25.7"/></g></svg>`,
+  ltile: `<svg class="sym" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--blue)"/><path fill="#fff" d="M10.2 8.2h4.15V19.7h7.55v4.15H10.2z"/></svg>`,
+  page: `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="var(--blue)" d="M8 5.5h10.2L24.5 12v14.2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2z"/><path fill="#fff" d="M18 6.1V12h6.1z"/></svg>`
+};
+
+function word(face, wght, track, axes, inner) {
+  return `<span class="w" style="--face:'${face}';--wght:${wght};--track:${track};--axes:${axes}">${inner}</span>`;
+}
+const plain = (face, wght, track, axes = "normal") => word(face, wght, track, axes, "print<span class=\"L\">L</span>e");
+const blueL = (face, wght, track, axes = "normal") => word(face, wght, track, axes, "print<span class=\"L accent\" style=\"color:var(--blue)\">L</span>e");
+
+const studies = [
+  { n:"01", name:"Slab", hero:"76px", slot:"27px", sheet:"58px",
+    blurb:"The current blue wordmark, reset in a real slab with tighter spacing.",
+    full: plain("Zilla Slab", 600, "-0.03em"),
+    mini: `<span class="chip" style="--face:'Zilla Slab';font-weight:600">L</span>`,
+    color:"var(--blue)" },
+  { n:"02", name:"Le rule", hero:"72px", slot:"26px", sheet:"54px",
+    blurb:"Same slab, in ink. A blue rule picks out Le, the part that makes the name.",
+    full: `<span class="l02">${word("Zilla Slab", 600, "-0.03em", "normal", "print<span class=\"le\">Le</span>")}</span>`,
+    mini: `<span class="chip ink" style="--face:'Zilla Slab';font-weight:600;position:relative">L<i style="position:absolute;left:6px;right:6px;bottom:4px;height:2px;background:var(--blue);border-radius:1px"></i></span>` },
+  { n:"03", name:"Blue L", hero:"74px", slot:"26px", sheet:"56px",
+    blurb:"Set in DM Sans, the font the interface already uses. Only the L is brand blue.",
+    full: blueL("DM Sans", 560, "-0.048em", "'opsz' 32, 'wght' 560"),
+    mini: `<span class="chip" style="--face:'DM Sans'">L</span>` },
+  { n:"04", name:"Light / heavy", hero:"72px", slot:"25px", sheet:"52px",
+    blurb:"print in a light weight, Le in semibold. One size, two pressures.",
+    full: word("IBM Plex Sans", 300, "-0.035em", "normal", "<span style=\"font-weight:300\">print</span><span style=\"font-weight:600\">Le</span>"),
+    mini: `<span class="chip ink" style="--face:'IBM Plex Sans';font-weight:500">L</span>` },
+  { n:"05", name:"Long foot", hero:"74px", slot:"24px", sheet:"52px",
+    blurb:"The L is drawn, not typed. Its foot runs under e and overshoots.",
+    full: `<span class="l05lock">${word("Instrument Sans", 560, "-0.046em", "normal", "print")}<i class="stem"></i><span class="tail">${word("Instrument Sans", 560, "-0.046em", "normal", "e")}<i class="foot"></i></span></span>`,
+    mini: `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 7h5.2v12.2H24V24H8z" fill="var(--blue)"/></svg>` },
+  { n:"06", name:"Crop marks", hero:"64px", slot:"20px", sheet:"46px",
+    blurb:"The word sits in trim marks, the way a press sheet is marked before the cut.",
+    full: `<span class="crop"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>${word("Newsreader", 560, "-0.02em", "'opsz' 72, 'wght' 560", "printLe")}</span>`,
+    mini: `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path stroke="var(--blue)" stroke-width="1.7" d="M6 11V6h5M21 6h5v5M26 21v5h-5M11 26H6v-5"/></svg>` },
+  { n:"07", name:"Registration", hero:"60px", slot:"21px", sheet:"44px",
+    blurb:"A printer’s registration target beside an editorial serif.",
+    full: icons.reg + word("Fraunces", 560, "-0.025em", "'opsz' 144, 'wght' 560, 'SOFT' 20, 'WONK' 0", "printLe"),
+    mini: icons.reg.replace('class="sym"', 'class="mark"') },
+  { n:"08", name:"Dog-ear", hero:"60px", slot:"21px", sheet:"44px",
+    blurb:"A folded page. The fold is the only blue.",
+    full: icons.dog + word("Instrument Sans", 560, "-0.045em", "normal", "printLe"),
+    mini: icons.dog.replace('class="sym"', 'class="mark"') },
+  { n:"09", name:"Queue", hero:"60px", slot:"21px", sheet:"44px",
+    blurb:"Three sheets, the front one tabbed in blue. A held queue.",
+    full: icons.queue + word("Instrument Sans", 560, "-0.045em", "normal", "printLe"),
+    mini: icons.queue.replace('class="sym"', 'class="mark"') },
+  { n:"10", name:"Half printed", hero:"60px", slot:"21px", sheet:"44px",
+    blurb:"A page stopped mid-impression. The printed half is the brand blue.",
+    full: icons.half + word("Instrument Sans", 560, "-0.045em", "normal", "printLe"),
+    mini: icons.half.replace('class="sym"', 'class="mark"') },
+  { n:"11", name:"Release", hero:"60px", slot:"21px", sheet:"44px",
+    blurb:"The sheet has left the tray. Release is the product’s main verb.",
+    full: icons.release + word("Instrument Sans", 560, "-0.045em", "normal", "printLe"),
+    mini: icons.release.replace('class="sym"', 'class="mark"') },
+  { n:"12", name:"Halftone", hero:"58px", slot:"20px", sheet:"42px",
+    blurb:"A P screened the way a press screens a tint. The bowl is blue.",
+    full: icons.halfone + word("IBM Plex Sans", 500, "-0.03em", "normal", "printLe"),
+    mini: icons.halfone.replace('class="sym"', 'class="mark"') },
+  { n:"13", name:"Monogram", hero:"58px", slot:"20px", sheet:"42px",
+    blurb:"pL in a tile. This is the collapsed sidebar and the favicon.",
+    full: icons.mono + word("Instrument Sans", 560, "-0.045em", "normal", "printLe"),
+    mini: icons.mono.replace('class="sym"', 'class="mark"') },
+  { n:"14", name:"Single L", hero:"58px", slot:"20px", sheet:"42px",
+    blurb:"The same tile, reduced to the capital that distinguishes the name.",
+    full: icons.ltile + word("Instrument Sans", 600, "-0.048em", "normal", "printLe"),
+    mini: icons.ltile.replace('class="sym"', 'class="mark"') },
+  { n:"15", name:"Quad", hero:"68px", slot:"24px", sheet:"50px",
+    blurb:"A color square at cap height, then the word. A typesetter’s em quad.",
+    full: `<span class="quad"><i class="sq"></i>${word("Fraunces", 560, "-0.03em", "'opsz' 144, 'wght' 560, 'SOFT' 30, 'WONK' 1", "printLe")}</span>`,
+    mini: `<span class="mark" style="width:22px;height:22px;background:var(--blue);display:block"></span>` },
+  { n:"16", name:"Tittle", hero:"74px", slot:"25px", sheet:"54px",
+    blurb:"The i’s dot is a page. At sidebar size it falls back to a square dot.",
+    full: word("DM Sans", 560, "-0.05em", "'opsz' 32, 'wght' 560", "pr<span class=\"idot\">ı<svg viewBox=\"0 0 10 12\" aria-hidden=\"true\"><path fill=\"var(--blue)\" d=\"M.6.6h5.4L9.4 4v7.4H.6z\"/><path fill=\"#fff\" d=\"M5.8.9V4h3.3z\"/></svg></span>ntLe"),
+    mini: icons.page },
+  { n:"17", name:"Nameplate", hero:"64px", slot:"23px", sheet:"48px",
+    blurb:"White type knocked out of the brand blue, like a type slug.",
+    full: `<span class="plate">${word("Outfit", 560, "-0.04em", "normal", "printLe")}</span>`,
+    mini: `<span class="chip" style="--face:Outfit">L</span>` },
+  { n:"18", name:"Ink plate", hero:"64px", slot:"23px", sheet:"48px",
+    blurb:"The same plate in the app’s near-black. It reverses to paper on a dark surface.",
+    full: `<span class="plate ink">${word("Outfit", 560, "-0.04em", "normal", "printLe")}</span>`,
+    mini: `<span class="chip ink" style="--face:Outfit">L</span>` },
+  { n:"19", name:"Job ticket", hero:"52px", slot:"19px", sheet:"40px",
+    blurb:"A shop ticket. The stub is perforated, and the tear line is blue.",
+    full: `<span class="ticket"><span class="holes" aria-hidden="true"><i></i><i></i><i></i><i></i></span><i class="tear"></i>${word("IBM Plex Sans", 500, "-0.03em", "normal", "printLe")}</span>`,
+    mini: `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="7" width="24" height="18" rx="3" fill="#fff" stroke="currentColor" stroke-width="1.4"/><circle cx="4" cy="12" r="1.5" fill="var(--stage)"/><circle cx="4" cy="16" r="1.5" fill="var(--stage)"/><circle cx="4" cy="20" r="1.5" fill="var(--stage)"/><path d="M10 10v12" stroke="var(--blue)" stroke-dasharray="1.5 1.6"/></svg>` },
+  { n:"20", name:"Keyline", hero:"74px", slot:"26px", sheet:"56px",
+    blurb:"A single blue bar and the product typeface. Built for the sidebar as it is.",
+    full: `<span class="key" style="display:inline-flex;align-items:center;gap:0.22em"><i></i>${word("DM Sans", 560, "-0.05em", "'opsz' 32, 'wght' 560", "printLe")}</span>`,
+    mini: `<span class="chip ink keychip" style="--face:'DM Sans'"><i></i><span>L</span></span>` }
+];
+
+const studiesRoot = document.getElementById("studies");
+const scanLight = document.getElementById("scan-light");
+const scanDark = document.getElementById("scan-dark");
+const sheet = document.getElementById("sheet");
+
+function logoEl(study, mode, size) {
+  const el = document.createElement("div");
+  el.className = "logo" + (mode === "mini" ? " is-mini" : "");
+  el.setAttribute("role", "img");
+  el.setAttribute("aria-label", "printLe");
+  el.style.color = study.color || "";
+  if (study.color) el.style.setProperty("--ink", study.color);
+  if (size) el.style.fontSize = size;
+  el.innerHTML = `<div class="full">${study.full}</div><div class="mini">${study.mini}</div>`;
+  return el;
+}
+
+function sidebar(study, dark) {
+  const sb = document.createElement("div");
+  sb.className = "sb" + (dark ? " on-dark" : "");
+  sb.innerHTML = `<div class="sb-head"><div class="slot"></div></div><div class="sb-nav"><div class="sb-item on">Print queue</div><div class="sb-item">Printers</div><div class="sb-item">Users &amp; Reports</div></div>`;
+  sb.querySelector(".slot").appendChild(logoEl(study, "full", study.slot));
+  return sb;
+}
+
+for (const study of studies) {
+  const article = document.createElement("article");
+  article.className = "study";
+  article.id = "s" + study.n;
+  article.innerHTML = `
+    <div class="study-head">
+      <span class="n">${study.n}</span>
+      <div><h2>${study.name}</h2><p>${study.blurb}</p></div>
+    </div>
+    <div class="stages">
+      <div class="stage light"></div>
+      <div class="stage on-dark"></div>
+    </div>
+    <div class="uses">
+      <div class="use"><div class="use-label">Sidebar</div><div class="sb-light"></div></div>
+      <div class="use"><div class="use-label">Dark sidebar</div><div class="sb-dark"></div></div>
+      <div class="use"><div class="use-label">Collapsed</div><div class="mini-pair"><div class="mini-mount"></div><div class="mini-mount on-dark"></div></div></div>
+    </div>`;
+  article.querySelector(".stage.light").appendChild(logoEl(study, "full", study.hero));
+  article.querySelector(".stage.on-dark").appendChild(logoEl(study, "full", study.hero));
+  article.querySelector(".sb-light").appendChild(sidebar(study, false));
+  article.querySelector(".sb-dark").appendChild(sidebar(study, true));
+  article.querySelector(".mini-mount").appendChild(logoEl(study, "mini"));
+  article.querySelector(".mini-mount.on-dark").appendChild(logoEl(study, "mini"));
+  studiesRoot.appendChild(article);
+
+  for (const [host, dark] of [[scanLight, false], [scanDark, true]]) {
+    const a = document.createElement("a");
+    a.className = "scan-cell";
+    a.href = "#s" + study.n;
+    a.innerHTML = `<span class="n">${study.n}</span><span class="scan-slot${dark ? " on-dark" : ""}"></span><span class="nm">${study.name}</span>`;
+    a.querySelector(".scan-slot").appendChild(logoEl(study, "full", study.slot));
+    host.appendChild(a);
+  }
+
+  const cell = document.createElement("figure");
+  cell.className = "cell";
+  cell.innerHTML = `<figcaption><span class="cn">${study.n}</span><span class="ct">${study.name}</span></figcaption><div class="cell-logo"></div><p class="cd">${study.blurb}</p>`;
+  cell.querySelector(".cell-logo").appendChild(logoEl(study, "full", study.sheet));
+  sheet.appendChild(cell);
+}
+
+const params = new URLSearchParams(location.search);
+if (params.get("view") === "sheet") document.body.classList.add("view-sheet");
+if (params.get("view") === "scan") {
+  document.querySelectorAll(".study").forEach(el => el.remove());
+}
+const from = params.get("from");
+const to = params.get("to");
+if (from && to) {
+  document.querySelector("header.top")?.remove();
+  document.querySelectorAll("h2.band, .scan-grid").forEach(el => el.remove());
+  document.querySelectorAll("article.study").forEach(el => {
+    const n = el.id.slice(1);
+    if (n < from || n > to) el.remove();
+  });
+}
+
+function checkFit() {
+  for (const slot of document.querySelectorAll(".slot, .scan-slot")) {
+    const logo = slot.querySelector(".logo");
+    if (!logo) continue;
+    const clips = logo.scrollWidth - slot.clientWidth > 1 || logo.scrollHeight - slot.clientHeight > 2;
+    slot.classList.toggle("clips", clips);
+    slot.dataset.w = String(logo.scrollWidth);
+    slot.dataset.h = String(logo.scrollHeight);
+  }
+}
+
+document.fonts.ready.then(() => {
+  const faces = [
+    '600 72px "Zilla Slab"',
+    '560 72px Fraunces',
+    '560 72px "Instrument Sans"',
+    '560 72px Newsreader',
+    '560 72px Outfit',
+    '300 72px "IBM Plex Sans"',
+    '600 72px "IBM Plex Sans"',
+    '500 40px "IBM Plex Mono"',
+    '560 72px "DM Sans"'
+  ];
+  const missing = faces.filter(f => !document.fonts.check(f));
+  if (missing.length) {
+    const warn = document.getElementById("font-warn");
+    warn.classList.add("show");
+    warn.textContent = "Font failed to load: " + missing.join(", ");
+  }
+  checkFit();
+});
+</script>
+</body>
+</html>
