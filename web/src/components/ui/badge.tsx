@@ -11,6 +11,7 @@ const badgeVariants = cva(
         default: 'border-transparent bg-primary text-primary-foreground',
         secondary: 'border-transparent bg-secondary text-secondary-foreground',
         destructive: 'border-transparent bg-destructive text-white',
+        error: 'border-transparent bg-[var(--danger-bg)] text-[var(--danger)]',
         outline: 'text-foreground border-border',
         success: 'border-transparent bg-[var(--ok-bg)] text-[var(--ok)]',
         warning: 'border-transparent bg-[var(--warn-bg)] text-[var(--warn)]',
@@ -19,14 +20,15 @@ const badgeVariants = cva(
       mono: {
         true: 'font-mono uppercase tracking-wide',
       },
+      shape: { pill: 'rounded-full' },
     },
     defaultVariants: { variant: 'default' },
   },
 )
 
-function Badge({ className, variant, mono, asChild = false, ...props }: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+function Badge({ className, variant, mono, shape, asChild = false, ...props }: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
   const Comp = asChild ? Slot : 'span'
-  return <Comp data-slot="badge" className={cn(badgeVariants({ variant, mono }), className)} {...props} />
+  return <Comp data-slot="badge" className={cn(badgeVariants({ variant, mono, shape }), className)} {...props} />
 }
 
 export { Badge, badgeVariants }

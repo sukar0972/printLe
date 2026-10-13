@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
+import { PrintleLogo } from '@/components/logo'
 import type { Quota } from '@/api'
 
 import type { Page } from '@/lib/navigation'
@@ -221,7 +222,9 @@ export function AppSidebarBody({
               onClick={() => navigate('queue')}
               aria-label="printLe home"
             >
-              <img className="brand-logo h-7 w-auto" src="/printle-logo.svg" alt="printLe" />
+              <span className="brand-logo h-7 w-auto">
+                <PrintleLogo />
+              </span>
               <span className="brand-mark" aria-hidden="true">
                 {brandMark}
               </span>

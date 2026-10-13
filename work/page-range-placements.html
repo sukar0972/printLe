@@ -1,0 +1,166 @@
+<style>
+  #printle-placement-study { --pl-paper: light-dark(#fff,#191919); --pl-ink: light-dark(#191919,#eee); --pl-muted: light-dark(#707070,#aaa); --pl-line: light-dark(#e4e4e4,#373737); --pl-soft: light-dark(#f5f5f5,#252525); --pl-button: light-dark(#191919,#eee); --pl-button-ink: light-dark(#fff,#191919); font-family: 'DM Sans', system-ui, sans-serif; color:var(--pl-ink); }
+  #printle-placement-study * { box-sizing:border-box; }
+  #printle-placement-study .pl-stage { min-height:540px; display:flex; align-items:center; padding:52px 16px 24px; }
+  #printle-placement-study .pl-window { width:100%; background:var(--pl-paper); border:1px solid var(--pl-line); border-radius:14px; padding:18px; display:grid; gap:18px; }
+  #printle-placement-study button, #printle-placement-study input, #printle-placement-study select { font:inherit; color:inherit; }
+  #printle-placement-study button { touch-action:manipulation; }
+  #printle-placement-study .pl-drop { min-height:174px; border:1.5px dashed var(--pl-line); border-radius:10px; background:var(--pl-paper); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:20px; }
+  #printle-placement-study .pl-drop strong { font-size:17px; font-weight:600; }
+  #printle-placement-study .pl-drop small { font-size:12px; color:var(--pl-muted); }
+  #printle-placement-study .pl-upload-icon { border:1px solid var(--pl-line); width:38px; height:38px; border-radius:50%; display:grid; place-items:center; }
+  #printle-placement-study .pl-upload-icon svg { width:18px; height:18px; }
+  #printle-placement-study .pl-settings { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  #printle-placement-study .pl-field { display:grid; gap:7px; min-width:0; flex:1 1 95px; font-size:13px; color:var(--pl-muted); }
+  #printle-placement-study .pl-field input, #printle-placement-study .pl-field select { width:100%; height:40px; padding:0 10px; border:1px solid var(--pl-line); border-radius:7px; background:var(--pl-soft); color:var(--pl-ink); font-size:14px; }
+  #printle-placement-study .pl-field.pl-copies { flex:0 1 65px; }
+  #printle-placement-study .pl-add { border:0; border-radius:7px; background:var(--pl-button); color:var(--pl-button-ink); height:40px; padding:0 15px; font-size:14px; white-space:nowrap; }
+  #printle-placement-study .pl-selector { border:1px solid var(--pl-line); border-radius:9px; background:var(--pl-paper); overflow:hidden; min-width:0; }
+  #printle-placement-study .pl-selector-header { padding:10px 12px; border-bottom:1px solid var(--pl-line); font-size:14px; font-weight:500; }
+  #printle-placement-study .pl-selector-body { display:grid; gap:10px; padding:12px; }
+  #printle-placement-study .pl-segments { display:flex; padding:3px; gap:3px; background:var(--pl-soft); border-radius:7px; }
+  #printle-placement-study .pl-segments button { flex:1; border:1px solid transparent; border-radius:5px; height:32px; background:transparent; font-size:13px; color:var(--pl-muted); padding:0 8px; }
+  #printle-placement-study .pl-segments button[aria-pressed=true] { background:var(--pl-paper); color:var(--pl-ink); border-color:var(--pl-line); }
+  #printle-placement-study .pl-range { display:flex; gap:8px; }
+  #printle-placement-study .pl-range label { flex:1; display:flex; gap:8px; align-items:center; background:var(--pl-soft); border-radius:5px; padding:0 8px; height:34px; color:var(--pl-muted); font-size:12px; min-width:0; }
+  #printle-placement-study .pl-range input { width:100%; min-width:0; border:0; background:transparent; color:var(--pl-ink); font-size:14px; }
+  #printle-placement-study .pl-filter { width:100%; padding:8px; height:36px; border:1px solid var(--pl-line); border-radius:6px; background:var(--pl-soft); font-size:13px; }
+  #printle-placement-study .pl-horizontal-selector { display:flex; align-items:center; gap:10px; }
+  #printle-placement-study .pl-horizontal-selector .pl-selector-header { border:0; padding:0; }
+  #printle-placement-study .pl-horizontal-selector .pl-selector-body { display:flex; gap:10px; padding:0; align-items:center; flex:1; flex-wrap:wrap; }
+  #printle-placement-study .pl-horizontal-selector .pl-segments { flex:1 1 180px; }
+  #printle-placement-study .pl-horizontal-selector .pl-range { flex:1 1 150px; }
+  #printle-placement-study .pl-horizontal-selector .pl-filter { width:130px; }
+  #printle-placement-study .pl-horizontal-selector { padding:12px; }
+  #printle-placement-study .pl-layout-inline { display:grid; grid-template-columns:minmax(190px,1fr) minmax(310px,1.45fr); align-items:end; gap:18px; }
+  #printle-placement-study .pl-layout-inline .pl-selector { border:0; }
+  #printle-placement-study .pl-layout-inline .pl-selector-header { padding:0 0 7px; border:0; color:var(--pl-muted); font-size:13px; }
+  #printle-placement-study .pl-layout-inline .pl-selector-body { padding:0; }
+  #printle-placement-study .pl-layout-sidebar { display:grid; grid-template-columns:minmax(0,1fr) 230px; gap:18px; }
+  #printle-placement-study .pl-layout-sidebar .pl-drop { min-height:225px; }
+  #printle-placement-study .pl-layout-sidebar .pl-selector { grid-column:2; grid-row:1 / span 2; }
+  #printle-placement-study .pl-layout-sidebar .pl-settings { grid-column:1; }
+  #printle-placement-study .pl-popover-row { position:relative; display:flex; align-items:flex-end; gap:14px; }
+  #printle-placement-study .pl-popover-row .pl-settings { flex:1; }
+  #printle-placement-study .pl-pages-button { display:flex; align-items:center; justify-content:space-between; gap:12px; height:40px; border:1px solid var(--pl-line); border-radius:7px; padding:0 10px; background:var(--pl-soft); font-size:14px; white-space:nowrap; }
+  #printle-placement-study .pl-pages-button svg { width:14px; height:14px; }
+  #printle-placement-study .pl-popover { position:absolute; z-index:2; bottom:calc(100% + 8px); left:0; width:270px; box-shadow:0 5px 20px light-dark(#00000010,#00000040); }
+  #printle-placement-study .pl-popover[hidden] { display:none; }
+  #printle-placement-study .pl-embedded { border:1.5px dashed var(--pl-line); border-radius:10px; overflow:hidden; }
+  #printle-placement-study .pl-embedded .pl-drop { border:0; border-radius:0; min-height:155px; }
+  #printle-placement-study .pl-embedded .pl-selector { border:0; border-top:1px solid var(--pl-line); border-radius:0; }
+  #printle-placement-study .pl-bottom-action { justify-content:flex-end; }
+  #printle-placement-study .pl-bottom-action .pl-add { margin-left:auto; }
+  #printle-placement-study [hidden] { display:none !important; }
+  @media(max-width:620px) {
+    #printle-placement-study .pl-stage { min-height:720px; padding:48px 8px 16px; }
+    #printle-placement-study .pl-window { padding:14px; }
+    #printle-placement-study .pl-layout-inline, #printle-placement-study .pl-layout-sidebar { display:flex; flex-direction:column; align-items:stretch; }
+    #printle-placement-study .pl-layout-sidebar .pl-drop { min-height:174px; }
+    #printle-placement-study .pl-layout-sidebar .pl-selector { order:1; }
+    #printle-placement-study .pl-layout-sidebar .pl-settings { order:2; }
+    #printle-placement-study .pl-horizontal-selector { display:grid; }
+    #printle-placement-study .pl-horizontal-selector .pl-selector-body { display:grid; }
+    #printle-placement-study .pl-horizontal-selector .pl-filter { width:100%; }
+    #printle-placement-study .pl-popover-row { flex-wrap:wrap; }
+    #printle-placement-study .pl-popover-row .pl-settings { flex-basis:100%; }
+    #printle-placement-study .pl-popover { bottom:calc(100% + 8px); max-width:100%; }
+    #printle-placement-study .pl-add { flex:1 1 100%; }
+    #printle-placement-study .pl-field input, #printle-placement-study .pl-field select, #printle-placement-study .pl-range input { font-size:16px; }
+  }
+  @media(pointer:coarse) { #printle-placement-study button, #printle-placement-study select { min-height:44px; } }
+</style>
+<div id="printle-placement-study" class="viz-carousel viz-dotted-background" aria-label="Page range placement variations">
+  <section data-variant="Inline with settings" aria-label="Page selector beside the print settings">
+    <div class="pl-stage"><div class="pl-window">
+      <div data-drop></div>
+      <div class="pl-layout-inline"><div data-selector></div><div data-settings></div></div>
+    </div></div>
+  </section>
+  <section data-variant="Full-width strip" aria-label="Page selector between upload and print settings" hidden>
+    <div class="pl-stage"><div class="pl-window">
+      <div data-drop></div>
+      <div data-selector class="pl-horizontal-selector"></div>
+      <div data-settings class="pl-bottom-action"></div>
+    </div></div>
+  </section>
+  <section data-variant="Right sidebar" aria-label="Page selector to the right of the upload area" hidden>
+    <div class="pl-stage"><div class="pl-window pl-layout-sidebar">
+      <div data-drop></div><div data-selector></div><div data-settings></div>
+    </div></div>
+  </section>
+  <section data-variant="Settings popover" aria-label="Page selector in a popover above the settings row" hidden>
+    <div class="pl-stage"><div class="pl-window">
+      <div data-drop></div>
+      <div class="pl-popover-row">
+        <div class="pl-field"><span>Pages</span><button class="pl-pages-button cursor-interaction" type="button" aria-expanded="true"><span data-selection-label>Range · 1–6</span><i data-lucide="chevron-down" aria-hidden="true"></i></button></div>
+        <div data-selector class="pl-popover"></div>
+        <div data-settings></div>
+      </div>
+    </div></div>
+  </section>
+  <section data-variant="Inside upload area" aria-label="Page selector along the bottom of the upload area" hidden>
+    <div class="pl-stage"><div class="pl-window">
+      <div class="pl-embedded"><div data-drop></div><div data-selector class="pl-horizontal-selector"></div></div>
+      <div data-settings class="pl-bottom-action"></div>
+    </div></div>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('printle-placement-study');
+  const dropMarkup = '<div class="pl-drop"><span class="pl-upload-icon"><i data-lucide="arrow-up" aria-hidden="true"></i></span><strong>Drop PDF here</strong><small>PDF · up to 25 MB</small></div>';
+  const selectorMarkup = '<div class="pl-selector-header">Pages</div><div class="pl-selector-body"><div class="pl-segments" role="group" aria-label="Pages to print"><button class="cursor-interaction" type="button" data-mode="All" aria-pressed="false">All</button><button class="cursor-interaction" type="button" data-mode="Page" aria-pressed="false">Page</button><button class="cursor-interaction" type="button" data-mode="Range" aria-pressed="true">Range</button></div><div class="pl-range"><label>From<input aria-label="From page" type="number" min="1" value="1"></label><label data-to>To<input aria-label="To page" type="number" min="1" value="6"></label></div><select class="pl-filter cursor-interaction" aria-label="Page filter"><option>Every page</option><option>Odd pages</option><option>Even pages</option></select></div>';
+  const settingsMarkup = '<label class="pl-field pl-copies">Copies<input aria-label="Copies" type="number" min="1" value="1"></label><label class="pl-field">Color<select class="cursor-interaction"><option>Grayscale</option><option>Color</option></select></label><label class="pl-field">Sides<select class="cursor-interaction"><option>One-sided</option><option>Two-sided</option><option>Manual duplex</option></select></label><button class="pl-add cursor-interaction" type="button">Add to queue</button>';
+  root.querySelectorAll('[data-drop]').forEach(el => { el.outerHTML = dropMarkup; });
+  root.querySelectorAll('[data-selector]').forEach(el => { el.classList.add('pl-selector'); el.innerHTML = selectorMarkup; });
+  root.querySelectorAll('[data-settings]').forEach(el => { el.classList.add('pl-settings'); el.innerHTML = settingsMarkup; });
+  function save() {
+    if (!window.openai?.setWidgetState) return;
+    const choices = Array.from(root.querySelectorAll('[data-variant]')).map(section => ({ placement:section.dataset.variant, mode:section.querySelector('[data-mode][aria-pressed="true"]').dataset.mode }));
+    window.openai.setWidgetState({modelContent:{pageRangePlacements:choices},privateContent:null}).catch(() => {});
+  }
+  function applyMode(selector, mode) {
+    selector.querySelectorAll('[data-mode]').forEach(button => { button.setAttribute('aria-pressed',String(button.dataset.mode === mode)); });
+    selector.querySelector('.pl-range').hidden = mode === 'All';
+    selector.querySelector('[data-to]').hidden = mode !== 'Range';
+    const section = selector.closest('[data-variant]');
+    const label = section.querySelector('[data-selection-label]');
+    if (label) {
+      const values = selector.querySelectorAll('input');
+      label.textContent = mode === 'All' ? 'All pages' : mode === 'Page' ? 'Page · '+values[0].value : 'Range · '+values[0].value+'–'+values[1].value;
+    }
+  }
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-mode]');
+    if (button) { applyMode(button.closest('[data-selector]'),button.dataset.mode); save(); }
+    const trigger = event.target.closest('.pl-pages-button');
+    if (trigger) { const panel=trigger.closest('.pl-popover-row').querySelector('.pl-popover'); panel.hidden=!panel.hidden; trigger.setAttribute('aria-expanded',String(!panel.hidden)); }
+    const add = event.target.closest('.pl-add');
+    if (add) { add.textContent='Added to queue'; add.setAttribute('aria-live','polite'); }
+  });
+  root.addEventListener('input', event => {
+    const selector=event.target.closest('[data-selector]');
+    if(selector) applyMode(selector,selector.querySelector('[data-mode][aria-pressed="true"]').dataset.mode);
+  });
+  function restore(snapshot) {
+    const choices = snapshot?.modelContent?.pageRangePlacements;
+    if(!Array.isArray(choices)) return;
+    root.querySelectorAll('[data-variant]').forEach(section => {
+      const item=choices.find(choice=>choice.placement===section.dataset.variant);
+      if(item && ['All','Page','Range'].includes(item.mode)) applyMode(section.querySelector('[data-selector]'),item.mode);
+    });
+  }
+  restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+  if (globalThis.lucide) lucide.createIcons({attrs:{width:16,height:16}});
+  if (globalThis.Tweak) {
+    root.querySelectorAll('.pl-window').forEach(surface => {
+      surface.setAttribute('aria-label',surface.closest('[data-variant]').dataset.variant+' spacing');
+      const options={spacing:18};
+      const tweak=new Tweak({container:surface,onChange:()=>{surface.style.gap=options.spacing+'px';}});
+      tweak.addSlider(options,'spacing',{label:'Spacing',min:8,max:28,step:2,unit:'px'});
+    });
+  }
+})();
+</script>

@@ -9,8 +9,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
 
-/** Page ranges use original document numbers; manual passes use the selected document. */
+/** Page ranges use original document numbers. `odd` and `even` filter optional ranges such as `odd 1-3, 5`. Manual passes use the selected document. */
 public final class PdfSelection {
+    private enum Side { ODD, EVEN }
     private PdfSelection() {}
     public static byte[] select(byte[] pdf, String range) throws IOException {
         if (range == null || range.isBlank()) return pdf;
@@ -21,6 +22,12 @@ public final class PdfSelection {
         }
     }
     static List<Integer> indices(String range, int count) {
+        String trimmed = range.trim();
+        Side side = side(trimmed);
+        if (side != null) return parityIndices(trimmed, side, count);
+        return rangeIndices(trimmed, count);
+    }
+    private static List<Integer> rangeIndices(String range, int count) {
         var pages = new LinkedHashSet<Integer>();
         for (String piece : range.split(",", -1)) {
             String part = piece.trim();
@@ -34,6 +41,21 @@ public final class PdfSelection {
         }
         if (pages.isEmpty()) throw invalid("Choose at least one page");
         return List.copyOf(pages);
+    }
+    private static Side side(String trimmed) {
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.equals("even") || lower.startsWith("even ")) return Side.EVEN;
+        if (lower.equals("odd") || lower.startsWith("odd ")) return Side.ODD;
+        return null;
+    }
+    private static List<Integer> parityIndices(String trimmed, Side side, int count) {
+        String rest = trimmed.replaceFirst("(?i)^(odd|even)\\s*", "");
+        var candidates = rest.isEmpty()
+            ? java.util.stream.IntStream.range(0, count).boxed().toList()
+            : rangeIndices(rest, count);
+        var pages = candidates.stream().filter(index -> (index % 2 == 1) == (side == Side.EVEN)).toList();
+        if (pages.isEmpty()) throw invalid("Choose at least one page");
+        return pages;
     }
     public static byte[] manualPass(byte[] pdf, boolean even, int copies, boolean reverse) throws IOException {
         try (var source = Loader.loadPDF(pdf); var output = new PDDocument()) {

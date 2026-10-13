@@ -165,8 +165,9 @@ reuse the same numeric IDs without mixing jobs.
 
 The API container must be able to reach printers on the LAN.
 
-The upload form accepts page ranges such as `1-3, 5`; leave Pages blank to print
-all pages. Quotas count the selected pages multiplied by the number of copies.
+The upload form can print every page, one page, a range such as `1-3, 5`, or the
+odd or even pages (`odd`, `even`, or `odd 1-10`). Quotas count the selected pages
+multiplied by the number of copies.
 Manual duplex prints odd pages first, waits for you to reload the stack, then
 prints even pages. The confirmation offers reverse order for printers that need it.
 
