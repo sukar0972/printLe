@@ -1,0 +1,19 @@
+package io.printle;
+
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/** Each cached Spring context owns its database and runs the production migrations. */
+@TestConfiguration(proxyBeanMethods = false)
+public class PostgresTestConfiguration {
+    @Bean
+    @ServiceConnection
+    PostgreSQLContainer<?> postgres() {
+        return new PostgreSQLContainer<>("postgres:17-alpine")
+            .withDatabaseName("printle_test")
+            .withUsername("printle_test")
+            .withPassword("test-only-password");
+    }
+}

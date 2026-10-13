@@ -1,0 +1,31 @@
+alter table printer add column cups_queue varchar(127);
+alter table printer add column location varchar(160);
+alter table printer add column enabled boolean not null default true;
+alter table printer add column maintenance boolean not null default false;
+alter table printer add column color_capable boolean not null default false;
+alter table printer add column duplex_capable boolean not null default false;
+alter table printer add column media_supported varchar(500);
+alter table printer add column state_reasons varchar(1000);
+alter table printer add column error_policy varchar(20) not null default 'BLOCK';
+alter table printer add column transport varchar(30);
+alter table printer add column vendor_id varchar(20);
+alter table printer add column product_id varchar(20);
+alter table printer add column device_serial varchar(160);
+alter table printer add column ieee1284_device_id varchar(500);
+alter table printer add column last_seen_at timestamp with time zone;
+alter table printer add column mono_page_rate numeric(10,4) not null default 0.05;
+alter table printer add column color_page_rate numeric(10,4) not null default 0.20;
+alter table printer add column rate_version integer not null default 1;
+create unique index uq_printer_cups_queue on printer(cups_queue);
+
+alter table print_job add column estimated_cost numeric(12,4);
+alter table print_job add column cost_rate_version integer;
+alter table print_job add column priced_at timestamp with time zone;
+alter table print_job add column attempt integer not null default 0;
+
+drop index uq_quota_ledger_job_type;
+alter table quota_ledger add column attempt integer not null default 0;
+create unique index uq_quota_ledger_job_type_attempt on quota_ledger(job_id, entry_type, attempt);
+alter table print_job add column manual_phase varchar(20);
+alter table print_job add column odd_cups_job_id integer;
+alter table print_job add column even_cups_job_id integer;
