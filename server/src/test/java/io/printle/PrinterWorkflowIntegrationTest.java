@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import io.printle.ipp.DirectIppClient;
 import io.printle.printer.Printer;
 import io.printle.printer.PrinterRepository;
+import io.printle.user.AppUserRepository;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +35,7 @@ class PrinterWorkflowIntegrationTest {
     @Autowired MockMvc mvc;
     @MockitoBean DirectIppClient node;
     @Autowired PrinterRepository printers;
+    @Autowired AppUserRepository users;
 
     @BeforeEach void profiles() {
         register("mock-color", "Color Lab", true, true, "ONLINE", List.of());
@@ -128,6 +130,35 @@ class PrinterWorkflowIntegrationTest {
             .andExpect(status().isOk());
         mvc.perform(get("/api/printers").with(user("acl-user@example.com").roles("USER")))
             .andExpect(status().isOk()).andExpect(jsonPath("$[?(@.id == '%s')]".formatted(printerId)).isNotEmpty());
+    }
+
+    @Test @WithMockUser(username = "admin@test.local", roles = "ADMIN")
+    void accessRulesCanBeSavedRepeatedlyWithRetainedAddedAndRemovedPermissions() throws Exception {
+        var printer = printers.save(new Printer("ACL editing", "Test printer"));
+        var userId = users.findByEmailIgnoreCase("admin@test.local").orElseThrow().getId();
+        String initial = """
+            [{"principalType":"USER","principalId":"%1$s","permission":"VIEW"},
+             {"principalType":"USER","principalId":"%1$s","permission":"RELEASE_OWN"}]
+            """.formatted(userId);
+        for (int save = 0; save < 2; save++) {
+            mvc.perform(put("/api/printers/{id}/acl", printer.getId()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(initial))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+        }
+        String changed = """
+            [{"principalType":"USER","principalId":"%1$s","permission":"RELEASE_OWN"},
+             {"principalType":"USER","principalId":"%1$s","permission":"MANAGE"}]
+            """.formatted(userId);
+        mvc.perform(put("/api/printers/{id}/acl", printer.getId()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(changed))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/printers/{id}/acl", printer.getId()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[?(@.permission == 'RELEASE_OWN')]").isNotEmpty())
+            .andExpect(jsonPath("$[?(@.permission == 'MANAGE')]").isNotEmpty())
+            .andExpect(jsonPath("$[?(@.permission == 'VIEW')]").isEmpty());
+        mvc.perform(put("/api/printers/{id}/acl", printer.getId()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("[]"))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/printers/{id}/acl", printer.getId()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
     }
 
     private String upload(String name, int pages, String color, String duplex) throws Exception {

@@ -159,6 +159,35 @@ test('shows manual duplex and retry controls', async () => {
   expect(screen.queryByRole('button', { name: 'Stack flipped' })).not.toBeInTheDocument()
 })
 
+test('releases a manual-flip job to a compatible simplex IPP printer', async () => {
+  let released = false
+  const printer = { id: 'simplex', name: 'Simplex IPP', ippUri: 'ipp://192.168.1.50/ipp/print', enabled: true, maintenance: false, status: 'ONLINE', colorCapable: false, duplexCapable: false, errorPolicy: 'BLOCK', monoPageRate: 0.05, colorPageRate: 0.2, rateVersion: 1 }
+  const job = { id: 'manual', filename: 'manual.pdf', sizeBytes: 100, pages: 3, copies: 2, colorMode: 'MONOCHROME', duplexMode: 'MANUAL', createdAt: '2026-10-13T00:00:00Z', attempt: 0 }
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+    const path = String(input)
+    if (path === '/api/auth/me') return json({ id: 'user', email: 'user@example.com', displayName: 'User', role: 'USER' })
+    if (path === '/api/auth/csrf') return json({ token: 'csrf' })
+    if (path === '/api/jobs/quota') return json({ limit: 100, used: 0, pending: 6, remaining: 94, exempt: false })
+    if (path === '/api/printers') return json([printer, { ...printer, id: 'offline', name: 'Offline IPP', status: 'OFFLINE' }])
+    if (path === '/api/jobs') return json([{ ...job, status: released ? 'AWAITING_FLIP' : 'HELD' }])
+    if (path === '/api/jobs/manual/release?printerId=simplex' && options?.method === 'POST') {
+      released = true
+      return json({ ...job, status: 'AWAITING_FLIP' })
+    }
+    return new Response('{}', { status: 404 })
+  })
+  render(<App />)
+  const row = (await screen.findByRole('button', { name: 'manual.pdf' })).closest('tr')!
+  await userEvent.click(within(row).getByRole('button', { name: 'Print' }))
+  const dialog = screen.getByRole('dialog', { name: 'Choose a printer' })
+  expect(within(dialog).getByRole('button', { name: /Simplex IPP/ })).toBeEnabled()
+  expect(within(dialog).getByRole('button', { name: /Offline IPP/ })).toBeDisabled()
+  await userEvent.click(within(dialog).getByRole('button', { name: /Simplex IPP/ }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Choose a printer' })).not.toBeInTheDocument())
+  expect(await screen.findByRole('button', { name: 'Stack flipped' })).toBeInTheDocument()
+  expect(fetchMock.mock.calls.filter(([path, options]) => path === '/api/jobs/manual/release?printerId=simplex' && options?.method === 'POST')).toHaveLength(1)
+})
+
 test('searches jobs and shows truthful IPP job details', async () => {
   window.location.hash = '#preview'; render(<App />)
   await screen.findByRole('heading', { name: 'Queue' })

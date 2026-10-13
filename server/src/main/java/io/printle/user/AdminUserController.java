@@ -64,12 +64,13 @@ public class AdminUserController {
         if (removingLastAdmin) throw new ResponseStatusException(HttpStatus.CONFLICT, "The final active administrator cannot be suspended or demoted");
         if (request.email() != null && users.findByEmailIgnoreCase(request.email()).filter(other -> !other.getId().equals(id)).isPresent())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already in use");
+        var actingUser = actor(auth);
         String previousEmail = user.getEmail();
         boolean revoke = user.getRole() != request.role() || user.getStatus() != request.status()
             || (request.email() != null && !request.email().isBlank() && !previousEmail.equalsIgnoreCase(request.email().trim()));
         user.update(request.email(), request.displayName(), request.role(), request.status(), request.monthlyPageQuota(), request.quotaExempt());
         if (revoke) revokeSessionsAfterCommit(previousEmail);
-        audit.record(actor(auth), "USER_UPDATED", "USER", user.getId().toString(), user.getEmail());
+        audit.record(actingUser, "USER_UPDATED", "USER", user.getId().toString(), user.getEmail());
         return UserView.from(user);
     }
     @PostMapping("/{id}/quota-adjustments") @ResponseStatus(HttpStatus.NO_CONTENT) @Transactional

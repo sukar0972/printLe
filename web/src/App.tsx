@@ -441,7 +441,6 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 function ReleaseDialog({ job, printers, onChoose, onClose }: { job: Job; printers: Printer[]; onChoose: (printer: Printer) => void; onClose: () => void }) {
   const compatible = (printer: Printer) => printer.enabled && !printer.maintenance && printer.status !== 'OFFLINE'
     && !(printer.status === 'ERROR' && printer.errorPolicy === 'BLOCK')
-    && !(job.duplexMode === 'MANUAL' && printer.ippUri)
     && (job.colorMode !== 'COLOR' || printer.colorCapable)
     && (!job.duplexMode.startsWith('TWO_SIDED') || printer.duplexCapable)
   return <AppDialog size="compact" label="Choose a printer" onClose={onClose}>

@@ -3,6 +3,8 @@ package io.printle;
 import io.printle.audit.AuditEventRepository;
 import io.printle.user.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -118,6 +120,31 @@ class UserCsvImportIntegrationTest {
                 .file(file)
                 .with(csrf()))
             .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    @WithMockUser(username = "admin@test.local", roles = "ADMIN")
+    void shortRowsReturnValidationErrorsAndDoNotPreventSubsequentRows(boolean dryRun) throws Exception {
+        String prefix = dryRun ? "short-preview" : "short-import";
+        String csv = """
+            email,displayName,role,password
+            %1$s-before@import.test,Before,USER,Password12345!
+            %1$s-invalid@import.test
+            %1$s-after@import.test,After,USER,Password12345!
+            """.formatted(prefix);
+        var file = new MockMultipartFile("file", "short.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+        mvc.perform(multipart("/api/admin/users/import").file(file).param("dryRun", Boolean.toString(dryRun)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalRows").value(3))
+            .andExpect(jsonPath("$.validRows").value(2))
+            .andExpect(jsonPath("$.errorRows").value(1))
+            .andExpect(jsonPath("$.importedRows").value(dryRun ? 0 : 2))
+            .andExpect(jsonPath("$.rows[1].success").value(false))
+            .andExpect(jsonPath("$.rows[1].errors", hasItem("Display name is required")))
+            .andExpect(jsonPath("$.rows[2].success").value(true));
+        assertEquals(!dryRun, users.findByEmailIgnoreCase(prefix + "-before@import.test").isPresent());
+        assertEquals(!dryRun, users.findByEmailIgnoreCase(prefix + "-after@import.test").isPresent());
+        assertFalse(users.findByEmailIgnoreCase(prefix + "-invalid@import.test").isPresent());
     }
 
     @Test

@@ -189,7 +189,7 @@ public class UserImportService {
     private String getField(CSVRecord record, String name) {
         for (String header : record.getParser().getHeaderNames()) {
             if (header.equalsIgnoreCase(name)) {
-                return record.isMapped(header) ? record.get(header) : null;
+                return record.isSet(header) ? record.get(header) : null;
             }
         }
         return null;

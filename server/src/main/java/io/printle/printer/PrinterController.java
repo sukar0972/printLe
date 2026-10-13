@@ -46,6 +46,8 @@ public class PrinterController {
     public List<AclView> replaceAcl(@PathVariable UUID id, @RequestBody List<@Valid AclRule> rules, Authentication auth) {
         var printer = printers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND));
         acls.deleteAllByPrinterId(id);
+        // Flush deletes before replacement inserts can reuse the unique rule keys.
+        acls.flush();
         var result = acls.saveAll(rules.stream().map(r -> new PrinterAcl(printer, r.principalType(), r.principalId(), r.permission())).toList());
         record(auth, "PRINTER_ACL_REPLACED", id, result.size() + " rules"); return result.stream().map(AclView::from).toList();
     }

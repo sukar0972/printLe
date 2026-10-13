@@ -16,7 +16,7 @@ public final class PdfSelection {
         if (range == null || range.isBlank()) return pdf;
         if (range.length() > 1000) throw invalid("Page selection is too long");
         try (var source = Loader.loadPDF(pdf); var selected = new PDDocument()) {
-            for (int index : indices(range, source.getNumberOfPages())) selected.importPage(source.getPage(index));
+            for (int index : indices(range, source.getNumberOfPages())) copyPage(selected, source.getPage(index));
             return save(selected);
         }
     }
@@ -42,7 +42,7 @@ public final class PdfSelection {
             for (int n = 0; n < sheets * copies; n++) {
                 int position = reverse ? sheets * copies - 1 - n : n;
                 int index = (position % sheets) * 2 + (even ? 1 : 0);
-                if (index < source.getNumberOfPages()) output.importPage(source.getPage(index));
+                if (index < source.getNumberOfPages()) copyPage(output, source.getPage(index));
                 else {
                     var last = source.getPage(source.getNumberOfPages() - 1);
                     var blank = new PDPage(last.getMediaBox());
@@ -52,6 +52,11 @@ public final class PdfSelection {
             }
             return save(output);
         }
+    }
+    private static void copyPage(PDDocument target, PDPage page) throws IOException {
+        var copied = target.importPage(page);
+        // importPage does not copy resources inherited from the source page tree.
+        copied.setResources(page.getResources());
     }
     private static byte[] save(PDDocument document) throws IOException {
         var out = new ByteArrayOutputStream(); document.save(out); return out.toByteArray();
